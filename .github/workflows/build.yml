@@ -1,0 +1,23 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Compiler
+        run: cargo build --release
+
+      - name: Publier le binaire
+        uses: actions/upload-artifact@v4
+        with:
+          name: diskmap-windows
+          path: target/release/diskmap.exe
