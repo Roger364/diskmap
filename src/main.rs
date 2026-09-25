@@ -9,7 +9,7 @@ mod win32;
 
 use scan::{Progress, Row, Snapshot};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
@@ -72,6 +72,38 @@ struct StateJson {
     scanning: Option<String>,
 }
 
+/// Vrai si une instance diskmap répond déjà sur ce port. On interroge notre
+/// propre route `/api/state` plutôt que de se contenter d'un test de connexion :
+/// un autre programme occupant le port ne doit pas être pris pour nous.
+fn already_running(port: u16) -> bool {
+    let Ok(mut s) = TcpStream::connect(("127.0.0.1", port)) else {
+        return false;
+    };
+    let req = b"GET /api/state HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    if s.write_all(req).is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 15];
+    match s.read(&mut buf) {
+        Ok(n) if n >= 12 => buf.starts_with(b"HTTP/1.1 200"),
+        _ => false,
+    }
+}
+
+fn open_in_browser(url: &str) {
+    let _ = Command::new("cmd").args(["/c", "start", "", url]).spawn();
+}
+
+/// Bloque jusqu'à une pression sur Entrée. Sert uniquement à ce qu'une console
+/// ouverte au double-clic ne se referme pas avant que le message soit lu.
+fn wait_for_key() {
+    eprintln!();
+    eprint!("Appuie sur Entree pour fermer cette fenetre... ");
+    let _ = std::io::stdout().flush();
+    let mut s = String::new();
+    let _ = std::io::stdin().read_line(&mut s);
+}
+
 fn bench(letter: Option<char>) {
     let letter = match letter {
         Some(c) => c.to_ascii_uppercase(),
@@ -127,6 +159,22 @@ fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_PORT);
 
+    let open_browser = !args.iter().any(|a| a == "--no-browser");
+
+    // Une instance tourne déjà ? On ouvre le navigateur dessus au lieu d'en
+    // lancer une seconde : deux instances feraient deux scans concurrents des
+    // mêmes disques. Et surtout, l'ancien comportement était un `exit(1)` dont
+    // le message partait sur stderr — au double-clic, une fenêtre noire qui se
+    // referme sans rien dire.
+    if already_running(port) {
+        let url = format!("http://127.0.0.1:{port}/");
+        println!("Une instance tourne déjà : {url}");
+        if open_browser {
+            open_in_browser(&url);
+        }
+        return;
+    }
+
     let mut drives = HashMap::new();
     for d in win32::drives() {
         let cache = cache_dir().join(format!("{}.bin", d.letter));
@@ -167,19 +215,37 @@ fn main() {
     }
     pump(&app);
 
-    let addr = format!("127.0.0.1:{port}");
-    let listener = match TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("impossible d'écouter sur {addr} : {e}");
+    // Le port demandé peut être pris par autre chose qu'une instance à nous :
+    // on glisse sur les suivants plutôt que d'abandonner.
+    let mut listener = None;
+    for p in port..port + 10 {
+        match TcpListener::bind(("127.0.0.1", p)) {
+            Ok(l) => {
+                listener = Some((l, p));
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
+    let (listener, real_port) = match listener {
+        Some(x) => x,
+        None => {
+            eprintln!("Aucun port libre entre {port} et {}.", port + 9);
+            eprintln!("Ferme les autres instances, ou lance : diskmap --port 9000");
+            // Sans cette pause, le message part sur stderr et la console se
+            // referme avant d'avoir pu être lue.
+            wait_for_key();
             std::process::exit(1);
         }
     };
-    let url = format!("http://127.0.0.1:{port}/");
+    if real_port != port {
+        println!("Le port {port} était pris, utilisation de {real_port} à la place.");
+    }
+    let url = format!("http://127.0.0.1:{real_port}/");
     println!("Espace disque : {url}");
     println!("Ctrl+C pour arrêter.");
-    if !args.iter().any(|a| a == "--no-browser") {
-        let _ = Command::new("cmd").args(["/c", "start", "", &url]).spawn();
+    if open_browser {
+        open_in_browser(&url);
     }
 
     for stream in listener.incoming() {

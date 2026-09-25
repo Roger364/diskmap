@@ -68,6 +68,11 @@ diskmap.bat
 The binary opens `http://127.0.0.1:8756/` automatically. Options: `--port 9000`,
 `--no-browser`.
 
+Two cases are handled rather than failing silently: if an instance is already
+running, a browser is opened onto it instead of starting a second one (two
+instances would scan the same disks twice); if the port is taken by something
+else, the next free port is used and the address is printed.
+
 `diskmap bench <LETTER>` times the walk of a single volume with no server and no
 interface — useful to check performance on another machine instead of assuming it.
 
