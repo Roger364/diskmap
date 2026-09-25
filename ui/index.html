@@ -90,8 +90,10 @@
   .tablewrap { flex:1; overflow:auto; }
   /* `fixed` est indispensable : en disposition automatique le navigateur
      recalcule les largeurs d'après le contenu et ignore le colgroup — glisser
-     une poignée ne changeait alors strictement rien. */
-  table { width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed; }
+     une poignée ne changeait alors strictement rien.
+     `min-width` complète les largeurs en pour cent : sur une fenêtre étroite,
+     les colonnes se réduiraient jusqu'à l'illisible — mieux vaut défiler. */
+  table { width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed; min-width:860px; }
   thead th {
     position:sticky; top:0; background:var(--panel); text-align:left; font-weight:600;
     font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
@@ -107,6 +109,13 @@
   }
   thead th .rh:hover { background:var(--accent-dim); }
   body.resizing { cursor:col-resize; user-select:none; }
+  /* Étiquette qui suit le curseur pendant le glisser : la largeur en pour cent
+     est une notion abstraite, la voir chiffrée évite de tâtonner. */
+  #coltip {
+    position:fixed; z-index:60; pointer-events:none;
+    background:var(--panel2); border:1px solid var(--accent-dim); color:var(--text);
+    border-radius:5px; padding:3px 8px; font-size:11.5px; white-space:nowrap;
+  }
   th.num, td.num { text-align:right; }
   /* En disposition fixe, une cellule large déborde sur sa voisine : il faut
      couper. `width:100%` sur le nom n'a plus de sens ici, sa largeur vient du
@@ -237,6 +246,8 @@
     <div id="treemap" class="hidden"></div>
   </section>
 </main>
+
+<div id="coltip" class="hidden"></div>
 
 <div id="modal" class="modal-bg hidden">
   <div class="modal">
@@ -749,60 +760,129 @@ function syncHeaders() {
 }
 
 // ---------- largeurs de colonnes ----------
-// Les largeurs sont posées sur les <col> du colgroup : elles survivent aux
-// reconstructions du corps du tableau, contrairement à des styles posés sur les
-// cellules. Elles sont retenues d'une session à l'autre via localStorage.
+// Les largeurs sont exprimées en POUR CENT de la largeur du tableau, pas en
+// pixels : la table suit ainsi la taille de la fenêtre au lieu de garder des
+// largeurs figées. Elles sont posées sur les <col> du colgroup (elles survivent
+// aux reconstructions du corps) et retenues d'une session à l'autre.
 const COLS = ['sel', 'name', 'size', 'part', 'count', 'mtime', 'act'];
-// 0 = largeur automatique : la colonne Nom absorbe l'espace restant.
-const DEFAULT_W = { sel: 32, name: 0, size: 100, part: 66, count: 92, mtime: 165, act: 42 };
+// 0 = aucune largeur posée : la colonne Nom absorbe ce qui reste. Les six
+// autres totalisent 48,5 % et laissent donc 51,5 % au nom.
+const DEFAULT_W = { sel: 3, name: 0, size: 10, part: 6.5, count: 9, mtime: 16, act: 4 };
+// Clé distincte de celle de la version en pixels : les deux unités ne se
+// relisent pas l'une l'autre, mieux vaut repartir des défauts que de mélanger.
+const KEY_COLS = 'diskmap.cols.pct';
+const OLD_KEY_COLS = 'diskmap.cols';
+// Le nom ne doit pas pouvoir être écrasé : plafonner la somme des six colonnes
+// à largeur explicite lui garantit toujours 12 % de la place.
+const MAX_EXPLICIT = 88;
+// Plancher d'une colonne, en pixels, converti en pour cent au moment du
+// glisser : la garantie vaut alors pour la largeur courante de la fenêtre.
+const MIN_PX = 28;
+
+// Somme des colonnes à largeur explicite ; le nom est le reste, il ne compte pas.
+// Déclarée AVANT l'appel à loadColW() : en `const` placée après, elle serait
+// dans la zone morte temporelle au moment de la lecture — et le `catch` de
+// loadColW() avalait ce ReferenceError en rendant les défauts sans rien dire.
+const explicitSum = w => COLS.reduce((s, k) => s + (k === 'name' ? 0 : (w[k] || 0)), 0);
+// Ce qui revient au nom, en pour cent.
+const nameShare = () => Math.max(0, 100 - explicitSum(colW));
+
 let colW = loadColW();
 
 function loadColW() {
+  let raw = null;
   try {
-    const raw = localStorage.getItem('diskmap.cols');
-    if (raw) return Object.assign({}, DEFAULT_W, JSON.parse(raw));
-  } catch (e) { /* préférences illisibles : on repart des défauts */ }
+    // L'ancienne clé contenait des pixels : on la retire, elle n'est plus lisible.
+    localStorage.removeItem(OLD_KEY_COLS);
+    raw = localStorage.getItem(KEY_COLS);
+  } catch (e) { /* stockage refusé (navigation privée) : on repart des défauts */ }
+  if (raw) {
+    // Le `try` ne couvre QUE la lecture du JSON : une erreur de programmation
+    // plus bas doit remonter, pas se déguiser en « préférences illisibles ».
+    let o = null;
+    try { o = JSON.parse(raw); } catch (e) { o = null; }
+    const nombres = o && COLS.every(k => typeof o[k] === 'number' && o[k] >= 0 && o[k] <= 100);
+    // Une somme au-delà du plafond signalerait un enregistrement incohérent
+    // (mélange d'unités, valeur bricolée) : on repart des défauts.
+    if (nombres && explicitSum(o) <= MAX_EXPLICIT) return Object.assign({}, DEFAULT_W, o);
+  }
   return Object.assign({}, DEFAULT_W);
 }
 
 function saveColW() {
-  try { localStorage.setItem('diskmap.cols', JSON.stringify(colW)); } catch (e) { /* rien */ }
+  try { localStorage.setItem(KEY_COLS, JSON.stringify(colW)); } catch (e) { /* rien */ }
 }
 
 function applyColW() {
   COLS.forEach((k, i) => {
     const c = document.getElementById('c' + i);
-    if (c) c.style.width = colW[k] > 0 ? colW[k] + 'px' : '';
+    if (c) c.style.width = colW[k] > 0 ? colW[k] + '%' : '';
   });
 }
 
+// Étiquette qui suit le curseur : « Taille · 14,5 % ».
+const tip = () => document.getElementById('coltip');
+function showTip(label, pct, x, y) {
+  const t = tip();
+  if (!t) return;
+  t.textContent = `${label} · ${pct.toFixed(1).replace('.', ',')} %`;
+  t.classList.remove('hidden');
+  t.style.left = (x + 14) + 'px';
+  t.style.top = (y + 16) + 'px';
+}
+function hideTip() { const t = tip(); if (t) t.classList.add('hidden'); }
+
 function initColResize() {
+  const tbl = document.getElementById('tbl');
   document.querySelectorAll('thead th').forEach((th, i) => {
     const h = th.querySelector('.rh');
     if (!h) return;
-    h.title = 'Glisser pour redimensionner — double-clic pour réinitialiser';
+    const k = COLS[i];
+    // La poignée du nom est la frontière Nom/Taille : la déplacer vers la
+    // droite élargit le nom et rétrécit « Taille » d'autant. C'est la seule
+    // colonne sans largeur propre, donc la seule à piloter sa voisine.
+    const cible = k === 'name' ? 'size' : k;
+    const signe = k === 'name' ? -1 : 1;
+    const label = (th.querySelector('.ttl') || {}).textContent || 'Actions';
+
+    h.title = k === 'name'
+      ? 'Glisser pour élargir le nom (la colonne Taille cède la place) — double-clic pour réinitialiser'
+      : 'Glisser pour redimensionner — double-clic pour réinitialiser';
     // Sans ça, relâcher sur la poignée déclenche aussi le tri de la colonne.
     h.addEventListener('click', e => e.stopPropagation());
     h.addEventListener('dblclick', () => {
-      colW[COLS[i]] = DEFAULT_W[COLS[i]];
+      colW[cible] = DEFAULT_W[cible];
       applyColW();
       saveColW();
+      hideTip();
     });
     h.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       e.preventDefault();
-      const col = document.getElementById('c' + i);
+      const largeur = tbl.getBoundingClientRect().width || 1;
       const startX = e.clientX;
-      const startW = col.getBoundingClientRect().width;
+      const startCible = colW[cible];
+      // Somme des cinq autres colonnes explicites : c'est elle qui fixe le
+      // plafond, pour que le nom garde toujours de quoi respirer.
+      const autres = explicitSum(colW) - startCible;
+      const minPct = Math.max(MIN_PX / largeur * 100, 1);
+      const maxPct = Math.max(minPct, MAX_EXPLICIT - autres);
       document.body.classList.add('resizing');
+      showTip(label, k === 'name' ? nameShare() : startCible, e.clientX, e.clientY);
+
       const onMove = ev => {
-        colW[COLS[i]] = Math.max(28, Math.round(startW + ev.clientX - startX));
+        const d = (ev.clientX - startX) / largeur * 100;
+        const v = Math.max(minPct, Math.min(maxPct, startCible + signe * d));
+        // Un dixième de pour cent suffit : au-delà, on stocke du bruit.
+        colW[cible] = Math.round(v * 10) / 10;
         applyColW();
+        showTip(label, k === 'name' ? nameShare() : colW[cible], ev.clientX, ev.clientY);
       };
       const onUp = () => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         document.body.classList.remove('resizing');
+        hideTip();
         saveColW();
       };
       document.addEventListener('mousemove', onMove);
