@@ -229,6 +229,7 @@
         <button class="btn active" data-view="table">Tableau</button>
         <button class="btn" data-view="map">Carte</button>
       </div>
+      <button class="btn" id="resetcols" title="Rétablir les largeurs de colonnes par défaut">Largeurs</button>
     </div>
     <div class="tablewrap" id="tablewrap"><table id="tbl">
       <colgroup>
@@ -241,7 +242,7 @@
       <th class="num"><span class="ttl">Part</span><span class="arw"></span><span class="rh"></span></th>
       <th data-k="count" class="num"><span class="ttl">Fichiers</span><span class="arw"></span><span class="rh"></span></th>
       <th data-k="mtime"><span class="ttl">Dernière activité</span><span class="arw"></span><span class="rh"></span></th>
-      <th></th>
+      <th><span class="rh"></span></th>
     </tr></thead><tbody id="rows"></tbody></table></div>
     <div id="treemap" class="hidden"></div>
   </section>
@@ -760,20 +761,19 @@ function syncHeaders() {
 }
 
 // ---------- largeurs de colonnes ----------
-// Largeurs en POUR CENT de la largeur du tableau : la table suit la taille de
-// la fenêtre au lieu de garder des largeurs figées, et la somme fait 100 %.
-// Elles sont posées sur les <col> du colgroup (elles survivent aux
-// reconstructions du corps) et retenues d'une session à l'autre.
+// Largeurs en POUR CENT de la largeur disponible (celle du cadre qui défile),
+// pas en pixels : le tableau suit la taille de la fenêtre. Elles sont posées
+// sur les <col> du colgroup — elles survivent aux reconstructions du corps —
+// et retenues d'une session à l'autre.
 //
-// Chaque poignée est la FRONTIÈRE entre sa colonne et la suivante : tirer la
-// déplace, et la colonne gagne exactement ce que sa voisine perd. C'est ce qui
-// rend le geste lisible — tirer vers la droite élargit la colonne vers la
-// droite. Le modèle précédent, à colonne élastique unique, faisait l'inverse :
-// tout ce qui était à droite de l'élastique gardait sa part, donc élargir une
-// colonne ne pouvait se faire qu'en mangeant vers la gauche, et le bord qu'on
-// venait de saisir ne bougeait pas d'un pixel.
+// Tirer la poignée d'une colonne la redimensionne et fait GLISSER toutes les
+// suivantes, qui gardent leur largeur : c'est le geste d'Excel, et le bord
+// saisi suit exactement la souris. La somme n'est donc plus forcée à 100 % —
+// au-delà, le tableau déborde et le cadre défile horizontalement. Le modèle
+// précédent prenait la place de la voisine, ce qui interdisait d'élargir une
+// colonne au-delà de ce que sa voisine voulait bien céder.
 const COLS = ['sel', 'name', 'size', 'part', 'count', 'mtime', 'act'];
-// Libellés courts pour l'étiquette de glisser : deux colonnes y figurent.
+// Libellés courts : ils figurent dans l'étiquette de glisser.
 const COURT = { sel: 'Case', name: 'Nom', size: 'Taille', part: 'Part', count: 'Fichiers', mtime: 'Activité', act: 'Actions' };
 const DEFAULT_W = { sel: 3, name: 51.5, size: 10, part: 6.5, count: 9, mtime: 16, act: 4 };
 // Clé distincte de celle de la version en pixels : les deux unités ne se
@@ -783,9 +783,10 @@ const OLD_KEY_COLS = 'diskmap.cols';
 // Plancher d'une colonne, en pixels, converti en pour cent au moment du
 // glisser : la garantie vaut alors pour la largeur courante de la fenêtre.
 const MIN_PX = 28;
-// Tolérance sur la somme : les valeurs sont au dixième, et un aller-retour par
-// localStorage peut laisser un écart d'arrondi.
-const TOL = 0.5;
+// Garde-fous contre un enregistrement aberrant : une colonne peut légitimement
+// dépasser 100 % de la fenêtre, mais pas dans n'importe quelle proportion.
+const MAX_COL = 1000;
+const MAX_TOTAL = 2000;
 
 // Déclarée AVANT l'appel à loadColW() : en `const` placée après, elle serait
 // dans la zone morte temporelle au moment de la lecture — et le `catch` de
@@ -793,6 +794,7 @@ const TOL = 0.5;
 const somme = w => COLS.reduce((a, k) => a + (w[k] || 0), 0);
 
 let colW = loadColW();
+let tipTimer = null;
 
 function loadColW() {
   let raw = null;
@@ -806,99 +808,132 @@ function loadColW() {
     // plus bas doit remonter, pas se déguiser en « préférences illisibles ».
     let o = null;
     try { o = JSON.parse(raw); } catch (e) { o = null; }
-    const nombres = o && COLS.every(k => typeof o[k] === 'number' && o[k] >= 0 && o[k] <= 100);
-    // Une somme qui n'est pas 100 % signale un enregistrement d'un autre
-    // modèle (le précédent, à colonne élastique, sommait 48,5 %) : on repart
-    // des défauts plutôt que d'extrapoler.
-    if (nombres && Math.abs(somme(o) - 100) <= TOL) return normalise(o);
+    // Une largeur strictement positive : l'enregistrement de la version en
+    // pixels portait « name: 0 », il est donc écarté au lieu d'être relu comme
+    // une colonne de largeur nulle.
+    const valides = o && COLS.every(k => typeof o[k] === 'number' && o[k] > 0 && o[k] <= MAX_COL);
+    if (valides && somme(o) <= MAX_TOTAL) return o;
   }
   return Object.assign({}, DEFAULT_W);
-}
-
-// Rend l'écart d'arrondi à la plus grande colonne, pour retomber sur 100 % pile.
-function normalise(w) {
-  const ecart = Math.round((100 - somme(w)) * 10) / 10;
-  if (ecart) {
-    const big = COLS.reduce((a, k) => (w[k] > w[a] ? k : a), COLS[0]);
-    w[big] = Math.round((w[big] + ecart) * 10) / 10;
-  }
-  return w;
 }
 
 function saveColW() {
   try { localStorage.setItem(KEY_COLS, JSON.stringify(colW)); } catch (e) { /* rien */ }
 }
 
+// Largeur de référence : celle du CADRE, pas du tableau. Les largeurs stockées
+// sont des pour cent de la place disponible, alors que le tableau peut être
+// plus large qu'elle — le prendre pour référence fausserait tout.
+const baseW = () => (document.getElementById('tablewrap') || {}).clientWidth || 1;
+
 function applyColW() {
+  const t = document.getElementById('tbl');
+  if (!t) return;
+  const total = somme(colW) || 100;
+  // Le tableau fait la somme de ses colonnes, exprimée en pour cent du cadre :
+  // au-delà de 100 % il déborde, et le cadre défile — comme Excel.
+  t.style.width = total + '%';
   COLS.forEach((k, i) => {
     const c = document.getElementById('c' + i);
-    if (c) c.style.width = colW[k] + '%';
+    // Les <col> se lisent en fraction de la LARGEUR DU TABLEAU, laquelle vaut
+    // déjà `total` pour cent du cadre. Diviser par le total ramène l'échelle à
+    // celle du cadre, pour que colW[k] reste des pour cent de la fenêtre.
+    if (c) c.style.width = (colW[k] / total * 100) + '%';
   });
 }
 
-// Étiquette qui suit le curseur : les DEUX colonnes de la frontière bougent,
-// les afficher toutes les deux évite de croire que la voisine est immobile.
+// Étiquette qui suit le curseur. Le pourcentage seul ne suffit plus à situer la
+// colonne maintenant que la somme peut dépasser 100 % : d'où les pixels aussi.
 const tip = () => document.getElementById('coltip');
-function showTip(g, d, x, y) {
+function showTip(k, x, y) {
   const t = tip();
   if (!t) return;
-  const p = v => v.toFixed(1).replace('.', ',') + ' %';
-  t.textContent = `${COURT[g]} ${p(colW[g])} · ${COURT[d]} ${p(colW[d])}`;
+  const pct = colW[k];
+  const px = Math.round(pct / 100 * baseW());
+  t.textContent = `${COURT[k]} · ${pct.toFixed(1).replace('.', ',')} % · ${px} px`;
   t.classList.remove('hidden');
   t.style.top = (y + 16) + 'px';
   // Replier l'étiquette vers la gauche plutôt que de la laisser sortir de
-  // l'écran quand on tire une frontière située près du bord droit.
+  // l'écran quand on tire une colonne située près du bord droit.
   t.style.left = '0px';
   const l = t.offsetWidth;
   t.style.left = Math.max(4, Math.min(x + 14, window.innerWidth - l - 8)) + 'px';
 }
-function hideTip() { const t = tip(); if (t) t.classList.add('hidden'); }
+function hideTip() { clearTimeout(tipTimer); const t = tip(); if (t) t.classList.add('hidden'); }
+
+// Largeur naturelle de chaque colonne, mesurée par le navigateur lui-même : on
+// lui fait mettre en page une copie hors écran remise en disposition
+// automatique. La mesurer à la main obligerait à refaire les polices, les
+// icônes et la barre miniature — et se tromperait au premier changement de style.
+function largeursNaturelles() {
+  const t = document.getElementById('tbl');
+  const copie = t.cloneNode(true);
+  // La copie hérite des styles en ligne : sans ça elle mesurerait les largeurs
+  // déjà fixées au lieu du contenu.
+  // `width: max-content` est indispensable : en `auto`, une table prend AU MOINS
+  // la largeur de son contenant, et la copie se ferait étirer à la taille de
+  // l'hôte — mesurant alors quatre fois trop large.
+  copie.style.cssText = 'table-layout:auto; width:max-content; min-width:0;';
+  copie.querySelectorAll('col').forEach(c => { c.style.width = ''; });
+  const hote = document.createElement('div');
+  // Hôte de largeur nulle : même si `max-content` n'était pas honoré, la table
+  // retomberait sur sa largeur minimale de contenu, qui est la bonne ici
+  // (toutes les cellules sont en `nowrap`).
+  hote.style.cssText = 'position:absolute; left:-200000px; top:0; width:0; visibility:hidden;';
+  hote.appendChild(copie);
+  document.body.appendChild(hote);
+  const w = [...copie.querySelectorAll('thead th')].map(th => th.getBoundingClientRect().width);
+  hote.remove();
+  return w;
+}
+
+// Double-clic : la colonne se cale sur son contenu le plus large, comme Excel.
+function ajusteAuContenu(i) {
+  const k = COLS[i];
+  const naturelle = largeursNaturelles()[i];
+  if (!naturelle) return;
+  // Arrondi VERS LE HAUT : au dixième de pour cent près (un pixel sur une
+  // fenêtre de 1000 px), arrondir au plus proche rognait un caractère sur
+  // certaines colonnes.
+  colW[k] = Math.ceil(Math.max(MIN_PX, naturelle) / baseW() * 1000) / 10;
+  applyColW();
+  saveColW();
+}
 
 function initColResize() {
-  const tbl = document.getElementById('tbl');
   document.querySelectorAll('thead th').forEach((th, i) => {
     const h = th.querySelector('.rh');
-    // La dernière colonne n'a pas de poignée : son bord droit est celui du
-    // tableau, il n'y a rien à déplacer de ce côté.
-    if (!h || i >= COLS.length - 1) return;
-    const g = COLS[i], d = COLS[i + 1];
-
-    h.title = `Glisser pour déplacer la frontière ${COURT[g]} / ${COURT[d]} — double-clic pour réinitialiser`;
+    if (!h) return;
+    const k = COLS[i];
+    h.title = `Glisser pour élargir « ${COURT[k]} » — double-clic pour l'ajuster au contenu`;
     // Sans ça, relâcher sur la poignée déclenche aussi le tri de la colonne.
     h.addEventListener('click', e => e.stopPropagation());
-    h.addEventListener('dblclick', () => {
-      colW[g] = DEFAULT_W[g];
-      colW[d] = DEFAULT_W[d];
-      colW = normalise(colW);
-      applyColW();
-      saveColW();
-      hideTip();
+    h.addEventListener('dblclick', ev => {
+      ajusteAuContenu(i);
+      // L'étiquette reste un instant : la souris n'a pas bougé, sans elle le
+      // double-clic ne donnerait aucun retour sur la largeur obtenue.
+      showTip(k, ev.clientX, ev.clientY);
+      clearTimeout(tipTimer);
+      tipTimer = setTimeout(hideTip, 1400);
     });
     h.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       e.preventDefault();
-      const largeur = tbl.getBoundingClientRect().width || 1;
+      const base = baseW();
       const startX = e.clientX;
-      // Les parts du couple au moment de la saisie : c'est d'elles que tout
-      // est calculé, pour qu'un mouvement d'aller-retour revienne au point de
-      // départ sans dérive.
-      const depart = { g: colW[g], d: colW[d] };
-      const minPct = Math.max(MIN_PX / largeur * 100, 1);
+      // La largeur de départ est figée ici : un aller-retour ramène au point
+      // de départ sans dérive.
+      const depart = colW[k];
+      const minPct = Math.max(MIN_PX / base * 100, 0.5);
       document.body.classList.add('resizing');
-      showTip(g, d, e.clientX, e.clientY);
+      showTip(k, e.clientX, e.clientY);
 
       const onMove = ev => {
-        const demande = (ev.clientX - startX) / largeur * 100;
-        // La frontière est bornée par la place disponible de part et d'autre.
-        const d2 = Math.max(minPct - depart.g, Math.min(depart.d - minPct, demande));
-        // Un dixième de pour cent suffit : au-delà, on stocke du bruit.
-        const ng = Math.round((depart.g + d2) * 10) / 10;
-        colW[g] = ng;
-        // La voisine prend exactement le reste du couple : la somme des deux
-        // est conservée, donc les 100 % aussi, sans dérive d'arrondi.
-        colW[d] = Math.round((depart.g + depart.d - ng) * 10) / 10;
+        const d = (ev.clientX - startX) / base * 100;
+        // Aucun plafond : les colonnes suivantes glissent et le cadre défile.
+        colW[k] = Math.round(Math.max(minPct, depart + d) * 10) / 10;
         applyColW();
-        showTip(g, d, ev.clientX, ev.clientY);
+        showTip(k, ev.clientX, ev.clientY);
       };
       const onUp = () => {
         document.removeEventListener('mousemove', onMove);
@@ -912,6 +947,15 @@ function initColResize() {
     });
   });
 }
+
+// Sortie de secours : en poussant les colonnes on peut rendre le tableau plus
+// large que plusieurs écrans, et il faut pouvoir revenir en un clic.
+$('#resetcols').onclick = () => {
+  colW = Object.assign({}, DEFAULT_W);
+  applyColW();
+  saveColW();
+  hideTip();
+};
 $('#sort').onchange = e => { cur.sort = e.target.value; if (!$('#q').value.trim()) load(true); };
 $('#order').onchange = e => { cur.order = e.target.value; if (!$('#q').value.trim()) load(true); };
 $('#go').onclick = search;
