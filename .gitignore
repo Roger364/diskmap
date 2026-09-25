@@ -3,3 +3,7 @@
 
 # Caches de scan (régénérés à la demande, volumineux)
 *.bin
+
+# Binaires : celui construit en CI est téléchargé ici, il ne se versionne pas
+*.exe
+*.pdb
