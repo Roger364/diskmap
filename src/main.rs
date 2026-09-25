@@ -73,7 +73,14 @@ struct DriveJson {
     root_size: u64,
     elapsed_ms: u64,
     finished_ms: i64,
-    errors: u64,
+    /// Dossiers dont le contenu est inaccessible. Chacun fait manquer **tout un
+    /// sous-arbre**, donc `root_size` est un plancher, pas une mesure.
+    unreadable: u64,
+    /// Sous-ensemble des précédents dû à un refus de droits (code 5) : le seul
+    /// cas qu'une relance élevée réparerait.
+    unreadable_droits: u64,
+    /// Entrées sautées : coût d'une entrée chacune, jamais d'un sous-arbre.
+    skipped: u64,
     dirs: u64,
     files: u64,
 }
@@ -136,7 +143,20 @@ fn bench(letter: Option<char>) {
     println!("---");
     println!("dossiers       : {}", snap.n_dirs());
     println!("fichiers       : {}", snap.n_files());
-    println!("erreurs        : {}", snap.errors);
+    println!("inaccessibles  : {}", snap.unreadable_total);
+    println!("refus de droits: {}", snap.unreadable_droits);
+    println!("entrées sautées: {}", snap.skipped);
+    // Un dossier inaccessible fait manquer tout son sous-arbre : on l'affiche,
+    // parce que « 123 » sans chemin ne dit pas où regarder.
+    if !snap.unreadable.is_empty() {
+        let gardes = snap.unreadable.len() as u64;
+        if gardes < snap.unreadable_total {
+            println!("  (liste plafonnée : {gardes} chemins sur {})", snap.unreadable_total);
+        }
+        for u in &snap.unreadable {
+            println!("  [{}] {}", if u.droits { "droits" } else { "autre " }, u.path);
+        }
+    }
     println!("parcours seul  : {} ms", snap.elapsed_ms);
     println!("total agregé   : {:?}", wall);
     println!("taille racine  : {:.1} Go", snap.size[0] as f64 / 1073741824.0);
@@ -506,6 +526,7 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8]) -> Result
 
         ("GET", "/api/tree") => tree(app, q),
         ("GET", "/api/search") => search(app, q),
+        ("GET", "/api/unreadable") => unreadable(app, q),
 
         ("POST", "/api/delete") => delete(app, body),
 
@@ -563,7 +584,9 @@ fn state_json(app: &Arc<App>) -> StateJson {
             root_size: snap.map(|x| x.size[0]).unwrap_or(0),
             elapsed_ms: snap.map(|x| x.elapsed_ms).unwrap_or(0),
             finished_ms: snap.map(|x| x.finished_ms).unwrap_or(0),
-            errors: snap.map(|x| x.errors).unwrap_or(0),
+            unreadable: snap.map(|x| x.unreadable_total).unwrap_or(0),
+            unreadable_droits: snap.map(|x| x.unreadable_droits).unwrap_or(0),
+            skipped: snap.map(|x| x.skipped).unwrap_or(0),
             dirs: s.prog.dirs.load(Ordering::Relaxed),
             files: s.prog.files.load(Ordering::Relaxed),
         });
@@ -995,5 +1018,44 @@ fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     let truncated = rows.len() >= limit;
     Ok(Resp::Json(
         serde_json::to_string(&serde_json::json!({ "rows": rows, "truncated": truncated })).unwrap(),
+    ))
+}
+
+#[derive(serde::Serialize)]
+struct UnreadableJson {
+    path: String,
+    droits: bool,
+}
+
+/// Dossiers dont le contenu n'a pas pu être lu, donc dont le sous-arbre entier
+/// manque au total affiché.
+///
+/// Route séparée plutôt qu'un champ de `/api/state` : l'état est interrogé en
+/// boucle pendant une analyse, et y charrier jusqu'à 500 chemins à chaque tour
+/// serait du gaspillage pour une information qu'on ne consulte qu'à la demande.
+fn unreadable(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
+    let letter = q.get("drive").and_then(|s| s.chars().next())
+        .ok_or(("400 Bad Request", "drive manquant".into()))?
+        .to_ascii_uppercase();
+    let snap = {
+        let d = app.drives.lock().unwrap();
+        d.get(&letter).and_then(|s| s.snap.clone())
+            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
+    };
+    let items: Vec<UnreadableJson> = snap
+        .unreadable
+        .iter()
+        .map(|u| UnreadableJson { path: u.path.to_string(), droits: u.droits })
+        .collect();
+    let tronque = (items.len() as u64) < snap.unreadable_total;
+    Ok(Resp::Json(
+        serde_json::to_string(&serde_json::json!({
+            "items": items,
+            "total": snap.unreadable_total,
+            "droits": snap.unreadable_droits,
+            "skipped": snap.skipped,
+            "tronque": tronque,
+        }))
+        .unwrap(),
     ))
 }

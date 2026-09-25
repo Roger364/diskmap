@@ -65,6 +65,16 @@
   .bar > i { display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,#3f6fc0,#5b9dff); }
   .drive .meta { display:flex; gap:10px; font-size:11px; color:var(--muted); }
   .drive .meta b { color:var(--text); font-weight:500; }
+  /* Avertissement de total incomplet. Volontairement sobre : il doit se voir sans
+     crier, et rester cliquable pour donner la liste des chemins. */
+  .drive .inc {
+    margin-top:6px; font-size:11px; line-height:1.45; color:#e8c89c;
+    background:#3a2a18; border:1px solid #6b4a24; border-radius:5px;
+    padding:4px 7px; cursor:pointer; display:flex; gap:6px; align-items:baseline;
+  }
+  .drive .inc:hover { border-color:#8f6530; background:#42301b; }
+  .drive .inc b { color:#f2d9b4; font-weight:500; }
+  .drive .inc .go { margin-left:auto; color:#a8895f; white-space:nowrap; }
 
   section { flex:1; display:flex; flex-direction:column; min-width:0; }
   .crumbs {
@@ -201,7 +211,9 @@
     <div style="padding:0 8px;color:var(--muted);font-size:11.5px;line-height:1.6">
       La <b>taille</b> d'un dossier inclut tout son contenu.<br />
       La <b>dernière activité</b> est la date d'écriture la plus récente dans le sous-arbre.<br />
-      Jonctions et liens symboliques ne sont pas suivis (pas de double compte).
+      Jonctions et liens symboliques ne sont pas suivis (pas de double compte).<br />
+      Un dossier illisible emporte <b>tout son sous-arbre</b> : la taille affichée est
+      alors un <b>plancher</b>, jamais une mesure exacte.
     </div>
   </aside>
 
@@ -264,6 +276,17 @@
   </div>
 </div>
 
+<div id="umodal" class="modal-bg hidden">
+  <div class="modal">
+    <h3>Dossiers illisibles <span id="utitle"></span></h3>
+    <div class="body" id="ubody"></div>
+    <div class="foot">
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn" id="uclose">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 let state = { drives: [], scanning: null };
@@ -316,7 +339,7 @@ function renderDrives() {
   // un clic tombant pendant un rendu était purement perdu. On ne reconstruit que
   // si les données affichées changent ; sinon on ne déplace que la sélection.
   const sig = state.drives
-    .map(d => `${d.letter}|${d.status}|${d.dirs}|${d.files}|${d.free}|${d.total}`)
+    .map(d => `${d.letter}|${d.status}|${d.dirs}|${d.files}|${d.free}|${d.total}|${d.unreadable}|${d.skipped}`)
     .join(';');
   if (sig === driveSig) { markActive(); return; }
   driveSig = sig;
@@ -333,6 +356,15 @@ function renderDrives() {
       : d.status === 'scanning' ? 'analyse en cours…'
       : d.status === 'error' ? 'erreur'
       : 'non analysé';
+    // Un dossier illisible emporte TOUT son sous-arbre : le total affiché est
+    // alors un plancher, pas une mesure. Sans cet avertissement, le chiffre se
+    // présente comme exact et l'utilisateur n'a aucun moyen de le savoir.
+    // On n'affiche rien quand il n'y a que des entrées sautées : leur coût est
+    // d'une entrée chacune, ce qui ne fausse pas le total de façon lisible.
+    const inc = (d.status === 'ready' && d.unreadable)
+      ? `<div class="inc"><span>! <b>${nf.format(d.unreadable)}</b> dossier(s) illisible(s) — total incomplet</span>` +
+        `<span class="go">voir</span></div>`
+      : '';
     el.innerHTML = `
       <div class="top">
         <span class="ltr">${d.letter}:</span>
@@ -351,12 +383,14 @@ function renderDrives() {
             ${d.status === 'ready' ? 'Rescanner' : 'Analyser'}
           </button>
         </span>
-      </div>`;
+      </div>${inc}`;
     // Toute la carte est cliquable. Réserver le clic à la lettre et à la barre
     // faisait perdre la majorité des clics : badge NTFS, libellé et corps de la
     // carte ne réagissaient pas du tout.
     el.onclick = () => select(d.letter);
     el.querySelector('button').onclick = e => { e.stopPropagation(); startScan(d.letter); };
+    const incEl = el.querySelector('.inc');
+    if (incEl) incEl.onclick = e => { e.stopPropagation(); showUnreadable(d.letter); };
     if (d.status === 'scanning') {
       const b = el.querySelector('button');
       b.textContent = `${nf.format(d.dirs)} dossiers…`;
@@ -629,6 +663,53 @@ $('#delbtn').onclick = openDelete;
 $('#dcancel').onclick = () => $('#modal').classList.add('hidden');
 document.querySelectorAll('input[name=dmode]').forEach(r => { r.onchange = renderDeleteBody; });
 $('#ddo').onclick = doDelete;
+
+// ---------- dossiers illisibles ----------
+//
+// Un dossier dont le contenu n'a pas pu être lu emporte TOUT son sous-arbre : la
+// taille du volume est alors un plancher. La distinction « refus de droits » vs
+// « autre cause » n'est pas décorative — c'est elle qui dit si relancer en
+// administrateur changerait quelque chose, ou si ce serait un effort inutile.
+async function showUnreadable(letter) {
+  $('#utitle').textContent = `— ${letter}:`;
+  $('#ubody').innerHTML = '<p style="margin:0;color:var(--muted)">Lecture…</p>';
+  $('#umodal').classList.remove('hidden');
+  let d;
+  try {
+    d = await api(`/api/unreadable?drive=${letter}`);
+  } catch (e) {
+    $('#ubody').innerHTML = `<div class="warn">Lecture impossible : ${escapeHtml(String(e.message || e))}</div>`;
+    return;
+  }
+  let h = '';
+  if (d.total) {
+    h += `<div class="warn">Ces <b>${nf.format(d.total)}</b> dossier(s) n'ont pas pu être ouverts. ` +
+         `Leur contenu entier manque au total affiché : celui-ci est un <b>plancher</b>, pas une mesure.</div>`;
+    h += d.droits
+      ? `<p style="margin:0 0 10px">Dont <b>${nf.format(d.droits)}</b> par <b>refus de droits</b> — ` +
+        `relancer diskmap en administrateur les rendrait lisibles. Les autres causes ` +
+        `(volume défaillant, dossier détruit en cours de parcours) ne se règlent pas ainsi.</p>`
+      : `<p style="margin:0 0 10px">Aucun de ces échecs n'est dû à un refus de droits : ` +
+        `relancer en administrateur ne changerait rien ici.</p>`;
+    h += '<div class="plist">';
+    for (const it of d.items) {
+      h += `<div><span class="p" title="${escapeHtml(it.path)}">${escapeHtml(it.path)}</span>` +
+           `<span class="${it.droits ? 'b' : 's'}">${it.droits ? 'droits' : 'autre'}</span></div>`;
+    }
+    h += '</div>';
+    if (d.tronque) {
+      h += `<p style="margin:10px 0 0;color:var(--muted);font-size:12.5px">` +
+           `Liste plafonnée à ${nf.format(d.items.length)} chemins sur ${nf.format(d.total)}.</p>`;
+    }
+  }
+  if (d.skipped) {
+    h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
+         `<b>${nf.format(d.skipped)}</b> entrée(s) ont par ailleurs été sautées (fichier verrouillé ` +
+         `ou disparu pendant l'analyse). Coût : une entrée chacune, jamais un sous-arbre.</p>`;
+  }
+  $('#ubody').innerHTML = h || '<p style="margin:0">Aucune anomalie : ce volume a été lu en entier.</p>';
+}
+$('#uclose').onclick = () => $('#umodal').classList.add('hidden');
 
 async function openDelete() {
   const rows = selectedRows();

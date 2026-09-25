@@ -8,6 +8,10 @@
 //    `parent < enfant` : la remontée se fait en une seule boucle descendante sur les index.
 //  - chemins en forme verbatim `\\?\C:\...` : lève la limite MAX_PATH (260 caractères)
 //    qui fait échouer les node_modules profonds, et évite une normalisation par appel.
+//  - les erreurs de parcours sont réparties en DEUX natures, parce qu'elles n'ont pas
+//    le même coût : un dossier illisible fait disparaître tout un sous-arbre du total,
+//    une entrée sautée ne coûte qu'une entrée. Un compteur unique afficherait le même
+//    chiffre pour « 12 Go manquants » et « 12 fichiers illisibles » (voir `Unreadable`).
 
 use std::fs;
 use std::os::windows::fs::MetadataExt;
@@ -25,7 +29,30 @@ const REPARSE_POINT: u32 = 0x0000_0400;
 /// un job par dossier coûterait plus que ce que le parallélisme rapporte sur des feuilles.
 const PAR_DEPTH: u32 = 16;
 
+/// ERROR_ACCESS_DENIED. C'est le seul cas qui se règle en relançant élevé, donc
+/// le seul qui mérite d'être distingué des autres échecs de lecture.
+const ACCESS_DENIED: i32 = 5;
+
+/// Plafond du nombre de chemins conservés. Un volume pathologique peut compter
+/// des milliers de dossiers inaccessibles ; au-delà, on garde le compte exact
+/// mais pas la liste, pour ne pas gonfler le cache (500 chemins ≈ 60 Ko au pire).
+const MAX_UNREADABLE: usize = 500;
+
 const NONE: u32 = u32::MAX;
+
+/// Un dossier dont le contenu n'a pas pu être lu. **Son sous-arbre entier manque
+/// au total**, donc la taille annoncée est un plancher, pas une mesure.
+///
+/// On garde le chemin, pas seulement le compte : « 123 dossiers illisibles »
+/// laisse l'utilisateur sans piste, alors que la liste lui dit quoi regarder —
+/// et, pour un refus de droits, ce qu'une relance élevée lui rendrait.
+#[derive(Clone, Debug)]
+pub struct Unreadable {
+    pub path: Box<str>,
+    /// Vrai si c'est un refus de droits (code 5). Faux : volume défaillant,
+    /// périphérique débranché, dossier détruit en cours de parcours.
+    pub droits: bool,
+}
 
 #[derive(Clone, Debug)]
 pub struct DirRec {
@@ -45,10 +72,22 @@ pub struct FileRec {
 }
 
 /// Compteurs de progression, partagés avec la couche HTTP pour le suivi temps réel.
+///
+/// Les erreurs sont réparties en DEUX compteurs, et ce n'est pas cosmétique :
+/// un dossier illisible fait disparaître **tout un sous-arbre** du total, alors
+/// qu'une entrée sautée ne coûte **qu'une entrée**. Les additionner rendrait le
+/// nombre ininterprétable, et l'interface afficherait le même chiffre pour
+/// « 12 Go manquants » et « 12 fichiers illisibles ».
 pub struct Progress {
     pub dirs: AtomicU64,
     pub files: AtomicU64,
-    pub errors: AtomicU64,
+    /// Dossiers dont le contenu est inaccessible : un sous-arbre entier manque.
+    pub unreadable: AtomicU64,
+    /// Sous-ensemble des précédents dû à un refus de droits (code 5).
+    pub unreadable_droits: AtomicU64,
+    /// Entrées sautées (métadonnée indisponible, disparue en cours de route) :
+    /// coût d'une entrée chacune, jamais d'un sous-arbre.
+    pub skipped: AtomicU64,
     pub cancel: AtomicBool,
 }
 
@@ -57,7 +96,9 @@ impl Progress {
         Progress {
             dirs: AtomicU64::new(0),
             files: AtomicU64::new(0),
-            errors: AtomicU64::new(0),
+            unreadable: AtomicU64::new(0),
+            unreadable_droits: AtomicU64::new(0),
+            skipped: AtomicU64::new(0),
             cancel: AtomicBool::new(false),
         }
     }
@@ -66,8 +107,50 @@ impl Progress {
 struct ScanState {
     dirs: Mutex<Vec<DirRec>>,
     files: Mutex<Vec<FileRec>>,
+    unreadable: Mutex<Vec<Unreadable>>,
     next_id: AtomicU64,
     prog: Arc<Progress>,
+}
+
+impl ScanState {
+    /// Enregistre un `read_dir` impossible : le sous-arbre de ce dossier est
+    /// perdu pour le total. Le verrou n'est pris que sur le chemin d'erreur, qui
+    /// reste rare (123 fois sur 271 747 dossiers sur la machine de référence).
+    fn note_unreadable(&self, e: &std::io::Error, path: &Path) {
+        let droits = e.raw_os_error() == Some(ACCESS_DENIED);
+        self.prog.unreadable.fetch_add(1, Ordering::Relaxed);
+        if droits {
+            self.prog.unreadable_droits.fetch_add(1, Ordering::Relaxed);
+        }
+        let mut v = self.unreadable.lock().unwrap();
+        if v.len() < MAX_UNREADABLE {
+            v.push(Unreadable {
+                path: affichable(path).into_boxed_str(),
+                droits,
+            });
+        }
+    }
+
+    /// Une entrée sautée. On ne garde pas le chemin : ce sont des cas isolés
+    /// (fichier verrouillé, disparu entre l'énumération et la lecture), et il y
+    /// en a trop peu pour qu'une liste soit utile.
+    fn note_skipped(&self) {
+        self.prog.skipped.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Chemin affichable : on retire le préfixe verbatim `\\?\` qui sert seulement à
+/// lever la limite de 260 caractères. Le laisser dans l'interface donnerait
+/// `\\?\C:\Windows` au lieu de `C:\Windows`.
+fn affichable(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    if let Some(r) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{r}")
+    } else if let Some(r) = s.strip_prefix(r"\\?\") {
+        r.to_string()
+    } else {
+        s.into_owned()
+    }
 }
 
 pub struct Snapshot {
@@ -87,7 +170,14 @@ pub struct Snapshot {
     next_file: Vec<u32>,
     pub elapsed_ms: u64,
     pub finished_ms: i64,
-    pub errors: u64,
+    /// Dossiers dont le contenu est inaccessible, plafonné à `MAX_UNREADABLE`.
+    pub unreadable: Vec<Unreadable>,
+    /// Nombre réel de dossiers inaccessibles, même au-delà du plafond.
+    pub unreadable_total: u64,
+    /// Sous-ensemble des précédents dû à un refus de droits (code 5).
+    pub unreadable_droits: u64,
+    /// Entrées sautées : coût d'une entrée chacune.
+    pub skipped: u64,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -117,7 +207,16 @@ fn ts(t: std::io::Result<SystemTime>) -> i64 {
 }
 
 impl Snapshot {
-    fn new(root: String, mut dirs: Vec<DirRec>, files: Vec<FileRec>, elapsed_ms: u64, errors: u64) -> Snapshot {
+    fn new(
+        root: String,
+        mut dirs: Vec<DirRec>,
+        files: Vec<FileRec>,
+        elapsed_ms: u64,
+        unreadable: Vec<Unreadable>,
+        unreadable_total: u64,
+        unreadable_droits: u64,
+        skipped: u64,
+    ) -> Snapshot {
         // Les ids sont attribués atomiquement mais poussés depuis plusieurs threads :
         // l'ordre d'arrivée n'est pas l'ordre des ids. On re-trie pour garantir index == id.
         dirs.sort_unstable_by_key(|d| d.id);
@@ -195,8 +294,26 @@ impl Snapshot {
             next_file,
             elapsed_ms,
             finished_ms: now_ms(),
-            errors,
+            unreadable,
+            unreadable_total,
+            unreadable_droits,
+            skipped,
         }
+    }
+
+    /// Total des anomalies de parcours. Sert au diagnostic en ligne de commande.
+    ///
+    /// L'interface ne doit PAS s'en servir seule : additionner un sous-arbre
+    /// perdu et une entrée sautée n'a pas de sens, et c'est précisément la
+    /// confusion que la séparation des compteurs sert à éviter.
+    pub fn errors(&self) -> u64 {
+        self.unreadable_total + self.skipped
+    }
+
+    /// Vrai si la taille annoncée est un plancher plutôt qu'une mesure : au
+    /// moins un sous-arbre n'a pas été lu.
+    pub fn incomplet(&self) -> bool {
+        self.unreadable_total > 0
     }
 
     pub fn n_dirs(&self) -> usize {
@@ -303,20 +420,30 @@ impl Snapshot {
     }
 
     // ---------- persistance binaire (cache disque) ----------
+    //
+    // Version 2 : les erreurs de parcours ne sont plus un compteur unique mais
+    // trois compteurs plus la liste des chemins inaccessibles. Un cache de
+    // version 1 est refusé (`load` compare la version) : il ne porte pas
+    // l'information, et la reconstituer à partir du seul total obligerait à
+    // inventer une répartition. Le volume est donc réanalysé — 11,8 s sur C:
+    // sur la machine de référence — ce qui est le prix d'un chiffre honnête.
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         use std::io::Write;
         let mut buf: Vec<u8> = Vec::with_capacity(64 + self.dirs.len() * 16 + self.files.len() * 24);
         buf.extend_from_slice(b"DSKM");
-        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&2u32.to_le_bytes());
         let root = self.root.as_bytes();
         buf.extend_from_slice(&(root.len() as u32).to_le_bytes());
         buf.extend_from_slice(root);
         buf.extend_from_slice(&self.finished_ms.to_le_bytes());
         buf.extend_from_slice(&self.elapsed_ms.to_le_bytes());
-        buf.extend_from_slice(&self.errors.to_le_bytes());
+        buf.extend_from_slice(&self.unreadable_total.to_le_bytes());
+        buf.extend_from_slice(&self.unreadable_droits.to_le_bytes());
+        buf.extend_from_slice(&self.skipped.to_le_bytes());
         buf.extend_from_slice(&(self.dirs.len() as u32).to_le_bytes());
         buf.extend_from_slice(&(self.files.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&(self.unreadable.len() as u32).to_le_bytes());
         for d in &self.dirs {
             buf.extend_from_slice(&d.parent.to_le_bytes());
             buf.extend_from_slice(&d.own_mtime.to_le_bytes());
@@ -328,11 +455,18 @@ impl Snapshot {
             buf.extend_from_slice(&f.mtime.to_le_bytes());
             buf.extend_from_slice(&(f.name.len() as u32).to_le_bytes());
         }
+        for u in &self.unreadable {
+            buf.push(u.droits as u8);
+            buf.extend_from_slice(&(u.path.len() as u32).to_le_bytes());
+        }
         for d in &self.dirs {
             buf.extend_from_slice(d.name.as_bytes());
         }
         for f in &self.files {
             buf.extend_from_slice(f.name.as_bytes());
+        }
+        for u in &self.unreadable {
+            buf.extend_from_slice(u.path.as_bytes());
         }
         let mut f = fs::File::create(path)?;
         f.write_all(&buf)?;
@@ -346,16 +480,19 @@ impl Snapshot {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "magic"));
         }
         let ver = r.u32()?;
-        if ver != 1 {
+        if ver != 2 {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "version"));
         }
         let root_len = r.u32()? as usize;
         let root = String::from_utf8_lossy(r.take(root_len)?).into_owned();
         let finished_ms = r.i64()?;
         let elapsed_ms = r.u64()?;
-        let errors = r.u64()?;
+        let unreadable_total = r.u64()?;
+        let unreadable_droits = r.u64()?;
+        let skipped = r.u64()?;
         let n_dirs = r.u32()? as usize;
         let n_files = r.u32()? as usize;
+        let n_unread = r.u32()? as usize;
 
         let mut parents = Vec::with_capacity(n_dirs);
         let mut own = Vec::with_capacity(n_dirs);
@@ -374,6 +511,12 @@ impl Snapshot {
             fsize.push(r.u64()?);
             fmtime.push(r.i64()?);
             flen.push(r.u32()? as usize);
+        }
+        let mut udroits = Vec::with_capacity(n_unread);
+        let mut ulen = Vec::with_capacity(n_unread);
+        for _ in 0..n_unread {
+            udroits.push(r.byte()? != 0);
+            ulen.push(r.u32()? as usize);
         }
         let mut dirs = Vec::with_capacity(n_dirs);
         for i in 0..n_dirs {
@@ -395,8 +538,22 @@ impl Snapshot {
                 mtime: fmtime[i],
             });
         }
+        let mut unreadable = Vec::with_capacity(n_unread);
+        for i in 0..n_unread {
+            let path = String::from_utf8_lossy(r.take(ulen[i])?).into_owned().into_boxed_str();
+            unreadable.push(Unreadable { path, droits: udroits[i] });
+        }
 
-        let mut s = Snapshot::new(root, dirs, files, elapsed_ms, errors);
+        let mut s = Snapshot::new(
+            root,
+            dirs,
+            files,
+            elapsed_ms,
+            unreadable,
+            unreadable_total,
+            unreadable_droits,
+            skipped,
+        );
         s.finished_ms = finished_ms;
         Ok(s)
     }
@@ -419,6 +576,9 @@ impl<'a> Reader<'a> {
     fn u32(&mut self) -> std::io::Result<u32> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
     }
+    fn byte(&mut self) -> std::io::Result<u8> {
+        Ok(self.take(1)?[0])
+    }
     fn u64(&mut self) -> std::io::Result<u64> {
         Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
     }
@@ -434,6 +594,7 @@ pub fn scan(root_verbatim: &str, display_root: String, prog: Arc<Progress>) -> S
     let st = Arc::new(ScanState {
         dirs: Mutex::new(Vec::new()),
         files: Mutex::new(Vec::new()),
+        unreadable: Mutex::new(Vec::new()),
         next_id: AtomicU64::new(1),
         prog,
     });
@@ -450,9 +611,21 @@ pub fn scan(root_verbatim: &str, display_root: String, prog: Arc<Progress>) -> S
 
     let dirs = std::mem::take(&mut *st.dirs.lock().unwrap());
     let files = std::mem::take(&mut *st.files.lock().unwrap());
-    let errors = st.prog.errors.load(Ordering::Relaxed);
+    let unreadable = std::mem::take(&mut *st.unreadable.lock().unwrap());
+    let unreadable_total = st.prog.unreadable.load(Ordering::Relaxed);
+    let unreadable_droits = st.prog.unreadable_droits.load(Ordering::Relaxed);
+    let skipped = st.prog.skipped.load(Ordering::Relaxed);
 
-    Snapshot::new(display_root, dirs, files, t0.elapsed().as_millis() as u64, errors)
+    Snapshot::new(
+        display_root,
+        dirs,
+        files,
+        t0.elapsed().as_millis() as u64,
+        unreadable,
+        unreadable_total,
+        unreadable_droits,
+        skipped,
+    )
 }
 
 fn walk(st: &Arc<ScanState>, scope: &rayon::Scope, id: u32, path: &Path, depth: u32) {
@@ -462,8 +635,8 @@ fn walk(st: &Arc<ScanState>, scope: &rayon::Scope, id: u32, path: &Path, depth: 
 
     let rd = match fs::read_dir(path) {
         Ok(r) => r,
-        Err(_) => {
-            st.prog.errors.fetch_add(1, Ordering::Relaxed);
+        Err(e) => {
+            st.note_unreadable(&e, path);
             return;
         }
     };
@@ -475,14 +648,14 @@ fn walk(st: &Arc<ScanState>, scope: &rayon::Scope, id: u32, path: &Path, depth: 
         let entry = match entry {
             Ok(e) => e,
             Err(_) => {
-                st.prog.errors.fetch_add(1, Ordering::Relaxed);
+                st.note_skipped();
                 continue;
             }
         };
         let meta = match entry.metadata() {
             Ok(m) => m,
             Err(_) => {
-                st.prog.errors.fetch_add(1, Ordering::Relaxed);
+                st.note_skipped();
                 continue;
             }
         };
