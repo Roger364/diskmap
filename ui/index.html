@@ -88,19 +88,32 @@
   .view .btn.active { border-color:var(--accent-dim); background:#202634; }
 
   .tablewrap { flex:1; overflow:auto; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
+  /* `fixed` est indispensable : en disposition automatique le navigateur
+     recalcule les largeurs d'après le contenu et ignore le colgroup — glisser
+     une poignée ne changeait alors strictement rien. */
+  table { width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed; }
   thead th {
     position:sticky; top:0; background:var(--panel); text-align:left; font-weight:600;
     font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
     padding:7px 10px; border-bottom:1px solid var(--line); cursor:pointer; user-select:none;
-    white-space:nowrap;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
   thead th:hover { color:var(--text); }
   thead th .arw { color:var(--accent); font-size:10px; }
+  /* Poignée de redimensionnement : bande fine sur le bord droit de l'en-tête. */
+  thead th .rh {
+    position:absolute; right:0; top:0; bottom:0; width:8px;
+    cursor:col-resize; z-index:2;
+  }
+  thead th .rh:hover { background:var(--accent-dim); }
+  body.resizing { cursor:col-resize; user-select:none; }
   th.num, td.num { text-align:right; }
-  tbody td { padding:6px 10px; border-bottom:1px solid #23262e; white-space:nowrap; }
+  /* En disposition fixe, une cellule large déborde sur sa voisine : il faut
+     couper. `width:100%` sur le nom n'a plus de sens ici, sa largeur vient du
+     colgroup (aucune largeur posée = la colonne prend ce qui reste). */
+  tbody td { padding:6px 10px; border-bottom:1px solid #23262e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   tbody tr:hover { background:var(--row-hover); }
-  td.name { max-width:0; width:100%; overflow:hidden; text-overflow:ellipsis; }
+  td.name { overflow:hidden; text-overflow:ellipsis; }
   td.name .ic { display:inline-block; width:17px; color:var(--muted); }
   td.name .nm { cursor:pointer; }
   td.name .nm:hover { color:var(--accent); }
@@ -109,7 +122,12 @@
   .age { color:var(--muted); }
   .age.old { color:var(--warm); }
   .age.vold { color:var(--hot); }
-  td.act { width:1%; }
+  /* Colonnes étroites : moins de marge, sinon la case à cocher et le bouton
+     sont rognés par le bord de la colonne. */
+  td.sel, th.sel { padding-left:6px; padding-right:6px; }
+  td.act, thead th:last-child { padding-left:4px; padding-right:8px; }
+  /* Plus de `width:1%` ici : en disposition fixe seules les largeurs du
+     colgroup comptent. */
   td.act button {
     background:none; border:none; color:var(--muted); cursor:pointer; font-size:12px; padding:2px 5px; border-radius:4px;
   }
@@ -203,14 +221,18 @@
         <button class="btn" data-view="map">Carte</button>
       </div>
     </div>
-    <div class="tablewrap" id="tablewrap"><table id="tbl"><thead><tr>
-      <th class="sel"><input type="checkbox" class="chk" id="allchk" title="Tout sélectionner"></th>
-      <th data-k="name">Nom</th>
-      <th data-k="size" class="num">Taille</th>
-      <th class="num">Part</th>
-      <th data-k="count" class="num">Fichiers</th>
-      <th data-k="mtime">Dernière activité</th>
-      <th></th>
+    <div class="tablewrap" id="tablewrap"><table id="tbl">
+      <colgroup>
+        <col id="c0"><col id="c1"><col id="c2"><col id="c3"><col id="c4"><col id="c5"><col id="c6">
+      </colgroup>
+      <thead><tr>
+      <th class="sel"><input type="checkbox" class="chk" id="allchk" title="Tout sélectionner"><span class="rh"></span></th>
+      <th data-k="name"><span class="ttl">Nom</span><span class="arw"></span><span class="rh"></span></th>
+      <th data-k="size" class="num"><span class="ttl">Taille</span><span class="arw"></span><span class="rh"></span></th>
+      <th class="num"><span class="ttl">Part</span><span class="arw"></span><span class="rh"></span></th>
+      <th data-k="count" class="num"><span class="ttl">Fichiers</span><span class="arw"></span><span class="rh"></span></th>
+      <th data-k="mtime"><span class="ttl">Dernière activité</span><span class="arw"></span><span class="rh"></span></th>
+      <th><span class="rh"></span></th>
     </tr></thead><tbody id="rows"></tbody></table></div>
     <div id="treemap" class="hidden"></div>
   </section>
@@ -718,9 +740,74 @@ document.querySelectorAll('thead th[data-k]').forEach(th => {
   };
 });
 function syncHeaders() {
+  // On n'écrit plus dans innerHTML : ça détruisait les poignées de
+  // redimensionnement à chaque changement de tri.
   document.querySelectorAll('thead th[data-k]').forEach(th => {
-    th.innerHTML = th.innerHTML.replace(/ <span class="arw">.*<\/span>/, '');
-    if (th.dataset.k === cur.sort) th.innerHTML += ` <span class="arw">${cur.order === 'desc' ? '▼' : '▲'}</span>`;
+    const a = th.querySelector('.arw');
+    if (a) a.textContent = th.dataset.k === cur.sort ? (cur.order === 'desc' ? '▼' : '▲') : '';
+  });
+}
+
+// ---------- largeurs de colonnes ----------
+// Les largeurs sont posées sur les <col> du colgroup : elles survivent aux
+// reconstructions du corps du tableau, contrairement à des styles posés sur les
+// cellules. Elles sont retenues d'une session à l'autre via localStorage.
+const COLS = ['sel', 'name', 'size', 'part', 'count', 'mtime', 'act'];
+// 0 = largeur automatique : la colonne Nom absorbe l'espace restant.
+const DEFAULT_W = { sel: 32, name: 0, size: 100, part: 66, count: 92, mtime: 165, act: 42 };
+let colW = loadColW();
+
+function loadColW() {
+  try {
+    const raw = localStorage.getItem('diskmap.cols');
+    if (raw) return Object.assign({}, DEFAULT_W, JSON.parse(raw));
+  } catch (e) { /* préférences illisibles : on repart des défauts */ }
+  return Object.assign({}, DEFAULT_W);
+}
+
+function saveColW() {
+  try { localStorage.setItem('diskmap.cols', JSON.stringify(colW)); } catch (e) { /* rien */ }
+}
+
+function applyColW() {
+  COLS.forEach((k, i) => {
+    const c = document.getElementById('c' + i);
+    if (c) c.style.width = colW[k] > 0 ? colW[k] + 'px' : '';
+  });
+}
+
+function initColResize() {
+  document.querySelectorAll('thead th').forEach((th, i) => {
+    const h = th.querySelector('.rh');
+    if (!h) return;
+    h.title = 'Glisser pour redimensionner — double-clic pour réinitialiser';
+    // Sans ça, relâcher sur la poignée déclenche aussi le tri de la colonne.
+    h.addEventListener('click', e => e.stopPropagation());
+    h.addEventListener('dblclick', () => {
+      colW[COLS[i]] = DEFAULT_W[COLS[i]];
+      applyColW();
+      saveColW();
+    });
+    h.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const col = document.getElementById('c' + i);
+      const startX = e.clientX;
+      const startW = col.getBoundingClientRect().width;
+      document.body.classList.add('resizing');
+      const onMove = ev => {
+        colW[COLS[i]] = Math.max(28, Math.round(startW + ev.clientX - startX));
+        applyColW();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.classList.remove('resizing');
+        saveColW();
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
   });
 }
 $('#sort').onchange = e => { cur.sort = e.target.value; if (!$('#q').value.trim()) load(true); };
@@ -740,6 +827,8 @@ window.addEventListener('resize', () => { if (cur.view === 'map') renderMap(); }
 
 // ---------- démarrage ----------
 (async function init() {
+  applyColW();
+  initColResize();
   await refreshState();
   syncHeaders();
   const ready = state.drives.find(d => d.status === 'ready');
