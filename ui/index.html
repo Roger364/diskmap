@@ -229,7 +229,7 @@
         <button class="btn active" data-view="table">Tableau</button>
         <button class="btn" data-view="map">Carte</button>
       </div>
-      <button class="btn" id="resetcols" title="Rétablir les largeurs de colonnes par défaut">Largeurs</button>
+      <button class="btn" id="autocols" title="Ajuster toutes les colonnes à leur contenu — comme un double-clic sur chaque frontière">Largeurs auto</button>
     </div>
     <div class="tablewrap" id="tablewrap"><table id="tbl">
       <colgroup>
@@ -775,6 +775,9 @@ function syncHeaders() {
 const COLS = ['sel', 'name', 'size', 'part', 'count', 'mtime', 'act'];
 // Libellés courts : ils figurent dans l'étiquette de glisser.
 const COURT = { sel: 'Case', name: 'Nom', size: 'Taille', part: 'Part', count: 'Fichiers', mtime: 'Activité', act: 'Actions' };
+// Répartition d'ouverture, avant tout ajustement : le nom prend la moitié, les
+// six autres se partagent le reste. Sert aussi de repli quand les préférences
+// enregistrées sont inexploitables.
 const DEFAULT_W = { sel: 3, name: 51.5, size: 10, part: 6.5, count: 9, mtime: 16, act: 4 };
 // Clé distincte de celle de la version en pixels : les deux unités ne se
 // relisent pas l'une l'autre, mieux vaut repartir des défauts que de mélanger.
@@ -887,15 +890,32 @@ function largeursNaturelles() {
   return w;
 }
 
-// Double-clic : la colonne se cale sur son contenu le plus large, comme Excel.
+// Une largeur mesurée en pixels, convertie dans l'unité stockée (pour cent de la
+// place disponible). Arrondi VERS LE HAUT : au dixième de pour cent près — un
+// pixel sur une fenêtre de 1000 px — arrondir au plus proche rognait un
+// caractère sur certaines colonnes.
+const enPourCent = (px, base) => Math.ceil(Math.max(MIN_PX, px) / base * 1000) / 10;
+
+// Double-clic sur une frontière : la colonne se cale sur son contenu le plus
+// large, comme Excel.
 function ajusteAuContenu(i) {
-  const k = COLS[i];
   const naturelle = largeursNaturelles()[i];
   if (!naturelle) return;
-  // Arrondi VERS LE HAUT : au dixième de pour cent près (un pixel sur une
-  // fenêtre de 1000 px), arrondir au plus proche rognait un caractère sur
-  // certaines colonnes.
-  colW[k] = Math.ceil(Math.max(MIN_PX, naturelle) / baseW() * 1000) / 10;
+  colW[COLS[i]] = enPourCent(naturelle, baseW());
+  applyColW();
+  saveColW();
+}
+
+// « Largeurs auto » : la même chose pour les sept colonnes d'un coup.
+function ajusteToutes() {
+  const naturelles = largeursNaturelles();
+  const base = baseW();
+  COLS.forEach((k, i) => { if (naturelles[i]) colW[k] = enPourCent(naturelles[i], base); });
+  // Si l'ensemble tient dans la fenêtre, le nom prend le reste : sans ça le
+  // tableau s'arrêterait avant le bord et laisserait une bande vide à droite,
+  // ce qui se lit comme un défaut d'affichage plutôt que comme un ajustement.
+  const reste = Math.round((100 - somme(colW)) * 10) / 10;
+  if (reste > 0) colW.name = Math.round((colW.name + reste) * 10) / 10;
   applyColW();
   saveColW();
 }
@@ -948,12 +968,12 @@ function initColResize() {
   });
 }
 
-// Sortie de secours : en poussant les colonnes on peut rendre le tableau plus
-// large que plusieurs écrans, et il faut pouvoir revenir en un clic.
-$('#resetcols').onclick = () => {
-  colW = Object.assign({}, DEFAULT_W);
-  applyColW();
-  saveColW();
+// « Largeurs auto » : ajuste les sept colonnes à leur contenu d'un seul clic,
+// comme on sélectionne toutes les colonnes dans Excel avant de les ajuster.
+// C'est aussi la sortie de secours : en poussant les colonnes on peut rendre le
+// tableau plus large que plusieurs écrans, et ce bouton le remet d'aplomb.
+$('#autocols').onclick = () => {
+  ajusteToutes();
   hideTip();
 };
 $('#sort').onchange = e => { cur.sort = e.target.value; if (!$('#q').value.trim()) load(true); };
