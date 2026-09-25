@@ -228,14 +228,24 @@ async function refreshState() {
   renderDrives();
 }
 
+let driveSig = '';
 function renderDrives() {
+  // Reconstruire la liste à chaque appel détruisait les nœuds sous le curseur :
+  // un clic tombant pendant un rendu était purement perdu. On ne reconstruit que
+  // si les données affichées changent ; sinon on ne déplace que la sélection.
+  const sig = state.drives
+    .map(d => `${d.letter}|${d.status}|${d.dirs}|${d.files}|${d.free}|${d.total}`)
+    .join(';');
+  if (sig === driveSig) { markActive(); return; }
+  driveSig = sig;
   const box = $('#drives');
   box.innerHTML = '';
   for (const d of state.drives) {
     const used = d.total ? d.total - d.free : 0;
     const pct = d.total ? (used / d.total * 100) : 0;
     const el = document.createElement('div');
-    el.className = 'drive' + (cur.drive === d.letter ? ' active' : '');
+    el.className = 'drive';
+    el.dataset.letter = d.letter;
     const st = d.status === 'ready'
       ? `${nf.format(d.n_files)} fichiers · ${nf.format(d.n_dirs)} dossiers`
       : d.status === 'scanning' ? 'analyse en cours…'
@@ -260,9 +270,10 @@ function renderDrives() {
           </button>
         </span>
       </div>`;
-    el.querySelector('.bar').onclick = () => select(d.letter);
-    el.querySelector('.lbl').onclick = () => select(d.letter);
-    el.querySelector('.ltr').onclick = () => select(d.letter);
+    // Toute la carte est cliquable. Réserver le clic à la lettre et à la barre
+    // faisait perdre la majorité des clics : badge NTFS, libellé et corps de la
+    // carte ne réagissaient pas du tout.
+    el.onclick = () => select(d.letter);
     el.querySelector('button').onclick = e => { e.stopPropagation(); startScan(d.letter); };
     if (d.status === 'scanning') {
       const b = el.querySelector('button');
@@ -271,6 +282,27 @@ function renderDrives() {
     }
     box.appendChild(el);
   }
+  markActive();
+}
+
+function markActive() {
+  document.querySelectorAll('.drive').forEach(el => {
+    el.classList.toggle('active', el.dataset.letter === cur.drive);
+  });
+}
+
+// Retour visuel si la réponse tarde. Affiché au-delà de 150 ms seulement : en
+// dessous, le message clignoterait pour rien sur un échange de 50 ms.
+let loadTimer = null;
+function beginLoad() {
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => {
+    $('#rows').innerHTML =
+      '<tr><td colspan="6" style="padding:26px;text-align:center;color:var(--muted)">Chargement…</td></tr>';
+  }, 150);
+}
+function endLoad() {
+  clearTimeout(loadTimer);
 }
 
 async function select(letter) {
@@ -317,7 +349,9 @@ async function load() {
     drive: cur.drive, id: cur.id,
     sort: cur.sort, order: cur.order, limit: 3000
   });
+  beginLoad();
   const res = await api('/api/tree?' + qs);
+  endLoad();
   cur.rows = res.rows;
   cur.totalSize = res.total_size;
   cur.parentSize = res.parent_size;
