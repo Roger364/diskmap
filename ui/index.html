@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Espace disque</title>
+<style>
+  :root {
+    --bg:#14161a; --panel:#1a1d23; --panel2:#21252d; --line:#2c313b;
+    --text:#e6e9ef; --muted:#8d95a3; --accent:#5b9dff; --accent-dim:#264a80;
+    --hot:#e0553f; --warm:#c98a2e; --cool:#3f8f6a;
+    --row-hover:#232733;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body {
+    background:var(--bg); color:var(--text);
+    font:14px/1.45 "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  /* ---------- en-tête ---------- */
+  header {
+    display:flex; align-items:center; gap:14px;
+    padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel);
+    flex:0 0 auto;
+  }
+  header h1 { font-size:15px; font-weight:600; margin:0; letter-spacing:.2px; }
+  header h1 span { color:var(--muted); font-weight:400; }
+  .spacer { flex:1; }
+  .search {
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:6px 10px; width:260px; font-size:13px; outline:none;
+  }
+  .search:focus { border-color:var(--accent-dim); }
+  .btn {
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:6px 11px; font-size:13px; cursor:pointer;
+  }
+  .btn:hover { border-color:var(--accent-dim); background:#282d37; }
+  .btn.primary { background:var(--accent-dim); border-color:#3a6bb0; }
+  .btn.primary:hover { background:#2f5896; }
+  .btn:disabled { opacity:.45; cursor:default; }
+
+  /* ---------- corps ---------- */
+  main { flex:1; display:flex; min-height:0; }
+  aside {
+    width:250px; flex:0 0 auto; border-right:1px solid var(--line);
+    background:var(--panel); overflow-y:auto; padding:10px;
+  }
+  aside h2 {
+    font-size:11px; text-transform:uppercase; letter-spacing:.09em;
+    color:var(--muted); margin:4px 6px 10px; font-weight:600;
+  }
+  .drive {
+    padding:9px 10px; border-radius:7px; cursor:pointer; margin-bottom:6px;
+    border:1px solid transparent; background:var(--panel2);
+  }
+  .drive:hover { border-color:var(--line); }
+  .drive.active { border-color:var(--accent-dim); background:#202634; }
+  .drive .top { display:flex; align-items:baseline; gap:7px; }
+  .drive .ltr { font-weight:600; font-size:14px; }
+  .drive .lbl { color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .drive .fs { margin-left:auto; font-size:10px; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  .bar { height:6px; border-radius:3px; background:#2b303a; margin:7px 0 5px; overflow:hidden; }
+  .bar > i { display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,#3f6fc0,#5b9dff); }
+  .drive .meta { display:flex; gap:10px; font-size:11px; color:var(--muted); }
+  .drive .meta b { color:var(--text); font-weight:500; }
+
+  section { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .crumbs {
+    padding:9px 14px; border-bottom:1px solid var(--line); background:var(--panel);
+    font-size:13px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; flex:0 0 auto;
+  }
+  .crumbs a { color:var(--accent); cursor:pointer; text-decoration:none; padding:2px 5px; border-radius:4px; }
+  .crumbs a:hover { background:var(--panel2); }
+  .crumbs .sep { color:var(--muted); }
+  .crumbs .stat { margin-left:auto; color:var(--muted); font-size:12px; }
+
+  .toolbar {
+    padding:7px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center;
+    gap:8px; font-size:12px; color:var(--muted); flex:0 0 auto; background:var(--panel);
+  }
+  .toolbar select {
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:5px; padding:4px 7px; font-size:12px;
+  }
+  .view { margin-left:auto; display:flex; gap:4px; }
+  .view .btn.active { border-color:var(--accent-dim); background:#202634; }
+
+  .tablewrap { flex:1; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  thead th {
+    position:sticky; top:0; background:var(--panel); text-align:left; font-weight:600;
+    font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
+    padding:7px 10px; border-bottom:1px solid var(--line); cursor:pointer; user-select:none;
+    white-space:nowrap;
+  }
+  thead th:hover { color:var(--text); }
+  thead th .arw { color:var(--accent); font-size:10px; }
+  th.num, td.num { text-align:right; }
+  tbody td { padding:6px 10px; border-bottom:1px solid #23262e; white-space:nowrap; }
+  tbody tr:hover { background:var(--row-hover); }
+  td.name { max-width:0; width:100%; overflow:hidden; text-overflow:ellipsis; }
+  td.name .ic { display:inline-block; width:17px; color:var(--muted); }
+  td.name .nm { cursor:pointer; }
+  td.name .nm:hover { color:var(--accent); }
+  .mini { display:inline-block; height:5px; border-radius:3px; background:#31363f; width:64px; vertical-align:middle; margin-left:8px; overflow:hidden; }
+  .mini > i { display:block; height:100%; background:var(--accent); }
+  .age { color:var(--muted); }
+  .age.old { color:var(--warm); }
+  .age.vold { color:var(--hot); }
+  td.act { width:1%; }
+  td.act button {
+    background:none; border:none; color:var(--muted); cursor:pointer; font-size:12px; padding:2px 5px; border-radius:4px;
+  }
+  td.act button:hover { background:var(--panel2); color:var(--text); }
+
+  #treemap { flex:1; position:relative; overflow:hidden; padding:6px; }
+  .tm { position:absolute; border:1px solid var(--bg); border-radius:3px; overflow:hidden; cursor:pointer; padding:3px 5px; }
+  .tm:hover { outline:1px solid var(--accent); outline-offset:-1px; }
+  .tm .t { font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tm .s { font-size:10px; color:#cfd6e2; opacity:.85; }
+
+  .empty { padding:40px; text-align:center; color:var(--muted); }
+  .prog { padding:8px 14px; font-size:12px; color:var(--muted); border-bottom:1px solid var(--line); }
+  .prog b { color:var(--text); }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Espace disque <span>— taille et dernière activité des dossiers et fichiers</span></h1>
+  <div class="spacer"></div>
+  <input class="search" id="q" placeholder="Rechercher partout (ex. node_modules)…" />
+  <button class="btn" id="go">Chercher</button>
+</header>
+
+<main>
+  <aside>
+    <h2>Volumes</h2>
+    <div id="drives"></div>
+    <h2 style="margin-top:16px">À propos</h2>
+    <div style="padding:0 8px;color:var(--muted);font-size:11.5px;line-height:1.6">
+      La <b>taille</b> d'un dossier inclut tout son contenu.<br />
+      La <b>dernière activité</b> est la date d'écriture la plus récente dans le sous-arbre.<br />
+      Jonctions et liens symboliques ne sont pas suivis (pas de double compte).
+    </div>
+  </aside>
+
+  <section>
+    <div class="crumbs" id="crumbs"></div>
+    <div class="prog hidden" id="prog"></div>
+    <div class="toolbar">
+      <span id="count"></span>
+      <span class="spacer"></span>
+      <label>Tri
+        <select id="sort">
+          <option value="size">Taille</option>
+          <option value="mtime">Dernière activité</option>
+          <option value="name">Nom</option>
+          <option value="count">Nb de fichiers</option>
+        </select>
+      </label>
+      <select id="order">
+        <option value="desc">Décroissant</option>
+        <option value="asc">Croissant</option>
+      </select>
+      <div class="view">
+        <button class="btn active" data-view="table">Tableau</button>
+        <button class="btn" data-view="map">Carte</button>
+      </div>
+    </div>
+    <div class="tablewrap" id="tablewrap"><table id="tbl"><thead><tr>
+      <th data-k="name">Nom</th>
+      <th data-k="size" class="num">Taille</th>
+      <th class="num">Part</th>
+      <th data-k="count" class="num">Fichiers</th>
+      <th data-k="mtime">Dernière activité</th>
+      <th></th>
+    </tr></thead><tbody id="rows"></tbody></table></div>
+    <div id="treemap" class="hidden"></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let state = { drives: [], scanning: null };
+let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [] };
+
+// ---------- formatage ----------
+const nf = new Intl.NumberFormat('fr-FR');
+function hsize(b) {
+  if (b >= 1e12) return (b/1e12).toFixed(2).replace('.',',') + ' To';
+  if (b >= 1e9) return (b/1e9).toFixed(2).replace('.',',') + ' Go';
+  if (b >= 1e6) return (b/1e6).toFixed(1).replace('.',',') + ' Mo';
+  if (b >= 1e3) return (b/1e3).toFixed(0) + ' Ko';
+  return b + ' o';
+}
+function hdate(s) {
+  if (!s) return '—';
+  const d = new Date(s*1000);
+  return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+function hage(s) {
+  if (!s) return '—';
+  const days = (Date.now()/1000 - s) / 86400;
+  if (days < 1) return "aujourd'hui";
+  if (days < 30) return `il y a ${Math.round(days)} j`;
+  if (days < 365) return `il y a ${Math.round(days/30)} mois`;
+  const y = days/365;
+  return `il y a ${y < 10 ? y.toFixed(1).replace('.',',') : Math.round(y)} ans`;
+}
+function ageClass(s) {
+  const days = (Date.now()/1000 - s) / 86400;
+  return days > 730 ? 'vold' : (days > 365 ? 'old' : '');
+}
+
+// ---------- API ----------
+async function api(u, opt) {
+  const r = await fetch(u, opt);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function refreshState() {
+  state = await api('/api/state');
+  renderDrives();
+}
+
+function renderDrives() {
+  const box = $('#drives');
+  box.innerHTML = '';
+  for (const d of state.drives) {
+    const used = d.total ? d.total - d.free : 0;
+    const pct = d.total ? (used / d.total * 100) : 0;
+    const el = document.createElement('div');
+    el.className = 'drive' + (cur.drive === d.letter ? ' active' : '');
+    const st = d.status === 'ready'
+      ? `${nf.format(d.n_files)} fichiers · ${nf.format(d.n_dirs)} dossiers`
+      : d.status === 'scanning' ? 'analyse en cours…'
+      : d.status === 'error' ? 'erreur'
+      : 'non analysé';
+    el.innerHTML = `
+      <div class="top">
+        <span class="ltr">${d.letter}:</span>
+        <span class="lbl">${d.label || ''}</span>
+        ${d.fs ? `<span class="fs">${d.fs}</span>` : ''}
+      </div>
+      <div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+      <div class="meta">
+        <span><b>${hsize(used)}</b> / ${hsize(d.total)}</span>
+        <span style="margin-left:auto">libre ${hsize(d.free)}</span>
+      </div>
+      <div class="meta" style="margin-top:3px">
+        <span>${st}</span>
+        <span style="margin-left:auto">
+          <button class="btn" style="padding:2px 7px;font-size:11px">
+            ${d.status === 'ready' ? 'Rescanner' : 'Analyser'}
+          </button>
+        </span>
+      </div>`;
+    el.querySelector('.bar').onclick = () => select(d.letter);
+    el.querySelector('.lbl').onclick = () => select(d.letter);
+    el.querySelector('.ltr').onclick = () => select(d.letter);
+    el.querySelector('button').onclick = e => { e.stopPropagation(); startScan(d.letter); };
+    if (d.status === 'scanning') {
+      const b = el.querySelector('button');
+      b.textContent = `${nf.format(d.dirs)} dossiers…`;
+      b.disabled = true;
+    }
+    box.appendChild(el);
+  }
+}
+
+async function select(letter) {
+  cur.drive = letter; cur.id = 0; cur.path = [];
+  renderDrives();
+  await load();
+}
+
+async function startScan(letter) {
+  await api(`/api/scan/${letter}`, { method: 'POST' });
+  cur.drive = letter;
+  await refreshState();
+  poll();
+}
+
+let pollTimer = null;
+function poll() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    await refreshState();
+    if (!state.scanning) {
+      clearInterval(pollTimer);
+      await load();
+    }
+  }, 700);
+}
+
+// ---------- contenu ----------
+async function load() {
+  if (!cur.drive) return;
+  const d = state.drives.find(x => x.letter === cur.drive);
+  if (!d || d.status !== 'ready') {
+    $('#rows').innerHTML = '';
+    $('#count').textContent = '';
+    $('#prog').classList.toggle('hidden', !(d && d.status === 'scanning'));
+    if (d && d.status === 'scanning') {
+      $('#prog').innerHTML = `Analyse de <b>${cur.drive}:</b> en cours — <b>${nf.format(d.dirs)}</b> dossiers, <b>${nf.format(d.files)}</b> fichiers parcourus…`;
+    }
+    renderCrumbs();
+    return;
+  }
+  $('#prog').classList.add('hidden');
+  const qs = new URLSearchParams({
+    drive: cur.drive, id: cur.id,
+    sort: cur.sort, order: cur.order, limit: 3000
+  });
+  const res = await api('/api/tree?' + qs);
+  cur.rows = res.rows;
+  cur.totalSize = res.total_size;
+  cur.parentSize = res.parent_size;
+  cur.truncated = res.truncated;
+  cur.path = res.path;
+  renderCrumbs();
+  renderRows();
+}
+
+function renderCrumbs() {
+  const c = $('#crumbs');
+  c.innerHTML = '';
+  const add = (label, fn, isLast) => {
+    if (isLast) { const s = document.createElement('span'); s.textContent = label; s.style.color = 'var(--text)'; c.appendChild(s); return; }
+    const a = document.createElement('a'); a.textContent = label; a.onclick = fn; c.appendChild(a);
+    const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '›'; c.appendChild(sep);
+  };
+  if (!cur.drive) { c.innerHTML = '<span style="color:var(--muted)">Choisis un volume à gauche, puis « Analyser ».</span>'; return; }
+  add(`${cur.drive}:\\`, () => { cur.id = 0; load(); }, cur.path.length === 1);
+  cur.path.slice(1).forEach((p, i) => {
+    add(p.name, () => { cur.id = p.id; load(); }, i === cur.path.length - 2);
+  });
+  const st = document.createElement('span');
+  st.className = 'stat';
+  const d = state.drives.find(x => x.letter === cur.drive);
+  if (d && d.status === 'ready') {
+    st.textContent = `${nf.format(cur.totalSize ? cur.totalSize : 0)} éléments` +
+      (cur.rows.length ? ` · ${hsize(cur.rows.reduce((s, r) => s + r.size, 0))} dans ce dossier` : '');
+  }
+  c.appendChild(st);
+}
+
+function renderRows() {
+  const tb = $('#rows');
+  tb.innerHTML = '';
+  const max = cur.rows.length ? cur.rows[0].size : 1;
+  const frag = document.createDocumentFragment();
+  for (const r of cur.rows) {
+    const tr = document.createElement('tr');
+    const pct = cur.parentSize ? (r.size / cur.parentSize * 100) : 0;
+    tr.innerHTML = `
+      <td class="name">
+        <span class="ic">${r.is_dir ? '📁' : '📄'}</span>
+        <span class="nm">${escapeHtml(r.name)}</span>
+        <span class="mini"><i style="width:${(max ? r.size / max * 100 : 0).toFixed(1)}%"></i></span>
+      </td>
+      <td class="num">${hsize(r.size)}</td>
+      <td class="num" style="color:var(--muted)">${pct >= 0.1 ? pct.toFixed(1).replace('.',',') + ' %' : ''}</td>
+      <td class="num" style="color:var(--muted)">${r.is_dir ? nf.format(r.count) : ''}</td>
+      <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span>
+          <span style="color:var(--muted);font-size:11.5px"> · ${hage(r.mtime)}</span></td>
+      <td class="act"><button title="Ouvrir dans l'explorateur">⤢</button></td>`;
+    if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; load(); };
+    tr.querySelector('.act button').onclick = () =>
+      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST' });
+    frag.appendChild(tr);
+  }
+  tb.appendChild(frag);
+  const shown = cur.rows.length;
+  $('#count').textContent = `${nf.format(shown)} élément${shown > 1 ? 's' : ''}` +
+    (cur.truncated ? ` (tronqué — affinez avec la recherche)` : '');
+  if (cur.view === 'map') renderMap();
+}
+
+function renderMap() {
+  const box = $('#treemap');
+  box.innerHTML = '';
+  const items = cur.rows.filter(r => r.size > 0).slice(0, 220);
+  if (!items.length) { box.innerHTML = '<div class="empty">Rien à représenter.</div>'; return; }
+  const w = box.clientWidth - 12, h = box.clientHeight - 12;
+  const out = [];
+  squarify(items.map(i => ({ ...i })), 0, 0, w, h, out);
+  const total = items.reduce((s, i) => s + i.size, 0);
+  for (const o of out) {
+    if (o.w < 26 || o.h < 16) continue;
+    const frac = o.size / total * 100;
+    const hue = o.is_dir ? 212 : 160;
+    const el = document.createElement('div');
+    el.className = 'tm';
+    el.style.cssText = `left:${o.x}px;top:${o.y}px;width:${o.w}px;height:${o.h}px;` +
+      `background:hsl(${hue} 42% ${Math.max(18, Math.min(46, 20 + frac * 3))}%)`;
+    el.title = `${o.name} — ${hsize(o.size)}`;
+    el.innerHTML = `<div class="t">${escapeHtml(o.name)}</div>` +
+      (o.h > 28 ? `<div class="s">${hsize(o.size)}${frac >= 1 ? ' · ' + frac.toFixed(0) + ' %' : ''}</div>` : '');
+    el.onclick = () => { if (o.is_dir) { cur.id = o.id; load(); } };
+    box.appendChild(el);
+  }
+}
+
+// Découpage binaire équilibré : proche d'un treemap squarifié, sans les cas tordus.
+function squarify(items, x, y, w, h, out) {
+  if (!items.length) return;
+  if (items.length === 1) { out.push({ ...items[0], x, y, w, h }); return; }
+  const total = items.reduce((a, b) => a + b.size, 0);
+  if (total <= 0) return;
+  let acc = 0, idx = 0;
+  while (idx < items.length - 1 && acc + items[idx].size < total / 2) { acc += items[idx].size; idx++; }
+  const a = items.slice(0, idx + 1), b = items.slice(idx + 1);
+  const sa = a.reduce((s, i) => s + i.size, 0);
+  if (w >= h) {
+    const wa = w * sa / total;
+    squarify(a, x, y, wa, h, out);
+    squarify(b, x + wa, y, w - wa, h, out);
+  } else {
+    const ha = h * sa / total;
+    squarify(a, x, y, w, ha, out);
+    squarify(b, x, y + ha, w, h - ha, out);
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ---------- recherche globale ----------
+async function search() {
+  const q = $('#q').value.trim();
+  if (!q) { cur.view = 'table'; await load(); return; }
+  if (!cur.drive) return;
+  const res = await api(`/api/search?drive=${cur.drive}&q=${encodeURIComponent(q)}&limit=800`);
+  cur.rows = res.rows;
+  cur.parentSize = res.rows.reduce((s, r) => s + r.size, 0) || 1;
+  cur.truncated = res.truncated;
+  cur.path = [{ name: `${cur.drive}:\\`, id: 0 }, { name: `« ${q} »`, id: 0 }];
+  cur.isSearch = true;
+  renderCrumbs();
+  $('#count').textContent = `${nf.format(cur.rows.length)} résultat(s)`;
+  const tb = $('#rows'); tb.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const r of cur.rows.slice(0, 800)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="name"><span class="ic">${r.is_dir ? '📁' : '📄'}</span>
+        <span class="nm">${escapeHtml(r.name)}</span>
+        <span style="color:var(--muted);font-size:11.5px;margin-left:8px">${escapeHtml(r.path)}</span></td>
+      <td class="num">${hsize(r.size)}</td>
+      <td class="num"></td>
+      <td class="num" style="color:var(--muted)">${r.is_dir ? nf.format(r.count) : ''}</td>
+      <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span></td>
+      <td class="act"><button title="Ouvrir dans l'explorateur">⤢</button></td>`;
+    if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; $('#q').value = ''; load(); };
+    tr.querySelector('.act button').onclick = () =>
+      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST' });
+    frag.appendChild(tr);
+  }
+  tb.appendChild(frag);
+  setView('table');
+}
+
+// ---------- événements ----------
+document.querySelectorAll('thead th[data-k]').forEach(th => {
+  th.onclick = () => {
+    const k = th.dataset.k;
+    if (cur.sort === k) cur.order = cur.order === 'desc' ? 'asc' : 'desc';
+    else { cur.sort = k; cur.order = (k === 'name') ? 'asc' : 'desc'; }
+    syncHeaders();
+    if ($('#q').value.trim()) return;
+    load();
+  };
+});
+function syncHeaders() {
+  document.querySelectorAll('thead th[data-k]').forEach(th => {
+    th.innerHTML = th.innerHTML.replace(/ <span class="arw">.*<\/span>/, '');
+    if (th.dataset.k === cur.sort) th.innerHTML += ` <span class="arw">${cur.order === 'desc' ? '▼' : '▲'}</span>`;
+  });
+}
+$('#sort').onchange = e => { cur.sort = e.target.value; if (!$('#q').value.trim()) load(); };
+$('#order').onchange = e => { cur.order = e.target.value; if (!$('#q').value.trim()) load(); };
+$('#go').onclick = search;
+$('#q').onkeydown = e => { if (e.key === 'Enter') search(); };
+document.querySelectorAll('.view .btn').forEach(b => {
+  b.onclick = () => { setView(b.dataset.view); document.querySelectorAll('.view .btn').forEach(x => x.classList.toggle('active', x === b)); };
+});
+function setView(v) {
+  cur.view = v;
+  $('#tablewrap').classList.toggle('hidden', v !== 'table');
+  $('#treemap').classList.toggle('hidden', v !== 'map');
+  if (v === 'map') renderMap();
+}
+window.addEventListener('resize', () => { if (cur.view === 'map') renderMap(); });
+
+// ---------- démarrage ----------
+(async function init() {
+  await refreshState();
+  syncHeaders();
+  const ready = state.drives.find(d => d.status === 'ready');
+  if (ready) await select(ready.letter);
+  else if (state.scanning) poll();
+  else {
+    const first = state.drives[0];
+    if (first) $('#count').textContent = `Clique sur « Analyser » pour ${first.letter}:`;
+  }
+  setInterval(refreshState, 4000);
+})();
+</script>
+</body>
+</html>

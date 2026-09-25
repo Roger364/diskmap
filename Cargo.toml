@@ -1,0 +1,22 @@
+[package]
+name = "diskmap"
+version = "0.1.0"
+edition = "2021"
+description = "Explorateur d'espace disque : taille et date des dossiers/fichiers, triable"
+
+[[bin]]
+name = "diskmap"
+path = "src/main.rs"
+
+[dependencies]
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+# Le scan est limité par les E/S disque, pas par le CPU : inutile de payer un LTO
+# complet qui multiplie le temps de compilation par quatre.
+opt-level = 3
+lto = false
+codegen-units = 16
+panic = "abort"

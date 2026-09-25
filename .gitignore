@@ -1,0 +1,5 @@
+# Artefacts de compilation
+/target
+
+# Caches de scan (régénérés à la demande, volumineux)
+*.bin
