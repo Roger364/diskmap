@@ -93,6 +93,75 @@ pub fn drives() -> Vec<Drive> {
     out
 }
 
+// ---------------------------- effacement ----------------------------
+//
+// `SHFileOperationW` avec FOF_ALLOWUNDO envoie dans la corbeille : l'opération
+// reste réversible, ce qui est la seule façon raisonnable d'implémenter une
+// suppression dans un outil qui voit tous les disques.
+//
+// Attention : surtout pas de préfixe verbatim `\\?\` ici. Avec ce préfixe,
+// SHFileOperation contourne la corbeille et supprime définitivement — exactement
+// l'inverse de ce qu'on veut par défaut. Les chemins passés sont donc les
+// chemins normaux (`C:\...`), pas ceux utilisés pour le scan.
+
+const FO_DELETE: u32 = 3;
+const FOF_SILENT: u16 = 0x0004;
+const FOF_NOCONFIRMATION: u16 = 0x0010;
+const FOF_ALLOWUNDO: u16 = 0x0040;
+const FOF_NOERRORUI: u16 = 0x0400;
+
+#[repr(C)]
+struct ShFileOpStructW {
+    hwnd: *mut std::ffi::c_void,
+    w_func: u32,
+    p_from: *const u16,
+    p_to: *const u16,
+    f_flags: u16,
+    f_any_operations_aborted: i32,
+    h_name_mappings: *mut std::ffi::c_void,
+    lpsz_progress_title: *const u16,
+}
+
+#[link(name = "shell32")]
+extern "system" {
+    fn SHFileOperationW(op: *mut ShFileOpStructW) -> i32;
+}
+
+/// `to_trash = true` : corbeille (réversible). `false` : suppression définitive.
+pub fn delete_path(path: &str, to_trash: bool) -> Result<(), String> {
+    if path.starts_with(r"\\?\") {
+        return Err("chemin verbatim interdit pour une suppression".into());
+    }
+    // pFrom doit être une liste de chaînes terminée par un double zéro.
+    let mut wide: Vec<u16> = to_wide(path);
+    let len = wide.len();
+    wide[len - 1] = 0;
+    wide.push(0);
+
+    let mut flags = FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI;
+    if to_trash {
+        flags |= FOF_ALLOWUNDO;
+    }
+    let mut op = ShFileOpStructW {
+        hwnd: std::ptr::null_mut(),
+        w_func: FO_DELETE,
+        p_from: wide.as_ptr(),
+        p_to: std::ptr::null(),
+        f_flags: flags,
+        f_any_operations_aborted: 0,
+        h_name_mappings: std::ptr::null_mut(),
+        lpsz_progress_title: std::ptr::null(),
+    };
+    let r = unsafe { SHFileOperationW(&mut op) };
+    if r != 0 {
+        return Err(format!("SHFileOperationW a renvoyé {r}"));
+    }
+    if op.f_any_operations_aborted != 0 {
+        return Err("opération abandonnée par le système".into());
+    }
+    Ok(())
+}
+
 fn space(w: &[u16]) -> Option<(u64, u64)> {
     let mut avail: u64 = 0;
     let mut total: u64 = 0;

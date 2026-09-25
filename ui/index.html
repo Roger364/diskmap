@@ -125,6 +125,36 @@
   .prog { padding:8px 14px; font-size:12px; color:var(--muted); border-bottom:1px solid var(--line); }
   .prog b { color:var(--text); }
   .hidden { display:none !important; }
+
+  /* ---------- suppression ---------- */
+  th.sel, td.sel { width:1%; padding-right:2px; }
+  .chk { width:14px; height:14px; accent-color:var(--accent); cursor:pointer; vertical-align:middle; }
+  .btn.danger { background:#6d2b22; border-color:#8f3a2d; }
+  .btn.danger:hover { background:#83342a; }
+  #selbar { color:var(--text); }
+  #selbar b { color:var(--hot); }
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:100; }
+  .modal {
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    width:min(700px,94%); max-height:88%; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .modal h3 { margin:0; padding:13px 16px; font-size:14px; font-weight:500; border-bottom:1px solid var(--line); }
+  .modal h3 span { color:var(--muted); font-weight:400; }
+  .modal .body { padding:14px 16px; overflow:auto; font-size:13px; line-height:1.55; }
+  .modal .foot { padding:11px 16px; border-top:1px solid var(--line); display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .modal .foot label { cursor:pointer; }
+  .warn {
+    background:#3a2a18; border:1px solid #6b4a24; border-radius:8px;
+    padding:9px 12px; margin:0 0 12px; font-size:12.5px; color:#e8c89c;
+  }
+  .plist { max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+  .plist div { padding:5px 10px; border-bottom:1px solid #23262e; display:flex; gap:10px; font-size:12.5px; }
+  .plist div:last-child { border-bottom:none; }
+  .plist .p { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .plist .s { color:var(--muted); white-space:nowrap; }
+  .plist .b { color:var(--hot); white-space:nowrap; }
+  .ok { color:#7fc0a0; }
+  .ko { color:var(--hot); }
 </style>
 </head>
 <body>
@@ -153,6 +183,8 @@
     <div class="prog hidden" id="prog"></div>
     <div class="toolbar">
       <span id="count"></span>
+      <span id="selbar" class="hidden"></span>
+      <button class="btn danger hidden" id="delbtn">Supprimer…</button>
       <span class="spacer"></span>
       <label>Tri
         <select id="sort">
@@ -172,6 +204,7 @@
       </div>
     </div>
     <div class="tablewrap" id="tablewrap"><table id="tbl"><thead><tr>
+      <th class="sel"><input type="checkbox" class="chk" id="allchk" title="Tout sélectionner"></th>
       <th data-k="name">Nom</th>
       <th data-k="size" class="num">Taille</th>
       <th class="num">Part</th>
@@ -183,10 +216,25 @@
   </section>
 </main>
 
+<div id="modal" class="modal-bg hidden">
+  <div class="modal">
+    <h3>Supprimer <span id="dtitle"></span></h3>
+    <div class="body" id="dbody"></div>
+    <div class="foot">
+      <label><input type="radio" name="dmode" value="recycle" checked> Corbeille (réversible)</label>
+      <label><input type="radio" name="dmode" value="permanent"> Définitif</label>
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn" id="dcancel">Annuler</button>
+      <button class="btn danger" id="ddo">Supprimer</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 let state = { drives: [], scanning: null };
-let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [] };
+let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set() };
+let pendingDry = null;
 
 // ---------- formatage ----------
 const nf = new Intl.NumberFormat('fr-FR');
@@ -331,8 +379,10 @@ function poll() {
 }
 
 // ---------- contenu ----------
-async function load() {
+async function load(keepSel) {
   if (!cur.drive) return;
+  // Changer de dossier vide la sélection ; re-trier ne doit pas la perdre.
+  if (!keepSel) cur.sel.clear();
   const d = state.drives.find(x => x.letter === cur.drive);
   if (!d || d.status !== 'ready') {
     $('#rows').innerHTML = '';
@@ -393,6 +443,7 @@ function renderRows() {
     const tr = document.createElement('tr');
     const pct = cur.parentSize ? (r.size / cur.parentSize * 100) : 0;
     tr.innerHTML = `
+      <td class="sel"><input type="checkbox" class="chk" ${cur.sel.has(selKey(r)) ? 'checked' : ''}></td>
       <td class="name">
         <span class="ic">${r.is_dir ? '📁' : '📄'}</span>
         <span class="nm">${escapeHtml(r.name)}</span>
@@ -407,13 +458,40 @@ function renderRows() {
     if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; load(); };
     tr.querySelector('.act button').onclick = () =>
       fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST' });
+    const chk = tr.querySelector('.sel .chk');
+    chk.onchange = () => toggleSel(r, chk.checked);
     frag.appendChild(tr);
   }
   tb.appendChild(frag);
   const shown = cur.rows.length;
   $('#count').textContent = `${nf.format(shown)} élément${shown > 1 ? 's' : ''}` +
     (cur.truncated ? ` (tronqué — affinez avec la recherche)` : '');
+  updateSelBar();
   if (cur.view === 'map') renderMap();
+}
+
+// ---------- sélection ----------
+function selKey(r) { return (r.is_dir ? 'd' : 'f') + ':' + r.id; }
+function selectedRows() { return cur.rows.filter(r => cur.sel.has(selKey(r))); }
+
+function toggleSel(r, on) {
+  const k = selKey(r);
+  if (on) cur.sel.add(k); else cur.sel.delete(k);
+  updateSelBar();
+}
+
+function updateSelBar() {
+  const rows = selectedRows();
+  const total = rows.reduce((s, r) => s + r.size, 0);
+  $('#selbar').classList.toggle('hidden', rows.length === 0);
+  $('#delbtn').classList.toggle('hidden', rows.length === 0);
+  if (rows.length) {
+    $('#selbar').innerHTML =
+      `<b>${nf.format(rows.length)}</b> sélectionné(s) · ${hsize(total)}`;
+  }
+  const vis = cur.rows.length;
+  $('#allchk').checked = vis > 0 && rows.length === vis;
+  $('#allchk').indeterminate = rows.length > 0 && rows.length < vis;
 }
 
 function renderMap() {
@@ -484,6 +562,7 @@ async function search() {
   for (const r of cur.rows.slice(0, 800)) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td class="sel"><input type="checkbox" class="chk" ${cur.sel.has(selKey(r)) ? 'checked' : ''}></td>
       <td class="name"><span class="ic">${r.is_dir ? '📁' : '📄'}</span>
         <span class="nm">${escapeHtml(r.name)}</span>
         <span style="color:var(--muted);font-size:11.5px;margin-left:8px">${escapeHtml(r.path)}</span></td>
@@ -495,10 +574,136 @@ async function search() {
     if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; $('#q').value = ''; load(); };
     tr.querySelector('.act button').onclick = () =>
       fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST' });
+    const chk = tr.querySelector('.sel .chk');
+    chk.onchange = () => toggleSel(r, chk.checked);
     frag.appendChild(tr);
   }
   tb.appendChild(frag);
+  updateSelBar();
   setView('table');
+}
+
+// ---------- suppression ----------
+$('#allchk').onchange = e => {
+  const on = e.target.checked;
+  cur.rows.forEach(r => on ? cur.sel.add(selKey(r)) : cur.sel.delete(selKey(r)));
+  document.querySelectorAll('#rows .sel .chk').forEach(c => { c.checked = on; });
+  updateSelBar();
+};
+
+$('#delbtn').onclick = openDelete;
+$('#dcancel').onclick = () => $('#modal').classList.add('hidden');
+document.querySelectorAll('input[name=dmode]').forEach(r => { r.onchange = renderDeleteBody; });
+$('#ddo').onclick = doDelete;
+
+async function openDelete() {
+  const rows = selectedRows();
+  if (!rows.length) return;
+  const items = rows.map(r => ({ id: r.id, is_dir: r.is_dir }));
+  const res = await api('/api/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ drive: cur.drive, items, mode: 'dry' }),
+  });
+  pendingDry = res;
+  $('#dtitle').textContent = `${res.deletable} élément(s) — ${hsize(res.total_size)}`;
+  $('#ddo').disabled = res.deletable === 0;
+  renderDeleteBody();
+  $('#modal').classList.remove('hidden');
+}
+
+function renderDeleteBody() {
+  const d = pendingDry;
+  if (!d) return;
+  const mode = document.querySelector('input[name=dmode]:checked').value;
+  let h = '';
+  // « Tout sélectionner » dans un gros dossier peut viser des centaines de Go.
+  // Le chiffre seul ne suffit pas : on le signale.
+  if (d.total_size > 20e9) {
+    h += `<div class="warn"><b>Volume important</b> : ${hsize(d.total_size)} sont concernés. ` +
+         `Relis la liste ci-dessous avant de confirmer.</div>`;
+  }
+  if (d.blocked) {
+    h += `<div class="warn"><b>${d.blocked}</b> élément(s) seront ignorés : ` +
+         `répertoire système protégé, ou déjà absent du disque.</div>`;
+  }
+  h += `<p style="margin:0 0 10px">Va disparaître : <b>${nf.format(d.deletable)}</b> élément(s), ` +
+       `<b>${hsize(d.total_size)}</b>.</p>`;
+  h += '<div class="plist">';
+  for (const it of d.items.slice(0, 25)) {
+    h += `<div><span class="p" title="${escapeHtml(it.path)}">${escapeHtml(it.path)}</span>` +
+         `<span class="s">${hsize(it.size)}</span>` +
+         (it.blocked ? `<span class="b">${escapeHtml(it.reason || 'ignoré')}</span>` : '') +
+         '</div>';
+  }
+  if (d.items.length > 25) {
+    h += `<div><span class="p" style="color:var(--muted)">… et ${d.items.length - 25} autre(s)</span></div>`;
+  }
+  h += '</div>';
+  if (mode === 'permanent') {
+    h += `<div class="warn" style="margin-top:12px">Suppression <b>définitive</b>, ` +
+         `aucune récupération possible depuis la corbeille. Tape <b>EFFACER</b> pour confirmer.</div>` +
+         `<input class="search" id="dconfirm" placeholder="EFFACER" style="width:150px;margin-top:9px" />`;
+  } else {
+    h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
+         `Les éléments iront dans la corbeille : tu peux les restaurer depuis l'explorateur.</p>`;
+  }
+  $('#dbody').innerHTML = h;
+}
+
+async function doDelete() {
+  const mode = document.querySelector('input[name=dmode]:checked').value;
+  let confirm;
+  if (mode === 'permanent') {
+    confirm = ($('#dconfirm') && $('#dconfirm').value || '').trim();
+    if (confirm !== 'EFFACER') {
+      alert('Tape EFFACER en majuscules pour confirmer la suppression définitive.');
+      return;
+    }
+  }
+  $('#ddo').disabled = true;
+  let res;
+  try {
+    res = await api('/api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drive: cur.drive, mode, token: pendingDry.token, confirm }),
+    });
+  } catch (e) {
+    $('#dbody').innerHTML = `<div class="warn">Refusé : ${escapeHtml(String(e.message || e))}</div>`;
+    $('#ddo').disabled = false;
+    return;
+  }
+
+  let h = `<p style="margin:0 0 10px"><span class="ok"><b>${res.done}</b> supprimé(s)</span>` +
+          (res.failed ? ` · <span class="ko"><b>${res.failed}</b> échec(s)</span>` : '') +
+          ` · ${hsize(res.freed)} libérés</p>`;
+  if (res.results && res.results.length) {
+    h += '<div class="plist">';
+    for (const it of res.results.slice(0, 30)) {
+      h += `<div><span class="p" title="${escapeHtml(it.path)}">${escapeHtml(it.path)}</span>` +
+           (it.blocked ? `<span class="b">${escapeHtml(it.reason || 'ignoré')}</span>`
+                       : `<span class="s ok">ok</span>`) + '</div>';
+    }
+    h += '</div>';
+  }
+  if (res.rescan) {
+    h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
+         `Réanalyse de ${cur.drive}: lancée pour remettre les totaux à jour.</p>`;
+  }
+  $('#dbody').innerHTML = h;
+  $('#dtitle').textContent = 'terminé';
+  $('#ddo').textContent = 'Fermer';
+  $('#ddo').disabled = false;
+  $('#ddo').onclick = () => {
+    $('#modal').classList.add('hidden');
+    $('#ddo').textContent = 'Supprimer';
+    $('#ddo').onclick = doDelete;
+    cur.sel.clear();
+    pendingDry = null;
+    refreshState();
+    if (res.rescan) poll(); else load();
+  };
 }
 
 // ---------- événements ----------
@@ -509,7 +714,7 @@ document.querySelectorAll('thead th[data-k]').forEach(th => {
     else { cur.sort = k; cur.order = (k === 'name') ? 'asc' : 'desc'; }
     syncHeaders();
     if ($('#q').value.trim()) return;
-    load();
+    load(true);
   };
 });
 function syncHeaders() {
@@ -518,8 +723,8 @@ function syncHeaders() {
     if (th.dataset.k === cur.sort) th.innerHTML += ` <span class="arw">${cur.order === 'desc' ? '▼' : '▲'}</span>`;
   });
 }
-$('#sort').onchange = e => { cur.sort = e.target.value; if (!$('#q').value.trim()) load(); };
-$('#order').onchange = e => { cur.order = e.target.value; if (!$('#q').value.trim()) load(); };
+$('#sort').onchange = e => { cur.sort = e.target.value; if (!$('#q').value.trim()) load(true); };
+$('#order').onchange = e => { cur.order = e.target.value; if (!$('#q').value.trim()) load(true); };
 $('#go').onclick = search;
 $('#q').onkeydown = e => { if (e.key === 'Enter') search(); };
 document.querySelectorAll('.view .btn').forEach(b => {

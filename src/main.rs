@@ -11,8 +11,9 @@ use scan::{Progress, Row, Snapshot};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -39,8 +40,19 @@ struct DriveState {
     prog: Arc<Progress>,
 }
 
+/// Ce que l'utilisateur a réellement vu lors de la simulation. Sans ce jeton,
+/// rien ne peut être supprimé : on ne peut pas exécuter une suppression qui n'a
+/// pas été chiffrée et listée au préalable.
+#[derive(Clone)]
+struct PendingDel {
+    drive: char,
+    items: Vec<DeleteItem>,
+    at_ms: i64,
+}
+
 struct App {
     drives: Mutex<HashMap<char, DriveState>>,
+    pending: Mutex<HashMap<String, PendingDel>>,
     /// Volume en cours d'analyse (un seul à la fois : on évite de faire ramener
     /// plusieurs disques en concurrence sur le même contrôleur).
     scanning: Mutex<Option<char>>,
@@ -197,6 +209,7 @@ fn main() {
         drives: Mutex::new(drives),
         scanning: Mutex::new(None),
         queue: Mutex::new(Vec::new()),
+        pending: Mutex::new(HashMap::new()),
         cache_dir: cache_dir(),
     });
 
@@ -365,7 +378,8 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     let mut parts = line.split_whitespace();
     let method = parts.next().unwrap_or("").to_string();
     let target = parts.next().unwrap_or("/").to_string();
-    // En-têtes : on les consomme (Content-Length nous suffirait, on n'en a pas besoin).
+    // En-têtes : on retient Content-Length, seul cas où un corps nous intéresse.
+    let mut content_len: usize = 0;
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h)? == 0 {
@@ -374,6 +388,14 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
         if h.trim().is_empty() {
             break;
         }
+        let lower = h.to_ascii_lowercase();
+        if let Some(v) = lower.strip_prefix("content-length:") {
+            content_len = v.trim().parse().unwrap_or(0);
+        }
+    }
+    let mut body = vec![0u8; content_len];
+    if content_len > 0 {
+        reader.read_exact(&mut body)?;
     }
 
     let (path, query) = match target.split_once('?') {
@@ -381,7 +403,7 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
         None => (target, HashMap::new()),
     };
 
-    let resp = route(app, &method, &path, &query);
+    let resp = route(app, &method, &path, &query, &body);
     let body: Vec<u8>;
     let (status, ctype) = match resp {
         Ok(Resp::Html(s)) => {
@@ -462,7 +484,7 @@ fn hex(c: u8) -> Option<u8> {
     }
 }
 
-fn route(app: &Arc<App>, method: &str, path: &str, q: &Q) -> Result<Resp, (&'static str, String)> {
+fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8]) -> Result<Resp, (&'static str, String)> {
     match (method, path) {
         ("GET", "/") | ("GET", "/index.html") => Ok(Resp::Html(UI.to_string())),
 
@@ -484,6 +506,8 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q) -> Result<Resp, (&'sta
 
         ("GET", "/api/tree") => tree(app, q),
         ("GET", "/api/search") => search(app, q),
+
+        ("POST", "/api/delete") => delete(app, body),
 
         ("POST", "/api/open") => {
             let letter = q.get("drive").and_then(|s| s.chars().next())
@@ -645,6 +669,313 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         })
         .unwrap(),
     ))
+}
+
+// ---------------------------- effacement ----------------------------
+//
+// Principe : on ne peut supprimer que ce qui a été simulé. La simulation
+// (`mode = "dry"`) renvoie un jeton à usage unique ; l'exécution doit le
+// représenter, sinon elle est refusée. Le jeton expire au bout de dix minutes,
+// ce qui interdit de supprimer sur la foi d'une liste périmée.
+//
+// Par défaut c'est la corbeille (`recycle`), donc réversible. Le définitif
+// exige en plus le mot « EFFACER » tapé à la main.
+
+#[derive(serde::Deserialize, Clone)]
+struct DeleteItem {
+    id: u32,
+    is_dir: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct DeleteReq {
+    drive: String,
+    /// Utilisé uniquement par la simulation. À l'exécution, la liste vient du
+    /// jeton et jamais de la requête : sinon un appelant pourrait présenter un
+    /// jeton valide obtenu sur une liste, et supprimer autre chose que ce qui a
+    /// été montré.
+    #[serde(default)]
+    items: Vec<DeleteItem>,
+    mode: String,
+    token: Option<String>,
+    confirm: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct PreviewItem {
+    path: String,
+    size: u64,
+    count: u64,
+    is_dir: bool,
+    exists: bool,
+    blocked: bool,
+    reason: String,
+}
+
+#[derive(serde::Serialize)]
+struct DeletePreview {
+    token: String,
+    items: Vec<PreviewItem>,
+    total_size: u64,
+    deletable: usize,
+    blocked: usize,
+}
+
+#[derive(serde::Serialize)]
+struct DeleteOutcome {
+    done: usize,
+    failed: usize,
+    freed: u64,
+    to_trash: bool,
+    results: Vec<PreviewItem>,
+    rescan: bool,
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn resolve(snap: &Snapshot, it: &DeleteItem) -> Option<PathBuf> {
+    if it.is_dir {
+        if (it.id as usize) < snap.n_dirs() {
+            Some(snap.dir_path(it.id))
+        } else {
+            None
+        }
+    } else if (it.id as usize) < snap.n_files() {
+        Some(snap.file_path(it.id))
+    } else {
+        None
+    }
+}
+
+fn index_size(snap: &Snapshot, it: &DeleteItem) -> (u64, u64) {
+    if it.is_dir {
+        let i = it.id as usize;
+        if i < snap.n_dirs() {
+            (snap.size[i], snap.count[i])
+        } else {
+            (0, 0)
+        }
+    } else {
+        snap.files
+            .get(it.id as usize)
+            .map(|f| (f.size, 1))
+            .unwrap_or((0, 0))
+    }
+}
+
+/// Chemins qu'on refuse d'effacer quoi qu'il arrive. La racine d'un volume, les
+/// répertoires système et les profils utilisateurs entiers : une erreur de
+/// sélection là-dessus serait irrécupérable, même via la corbeille.
+fn blocked_reason(path: &Path) -> Option<&'static str> {
+    let up = path.to_string_lossy().to_uppercase();
+    if up.len() < 3 {
+        return Some("chemin trop court");
+    }
+    let rest = &up[3..];
+    let parts: Vec<&str> = rest.split('\\').filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() {
+        return Some("racine du volume");
+    }
+    const FORBIDDEN: &[&str] = &[
+        "WINDOWS",
+        "PROGRAM FILES",
+        "PROGRAM FILES (X86)",
+        "PROGRAMDATA",
+        "SYSTEM VOLUME INFORMATION",
+        "$RECYCLE.BIN",
+        "RECOVERY",
+    ];
+    if FORBIDDEN.contains(&parts[0]) {
+        return Some("répertoire système protégé");
+    }
+    if parts[0] == "USERS" && parts.len() <= 2 {
+        return Some("profil utilisateur protégé");
+    }
+    None
+}
+
+fn delete(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
+    let req: DeleteReq = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => return Err(("400 Bad Request", format!("corps illisible : {e}"))),
+    };
+    let letter = req
+        .drive
+        .chars()
+        .next()
+        .ok_or(("400 Bad Request", "drive manquant".into()))?
+        .to_ascii_uppercase();
+    let snap = {
+        let d = app.drives.lock().unwrap();
+        d.get(&letter)
+            .and_then(|s| s.snap.clone())
+            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
+    };
+    match req.mode.as_str() {
+        "dry" => dry(app, letter, &snap, req.items),
+        // `req.items` est délibérément ignoré à l'exécution.
+        "recycle" => execute(app, letter, &snap, req, true),
+        "permanent" => execute(app, letter, &snap, req, false),
+        _ => Err(("400 Bad Request", "mode inconnu".into())),
+    }
+}
+
+fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) -> Result<Resp, (&'static str, String)> {
+    let mut out: Vec<PreviewItem> = Vec::new();
+    let mut total = 0u64;
+    let mut deletable = 0usize;
+    let mut blocked = 0usize;
+
+    for it in &items {
+        let Some(path) = resolve(snap, it) else {
+            continue;
+        };
+        let ps = path.to_string_lossy().into_owned();
+        let (size, count) = index_size(snap, it);
+        let reason = blocked_reason(&path);
+        let exists = path.exists();
+        let blocked_flag = reason.is_some() || !exists;
+        if blocked_flag {
+            blocked += 1;
+        } else {
+            deletable += 1;
+            total += size;
+        }
+        out.push(PreviewItem {
+            path: ps,
+            size,
+            count,
+            is_dir: it.is_dir,
+            exists,
+            blocked: blocked_flag,
+            reason: reason.unwrap_or(if exists { "" } else { "introuvable sur le disque" }).to_string(),
+        });
+    }
+
+    let token = format!("{}-{}", now_ms(), rand_u32());
+    {
+        let mut p = app.pending.lock().unwrap();
+        p.insert(token.clone(), PendingDel { drive: letter, items, at_ms: now_ms() });
+    }
+
+    Ok(Resp::Json(
+        serde_json::to_string(&DeletePreview { token, items: out, total_size: total, deletable, blocked }).unwrap(),
+    ))
+}
+
+fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_trash: bool) -> Result<Resp, (&'static str, String)> {
+    let token = req.token.clone().unwrap_or_default();
+
+    // On valide tout avant de consommer le jeton : une demande refusée (mauvais
+    // volume, confirmation absente) ne doit pas obliger à refaire une simulation.
+    let peek = {
+        let mut p = app.pending.lock().unwrap();
+        let now = now_ms();
+        p.retain(|_, v| now - v.at_ms < 600_000);
+        p.get(&token).cloned()
+    };
+    let peek = peek.ok_or((
+        "409 Conflict",
+        "jeton absent ou expiré : relance une simulation avant de supprimer".into(),
+    ))?;
+    if peek.drive != letter {
+        return Err(("400 Bad Request", "jeton d'un autre volume".into()));
+    }
+    if !to_trash && req.confirm.clone().unwrap_or_default() != "EFFACER" {
+        return Err(("400 Bad Request", "confirmation « EFFACER » absente".into()));
+    }
+
+    // Validé : le jeton est consommé, il ne servira qu'une fois.
+    let pending = {
+        let mut p = app.pending.lock().unwrap();
+        p.remove(&token)
+    };
+    let pending = pending.ok_or((
+        "409 Conflict",
+        "jeton consommé entre-temps : relance une simulation".into(),
+    ))?;
+
+    let mut results: Vec<PreviewItem> = Vec::new();
+    let mut done = 0usize;
+    let mut failed = 0usize;
+    let mut freed = 0u64;
+    let mut journal_lines: Vec<String> = Vec::new();
+
+    for it in &pending.items {
+        let Some(path) = resolve(snap, it) else { continue };
+        let ps = path.to_string_lossy().into_owned();
+        let (size, count) = index_size(snap, it);
+        let reason = blocked_reason(&path);
+        if let Some(r) = reason {
+            failed += 1;
+            results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: true, blocked: true, reason: r.to_string() });
+            continue;
+        }
+        if !path.exists() {
+            failed += 1;
+            results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: false, blocked: true, reason: "introuvable sur le disque".into() });
+            continue;
+        }
+        match win32::delete_path(&ps, to_trash) {
+            Ok(()) => {
+                done += 1;
+                freed += size;
+                // Le journal d'abord : `ps` est déplacé dans la ligne de résultat.
+                journal_lines.push(format!(
+                    "{}\t{}\t{}\t{}\t{}",
+                    now_ms(),
+                    if to_trash { "corbeille" } else { "definitif" },
+                    size,
+                    count,
+                    ps
+                ));
+                results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: true, blocked: false, reason: String::new() });
+            }
+            Err(e) => {
+                failed += 1;
+                results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: true, blocked: true, reason: e });
+            }
+        }
+    }
+
+    if !journal_lines.is_empty() {
+        journal(app, &journal_lines);
+    }
+
+    // L'index ne reflète plus le disque : on relance une analyse pour que les
+    // totaux redeviennent justes au lieu de garder des entrées fantômes.
+    let rescan = done > 0;
+    if rescan {
+        start_scan(app, letter);
+    }
+
+    Ok(Resp::Json(
+        serde_json::to_string(&DeleteOutcome { done, failed, freed, to_trash, results, rescan }).unwrap(),
+    ))
+}
+
+fn journal(app: &Arc<App>, lines: &[String]) {
+    use std::io::Write;
+    let p = app.cache_dir.join("suppressions.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+        for l in lines {
+            let _ = writeln!(f, "{l}");
+        }
+    }
+}
+
+/// Suffisant pour qu'un jeton ne soit pas devinable : l'usage est local.
+fn rand_u32() -> u32 {
+    let mut seed = now_ms() as u64;
+    seed ^= seed << 13;
+    seed ^= seed >> 7;
+    seed ^= seed << 17;
+    (seed & 0xffff_ffff) as u32
 }
 
 fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {

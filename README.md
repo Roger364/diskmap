@@ -18,6 +18,32 @@ written in Rust and runs in parallel.
   `node_modules` returns every occurrence with its size and path.
 - **Map** view (treemap) alongside the table.
 - Open any entry in Windows Explorer.
+- **Delete** selected entries — see below.
+
+## Deleting
+
+Select rows, then *Delete*. Nothing is removed before a dry run has listed
+exactly what will disappear and issued a one-shot token; the execution must
+present that token, and it expires after ten minutes. So it is impossible to
+delete something that was not shown first, or on the strength of a stale list.
+
+Defaults and guards:
+
+- **Recycle Bin by default**, so the operation stays reversible. Permanent
+  deletion is available but requires typing `EFFACER`.
+- **Protected paths are refused**: volume roots, `Windows`, `Program Files`,
+  `ProgramData`, `System Volume Information`, `$Recycle.Bin`, `Recovery`, and
+  whole user profiles.
+- The preview re-checks that each path still exists, and warns above 20 GB.
+- Every deletion is appended to `%LOCALAPPDATA%\diskmap\suppressions.log`
+  (timestamp, mode, size, path).
+- A successful deletion triggers a re-scan of the volume, so totals do not keep
+  showing entries that no longer exist.
+
+One implementation note: deletion deliberately uses normal paths (`C:\...`),
+never the verbatim `\\?\` form used for scanning. With that prefix,
+`SHFileOperationW` bypasses the Recycle Bin and deletes permanently — the exact
+opposite of the intended default.
 
 ## Why it is fast
 
