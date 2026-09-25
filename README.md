@@ -1,89 +1,86 @@
 # diskmap
 
-Explorateur d'espace disque pour Windows : pour chaque volume, le poids et la
-date des dossiers **et** des fichiers, triables, avec navigation dans l'arbre et
-recherche globale.
+A disk space explorer for Windows: for every volume, the size and date of
+folders **and** files, sortable, with tree navigation and a global search.
 
-Un serveur HTTP local sert une interface unique ; le parcours des volumes est
-écrit en Rust et parallélisé.
+A local HTTP server serves a single-page interface; the volume scan itself is
+written in Rust and runs in parallel.
 
-## Ce qu'on peut faire
+## What it does
 
-- **Poids d'un dossier = tout son contenu**, pas seulement ses fichiers directs.
-- **Dernière activité** : la date d'écriture la plus récente dans le sous-arbre.
-  C'est la colonne qui sert à décider : un dossier de 100 Go plus touché depuis
-  deux ans saute aux yeux.
-- Tri par taille, dernière activité, nom ou nombre de fichiers.
-- Recherche globale insensible à la casse sur tout le volume — « node_modules »
-  remonte chaque occurrence avec son poids et son chemin.
-- Vue **carte** (treemap) en plus du tableau.
-- Ouverture de n'importe quelle entrée dans l'explorateur Windows.
+- **A folder's size includes everything under it**, not just the files directly
+  inside.
+- **Last activity** is the most recent write anywhere in the subtree. This is the
+  column that drives decisions: a 100 GB folder untouched for two years stands out
+  immediately.
+- Sort by size, last activity, name or file count.
+- Case-insensitive global search across the whole volume — searching
+  `node_modules` returns every occurrence with its size and path.
+- **Map** view (treemap) alongside the table.
+- Open any entry in Windows Explorer.
 
-## Pourquoi c'est rapide
+## Why it is fast
 
-Deux causes, et une seule était atteignable.
+Two causes, only one of which could actually be addressed.
 
-**La MFT n'est pas accessible sans élévation.** Lire la table des fichiers
-directement prendrait quelques secondes, mais ouvrir un handle sur `\\.\C:`
-exige les droits administrateur. Mesuré sur une session non élevée : `C:`, `D:`
-et `G:` refusent l'ouverture, seul `E:` passe. La vitesse vient donc du
-parallélisme : fork/join rayon, un job par sous-dossier jusqu'à 16 niveaux de
-profondeur.
+**The MFT is not reachable without elevation.** Reading the file table directly
+would take a few seconds, but opening a handle on `\\.\C:` requires
+administrator rights. Measured on an unelevated session: `C:`, `D:` and `G:`
+refuse to open, only `E:` succeeds. Speed therefore comes from parallelism:
+rayon fork/join, one job per subdirectory down to 16 levels deep.
 
-**L'agrégation a été sortie du parcours.** Remonter les tailles vers les parents
-pendant le scan coûte un verrou par fichier et par niveau de profondeur. On ne
-garde que `(parent, taille, date)`, puis on agrège après coup en deux passes
-linéaires : l'identifiant d'un dossier étant attribué avant celui de ses enfants,
-`parent < enfant`, et la remontée se fait en une seule boucle descendante sur les
-index.
+**Aggregation was moved out of the walk.** Rolling sizes up to parents *during*
+the scan costs a lock per file and per depth level. Instead the scan keeps only
+`(parent, size, date)` and aggregates afterwards in two linear passes: a
+directory is always given an id before its children, so `parent < child`, and the
+roll-up is a single descending loop over indices.
 
-Les chemins sont en forme verbatim `\\?\C:\`, sinon la limite `MAX_PATH` de 260
-caractères fait échouer les `node_modules` profonds. Jonctions et liens
-symboliques ne sont pas suivis : les suivre doublerait les compteurs
-(`C:\Documents and Settings` pointe vers `C:\Users`) et risquerait des cycles.
+Paths use the verbatim form `\\?\C:\`, otherwise the 260-character `MAX_PATH`
+limit breaks deep `node_modules` trees. Junctions and symbolic links are not
+followed: doing so would double-count (`C:\Documents and Settings` points at
+`C:\Users`) and risks cycles.
 
-### Mesures
+### Measurements
 
-Sur une machine à 24 cœurs logiques, disques NVMe :
+On a machine with 24 logical cores and NVMe drives:
 
-| Volume | Fichiers | Dossiers | Taille | Scan à froid |
+| Volume | Files | Folders | Size | Cold scan |
 |---|---|---|---|---|
-| `C:` | 2 256 830 | 297 990 | 873 Go | **35 s** |
-| `G:` | 1 086 153 | 179 309 | 438 Go | 9 s |
-| `E:` | 24 350 | 1 044 | 40 Go | 0,45 s |
+| `C:` | 2,256,830 | 297,990 | 873 GB | **35 s** |
+| `G:` | 1,086,153 | 179,309 | 438 GB | 9 s |
+| `E:` | 24,350 | 1,044 | 40 GB | 0.45 s |
 
-Soit environ 73 000 entrées/s. Le résultat est mis en cache en binaire sous
-`%LOCALAPPDATA%\diskmap\` : les lancements suivants se chargent en une seconde
-au lieu de re-parcourir.
+About 73,000 entries/s. The result is cached in binary form under
+`%LOCALAPPDATA%\diskmap\`, so later launches load in about a second instead of
+walking the disk again.
 
-Contre-épreuve utile : `DirEntry::metadata()` était soupçonné d'ouvrir un handle
-par fichier. Mesuré sur `System32`, 2,15 ms contre 2,91 ms pour
-`FindFirstFileW` brut. L'hypothèse était fausse, l'API standard est conservée.
+One counter-test worth keeping: `DirEntry::metadata()` was suspected of opening a
+handle per file. Measured on `System32`, 2.15 ms against 2.91 ms for raw
+`FindFirstFileW`. The hypothesis was wrong, so the standard API stays.
 
-## Compiler et lancer
+## Build and run
 
 ```bat
 cargo build --release
 diskmap.bat
 ```
 
-Le binaire ouvre `http://127.0.0.1:8756/` automatiquement. Options :
-`--port 9000`, `--no-browser`.
+The binary opens `http://127.0.0.1:8756/` automatically. Options: `--port 9000`,
+`--no-browser`.
 
-`diskmap bench <LETTRE>` mesure le parcours d'un volume seul, sans serveur ni
-interface — utile pour vérifier les performances sur une autre machine plutôt
-que les supposer.
+`diskmap bench <LETTER>` times the walk of a single volume with no server and no
+interface — useful to check performance on another machine instead of assuming it.
 
-## Limites
+## Limitations
 
-- **Windows uniquement** : appels Win32 directs, chemins verbatim, lancement de
-  l'explorateur. Aucune abstraction n'a été prévue pour POSIX.
-- Sans élévation, certaines entrées restent inaccessibles (ruches du Registre,
-  répertoires système protégés) : 123 sur le `C:` de référence. Elles sont
-  comptées et affichées, pas masquées.
-- Les caches `*.bin` contiennent l'arborescence complète des volumes analysés.
-  Ils sont exclus par `.gitignore` et ne doivent jamais être versionnés.
+- **Windows only**: direct Win32 calls, verbatim paths, launching Explorer. No
+  POSIX abstraction was attempted.
+- Without elevation some entries stay inaccessible (registry hives, protected
+  system directories): 123 on the reference `C:`. They are counted and shown, not
+  hidden.
+- The `*.bin` caches contain the full tree of the volumes scanned. They are
+  excluded by `.gitignore` and must never be committed.
 
-## Licence
+## License
 
-MIT — voir `LICENSE`.
+MIT — see `LICENSE`.
