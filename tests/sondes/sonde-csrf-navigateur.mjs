@@ -57,10 +57,10 @@ function xorshift(ms) {
   return Number(s & 0xffff_ffffn);
 }
 
-const corpsPage = (id) => `<!doctype html><meta charset="utf-8"><title>page tierce</title>
+const corpsPage = (sel) => `<!doctype html><meta charset="utf-8"><title>page tierce</title>
 <script>
 const CIBLE = ${JSON.stringify(BASE)};
-const ID = ${id};
+const SEL = ${sel};
 const M = (1n << 64n) - 1n;
 function xorshift(ms){ let s=BigInt(ms); s=(s^((s<<13n)&M))&M; s=(s^(s>>7n))&M; s=(s^((s<<17n)&M))&M; return Number(s & 0xffffffffn); }
 window.__journal = [];
@@ -75,7 +75,7 @@ const envoyer = (corps) => fetch(CIBLE + '/api/delete', {
 (async () => {
   const t0 = Date.now();
   try {
-    const rep = await envoyer({ drive: VOL, items:[{id:ID, is_dir:false}], mode:'dry' });
+    const rep = await envoyer({ drive: VOL, items:[SEL], mode:'dry' });
     note('dry: status=' + rep.status + ' type=' + rep.type);
     note('lecture possible: true');
   } catch (e) {
@@ -102,9 +102,9 @@ const envoyer = (corps) => fetch(CIBLE + '/api/delete', {
 
 const serveur = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(corpsPage(serveur.idCourant));
+  res.end(corpsPage(serveur.selCourant));
 });
-serveur.idCourant = 0;
+serveur.selCourant = 0;
 // Écoute sur 0.0.0.0 pour couvrir l'IP privée du cas B autant que le loopback.
 await new Promise(r => serveur.listen(PORTE_PAGE, '0.0.0.0', r));
 
@@ -150,7 +150,7 @@ async function idVictime() {
   if (!dir) return null;
     const d2 = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=100`)).json();
   const f = d2.rows.find(r => r.name === 'victime.txt');
-  return f ? f.id : null;
+  return f ? f.sel : null;
 }
 
 const journal = () => fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean);
@@ -166,15 +166,15 @@ const CAS = [
 
 for (const cas of CAS) {
   console.log(`\n--- ${cas.nom} ---`);
-  const id = await idVictime();
-  verifier('la victime est dans l’instantané', id != null, `id=${id}`);
-  if (id == null) continue;
-  serveur.idCourant = id;
+  const sel = await idVictime();
+  verifier('la victime est dans l’instantané', sel != null, `sel=${sel}`);
+  if (sel == null) continue;
+  serveur.selCourant = sel;
 
   // Pour le cas C, la page doit exister sur le disque : l'origine « null » ne
   // peut pas être servie.
   if (cas.url === null) {
-    fs.writeFileSync(PAGE_LOCALE, corpsPage(id));
+    fs.writeFileSync(PAGE_LOCALE, corpsPage(sel));
     cas.url = 'file:///' + PAGE_LOCALE.replace(/\\/g, '/');
   }
 

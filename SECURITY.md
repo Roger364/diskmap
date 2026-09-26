@@ -240,22 +240,43 @@ pointent vers des fichiers qui, eux, appartiennent à un autre volume.
 **Correctif :** rejeter le cache si `root` ne vaut pas `format!("{letter}:\\")`, et écrire la
 lettre dans l'en-tête du cache.
 
-### R5 — Aucun avertissement quand l'application tourne élevée · **Faible**
+### R5 — Aucun avertissement quand l'application tourne élevée · **Faible** · *corrigé*
 
-`App.eleve` est connu et exposé dans `/api/state`, mais l'interface ne dit jamais que le
+`App.eleve` est connu et exposé dans `/api/state`, mais l'interface ne disait jamais que le
 niveau de privilège change ce qui est effaçable. Au-delà des sept noms de `blocked_reason`,
-tout devient supprimable. Un bandeau d'avertissement au lancement avec les droits
-d'administrateur serait
-cohérent avec le reste de l'interface, qui est franche sur ses limites.
+tout devient supprimable.
 
-### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant**
+**Correctif :** deux bandeaux, dans `ui/index.html`. Le premier, sous la pastille de la
+colonne de gauche, dit ce que l'élévation change — *les protections de Windows ne
+s'appliquent plus, tout le reste est effaçable, y compris ce que les droits du compte
+refuseraient*. Le second apparaît dans la modale de suppression, au moment de la décision :
+c'est le seul endroit où l'utilisateur regarde une liste de chemins qui vont disparaître, et
+un avertissement lu au lancement six minutes plus tôt n'y est plus.
 
-`journal` (`src/main.rs:1599`) écrit l'issue, la taille et le chemin **réellement traité**.
-Il ne conserve ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
-précisément ce qui a rendu l'incident du §2 impossible à qualifier. Pour un outil destructif, le
-journal doit permettre de prouver un écart : ajouter le lot (`token`) et, pour chaque
-élément, le chemin prévu — la comparaison planned/realized est alors vérifiable à la
-lecture, et pas seulement par relecture du code.
+### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
+
+`journal` (`src/main.rs:1599`) écrivait l'issue, la taille et le chemin **réellement traité**.
+Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
+précisément ce qui a rendu l'incident du §2 impossible à qualifier.
+
+**Correctif :** chaque ligne porte désormais le lot, la génération, le sélecteur reçu, le
+chemin **prévu** et le chemin **réalisé** :
+
+```
+1790449303852	corbeille	15	1	V:\_diskmap_sondes\filet\pave.txt
+  lot=1790449303752-855b7400610a6652	gen=9	sel=2147483677
+  prevu=V:\_diskmap_sondes\filet\pave.txt	motif=
+```
+
+Les cinq premiers champs ne changent pas : les ~4 800 lignes déjà écrites — dont les 168 de
+l'incident — restent lisibles avec le même parseur. Les refus sont désormais journalisés
+aussi (`issue=refuse`, avec le motif) : un journal qui n'écrit que les succès laisse le même
+vide que l'incident, où on a lu 168 suppressions sans pouvoir dire, pour aucune, ce que
+l'utilisateur avait sélectionné.
+
+Le prévu et le réalisé sont égaux par construction — `execute` ne résout plus rien. Ils sont
+deux colonnes **pour que cette égalité se vérifie à la lecture** : le jour où un chemin
+résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans relire le code.
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
@@ -264,13 +285,34 @@ dans `execute`. Des aperçus répétés sans confirmation font croître la map s
 jusqu'à 4 Mio d'identifiants, soit une centaine de milliers de chemins. Purger dans `dry`
 aussi règle le tir en une ligne.
 
-### R8 — `is_dir` est cru sans recoupement · **Faible**
+### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
-`resolve` (`src/main.rs:1128`) fait confiance au drapeau `is_dir` du client ; rien ne rattache
-un identifiant au type que l'index lui a assigné, et la garde `gen` est globale, pas par
-ligne. L'interface est correcte aujourd'hui (`selKey` distingue `d:` et `f:`), il faudrait
-donc une modification de l'interface pour aggraver le défaut — mais le serveur pourrait déduire
-le type de l'index et supprimer la classe entière de bugs.
+`resolve` faisait confiance au drapeau `is_dir` du client ; rien ne rattachait un
+identifiant au type que l'index lui avait assigné, et la garde `gen` est globale, pas par
+ligne. Or les deux espaces d'identifiants **se recouvrent** : le dossier 34 et le fichier 34
+coexistent sur n'importe quel volume. Un `is_dir` faux — ou inversé — désignait donc un
+*autre* chemin, un dossier à la place du fichier coché, avec la taille du dossier. La garde
+de génération ne le voyait pas : les deux identifiants étaient valides à la même génération.
+
+**Correctif : le type est dans l'identifiant.** Un sélecteur est un `u32` dont le bit haut
+dit le type (`scan::BIT_FICHIER`) ; `/api/tree` et `/api/search` le servent dans `Row.sel`,
+et `/api/delete` ne reçoit plus qu'une liste de sélecteurs. Un client qui se trompe de bit
+n'atteint plus aucun autre chemin que celui qu'il désigne : il n'atteint rien, et l'aperçu
+le déclare « identifiant irrésoluble ».
+
+Deux gains que le correctif apporte par construction :
+
+- **La taille ne peut plus mentir séparément du chemin.** `resolve` et `index_size` lisaient
+  tous deux `is_dir` dans deux fonctions distinctes ; une incohérence entre les deux ne se
+  serait vue nulle part. `Snapshot::entree` lit chemin, type, taille et compte dans le même
+  `if`, et renvoie un seul type (`Entree`).
+- **L'ancienne forme est refusée, pas tolérée.** `{id, is_dir}` ne se désérialise plus du
+  tout (`400`, « invalid type: map, expected u32 »). Une forme héritée qui continue de
+  fonctionner est une forme que l'on croit encore sûre ; ce serveur n'a qu'un client — son
+  interface embarquée — et il a été mis à jour dans le même changement.
+
+Coût assumé : l'espace des identifiants est borné à 2³¹ par volume, ce qui est hors de
+portée de tout disque réel.
 
 ### R9 — Noms Windows normalisables · **Négligeable**
 
@@ -307,10 +349,10 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
   (`tests/sondes/lancer.mjs:238`) : `rm -rf` y serait un bug, et le code le dit.
 
-État de la chaîne de qualité au 26/09 : `cargo test` 3/3, `cargo clippy --all-targets
--- -D warnings` propre, `cargo fmt --check` propre. Dépendances : `rayon`, `serde`,
-`serde_json` et leur transitive — `zmij` est le formateur de flottants de `serde_json`
-1.0.151, pas une dépendance inattendue.
+État de la chaîne de qualité au 26/09, après R1–R8 : `cargo test` 10/10, `cargo clippy
+--all-targets -- -D warnings` propre, `cargo fmt --check` propre. Dépendances : `rayon`,
+`serde`, `serde_json` et leur transitive — `zmij` est le formateur de flottants de
+`serde_json` 1.0.151, pas une dépendance inattendue.
 
 ---
 
@@ -318,26 +360,33 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 
 | # | Action | Fichiers | État |
 |---|---|---|---|
-| **0** | Supprimer `diskmap-CI.exe` (périmé, gitignoré) et ne lancer que `diskmap.bat` | — | à faire |
+| **0** | Supprimer `diskmap-CI.exe` (périmé, gitignoré) et ne lancer que `diskmap.bat` | — | **fait** |
 | **1** | Échapper le nom et le format de volume | `ui/index.html` | **fait** |
 | **2** | Liste d'aperçu complète + plafond serveur à 5 000 éléments | `ui/index.html`, `src/main.rs` | **fait** |
-| **3** | Job CI éphémère exécutant les sondes destructives | `.github/workflows/build.yml` | à faire |
+| **3** | Job CI éphémère exécutant les sondes destructives | `.github/workflows/build.yml` | **fait** |
 | **4** | Valider la lettre de volume dans le cache, avec test de non-régression | `src/scan.rs` | **fait** |
-| **5** | Journaliser le prévu et le réalisé, avec le lot | `src/main.rs` | à faire |
+| **5** | Journaliser le prévu et le réalisé, avec le lot | `src/main.rs` | **fait** |
 | **6** | Purger `pending` dans `dry` | `src/main.rs` | **fait** |
-| **7** | Dérive le type de l'index plutôt que du client | `src/main.rs` | à faire |
-| **8** | Bandeau d'avertissement en mode élevé | `ui/index.html` | à faire |
+| **7** | Dérive le type de l'index plutôt que du client | `src/scan.rs`, `src/main.rs` | **fait** |
+| **8** | Bandeau d'avertissement en mode élevé | `ui/index.html` | **fait** |
 | **9** | Filet global dans le harnais + sonde d'épreuve | `tests/sondes/filet.mjs`, `sonde-filet.mjs` | **fait** |
 | **10** | `racine()` refuse une racine posée sur un autre volume | `tests/sondes/config.mjs` | **fait** |
 | **11** | Aligner les noms de dossiers des cinq sondes sur `dossier()` | `tests/sondes/*.mjs` | **fait** |
 
-Vérification, sur un volume virtuel jetable `V:` monté pour l'occasion :
+Vérification, sur un volume virtuel jetable `V:` monté pour l'occasion, après R5/R6/R7 :
 
 ```
 11/11 sondes vertes, code de sortie 0
-231 suppressions, toutes sur V:
-deux exécutions consécutives identiques
+231 suppressions, toutes sur V: — 9 lots, 129 corbeille, 102 définitif
+0 écart entre le chemin prévu et le chemin réalisé, sur les 231 lignes
+deux exécutions consécutives : mêmes issues, mêmes tailles, mêmes chemins
+cargo test 10/10 · clippy --all-targets -D warnings propre · fmt --check propre
 ```
+
+Le contrôle du journal est fait **autour** de chaque exécution, pas seulement dedans : le
+diff avant/après est la seule preuve qu'aucun autre volume n'a été touché. C'est aussi ce
+qui permet de lire `prevu=` et de le comparer à la colonne 5 ligne à ligne — 231 fois, sans
+exception.
 
 La section 1 de `sonde-suppression-lot.mjs` rejoue exactement l'incident : la sonde
 supprime un fichier, en retire un autre, force une réanalyse, et vérifie que

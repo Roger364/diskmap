@@ -23,15 +23,22 @@
 
 const URL = process.argv[2] || 'http://127.0.0.1:8990/';
 const BASE = URL.replace(/\/$/, '');
-// Hors bornes pour tout volume : n_dirs de C: est ~271 000.
+// Sélecteur hors bornes pour tout volume : n_dirs de C: est ~271 000, et la
+// position 1 852 516 352 n'appartient pas non plus à `files`. Le bit de type
+// est mis pour que ce soit un sélecteur de FICHIER, le cas le plus strict.
 const INERTE = 4000000000;
 
 // La génération de l'instantané de C:, exigée par `dry` depuis le 26/09/2026.
 //
-// Les identifiants ci-dessous sont des POSITIONS dans cet instantané, et une
+// Les sélecteurs ci-dessous sont des POSITIONS dans cet instantané, et une
 // position ne vaut que dans l'instantané qui l'a produite : re-résolue contre
 // un index réanalysé, la position 16 de `p1.txt` désignait `p2.txt`. Le serveur
 // refuse donc un aperçu qui ne dit pas de quel index il parle.
+//
+// Ce sont des sélecteurs de DOSSIERS : un sélecteur de dossier, c'est son
+// numéro. Le type est dans le sélecteur (bit de type — voir
+// `scan::BIT_FICHIER`), et non dans un champ séparé que le client pourrait
+// rendre faux sans que l'aperçu le signale.
 //
 // Cette sonde ne supprime rien, donc ne déclenche aucune réanalyse : la
 // génération reste stable d'un bout à l'autre.
@@ -68,14 +75,14 @@ const effacer = (drive, items, mode, extra = {}) =>
 
 // Jeton dont la liste ne résout rien : l'exécution ne peut rien toucher.
 async function jetonInerte() {
-  const r = await effacer('C', [{ id: INERTE, is_dir: true }], 'dry');
+  const r = await effacer('C', [INERTE], 'dry');
   return JSON.parse(r.texte).token;
 }
 
 // ---------------------------------------------------------------- 1. refus
 console.log('--- 1. chemins que l’effacement doit refuser (vérifiés en simulation) ---');
 
-// Identifiants relevés par /api/tree?drive=C&id=0 sur cette machine.
+// Sélecteurs de dossiers relevés par /api/tree?drive=C&id=0 sur cette machine.
 const SYSTEMES = [
   ['racine du volume C:', 0, 'racine du volume'],
   ['C:\\Windows', 34, 'répertoire système protégé'],
@@ -84,8 +91,8 @@ const SYSTEMES = [
   ['C:\\Users', 32, 'profil utilisateur protégé'],
 ];
 
-for (const [nom, id, attendu] of SYSTEMES) {
-  const r = await effacer('C', [{ id, is_dir: true }], 'dry');
+for (const [nom, sel, attendu] of SYSTEMES) {
+  const r = await effacer('C', [sel], 'dry');
   let d = null;
   try { d = JSON.parse(r.texte); } catch { /* laissé null */ }
   const it = d && d.items && d.items[0];
@@ -144,7 +151,7 @@ console.log('\n--- 3. la liste vient du jeton, jamais de la requête ---');
 // faisait foi, c'est Windows qui serait visé — et ce test le dirait sans jamais
 // l'avoir tenté.
 const j2 = await jetonInerte();
-r = await effacer('C', [{ id: 34, is_dir: true }], 'recycle', { token: j2 });
+r = await effacer('C', [34], 'recycle', { token: j2 });
 if (r.status === 200) {
   const d = JSON.parse(r.texte);
   verifier('les items de la requête sont ignorés',
@@ -209,7 +216,7 @@ console.log('\n--- 5. une page web tierce peut-elle appeler la route ? ---');
 const r1 = await fetch(BASE + '/api/delete', {
   method: 'POST',
   headers: { 'Content-Type': 'text/plain', Origin: 'https://exemple.test' },
-  body: JSON.stringify({ drive: 'C', items: [{ id: INERTE, is_dir: true }], mode: 'dry' }),
+  body: JSON.stringify({ drive: 'C', items: [INERTE], mode: 'dry' }),
 });
 verifier('un POST « text/plain » d’une autre origine est REFUSÉ',
   r1.status === 403,
@@ -229,7 +236,7 @@ verifier('aucun préflight n’est servi (OPTIONS non routé)', r2.status === 40
 const r3 = await fetch(BASE + '/api/delete', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', Origin: 'https://exemple.test', 'X-Diskmap': '1' },
-  body: JSON.stringify({ drive: 'C', items: [{ id: INERTE, is_dir: true }], mode: 'dry', gen: GEN_C }),
+  body: JSON.stringify({ drive: 'C', items: [INERTE], mode: 'dry', gen: GEN_C }),
 });
 verifier('avec l’en-tête, la même origine étrangère passe — le juge est bien l’en-tête',
   r3.status === 200,

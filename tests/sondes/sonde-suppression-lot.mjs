@@ -85,9 +85,9 @@ function monter(dossier, n) {
   for (let i = 1; i <= n; i++) fs.writeFileSync(`${dossier}/${nom(i)}`, `lot ${i}\n`);
 }
 
-// Renvoie les identifiants ET la génération de l'instantané qui les porte.
-// Les séparer était le moyen le plus sûr de les désaccorder : un identifiant
-// est une position, et `dry` refuse désormais une liste qui ne dit pas de quel
+// Renvoie les sélecteurs ET la génération de l'instantané qui les porte.
+// Les séparer était le moyen le plus sûr de les désaccorder : un sélecteur est
+// une position, et `dry` refuse désormais une liste qui ne dit pas de quel
 // instantané elle vient (mesuré le 26/09/2026 — voir `Snapshot::gen`).
 async function idsDuDossier(nomDossier) {
   const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${nomDossier}`)).json())
@@ -95,7 +95,7 @@ async function idsDuDossier(nomDossier) {
   if (!dir) return null;
   const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=1000`)).json();
   const m = new Map();
-  for (const r of t.rows) if (/^f\d+\.txt$/.test(r.name)) m.set(r.name, r.id);
+  for (const r of t.rows) if (/^f\d+\.txt$/.test(r.name)) m.set(r.name, r.sel);
   return { ids: m, gen: t.gen };
 }
 
@@ -115,7 +115,7 @@ if (!vA || !vB) process.exit(1);
 console.log('\n--- 1. le fichier supprimé est-il celui qui a été annoncé ? ---');
 const CIBLE = 'f030.txt';
 const dryB = JSON.parse((await post('/api/delete', {
-  drive: VOL, items: [{ id: vB.ids.get(CIBLE), is_dir: false }], mode: 'dry', gen: vB.gen,
+  drive: VOL, items: [vB.ids.get(CIBLE)], mode: 'dry', gen: vB.gen,
 })).texte);
 const annonce = dryB.items[0].path;
 console.log(`      l’aperçu annonce : ${annonce}`);
@@ -180,14 +180,14 @@ async function supprimer(noms, mode) {
       continue;
     }
     // Un nom absent de la liste signifie que l'instantané lu est partiel : la
-    // réanalyse Suit encore. Envoyer `id: undefined` ne donnerait qu'un « corps
+    // réanalyse Suit encore. Envoyer `sel: undefined` ne donnerait qu'un « corps
     // illisible » — un échec de la sonde qui n'aurait rien à voir avec ce qu'elle
     // mesure. On attend, comme on attend après un 409.
     if (noms.some(n => v.ids.get(n) === undefined)) {
       await repos();
       continue;
     }
-    const items = noms.map(n => ({ id: v.ids.get(n), is_dir: false }));
+    const items = noms.map(n => v.ids.get(n));
     dryRep = await post('/api/delete', { drive: VOL, items, mode: 'dry', gen: v.gen });
     if (dryRep.status === 200) {
       try { dry = JSON.parse(dryRep.texte); } catch { dry = null; }

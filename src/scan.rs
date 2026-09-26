@@ -206,6 +206,12 @@ struct ScanStats {
 #[derive(serde::Serialize, Clone)]
 pub struct Row {
     pub id: u32,
+    /// Sélecteur à renvoyer pour supprimer cette ligne (voir `sel`).
+    ///
+    /// C'est lui, et non `{id, is_dir}`, que l'interface renvoie à
+    /// `/api/delete` : le type voyage DANS l'identifiant, donc le serveur n'a
+    /// plus de type déclaré à croire.
+    pub sel: u32,
     pub name: String,
     pub size: u64,
     pub count: u64,
@@ -213,6 +219,50 @@ pub struct Row {
     pub is_dir: bool,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub path: String,
+}
+
+/// Bit de type d'un sélecteur : 1 = fichier, 0 = dossier.
+///
+/// Les identifiants vivent dans DEUX espaces qui se recouvrent : le dossier 34
+/// et le fichier 34 coexistent, et le client choisissait librement dans lequel
+/// placer le sien. Rien ne rattachait donc le numéro reçu au type que l'index
+/// lui avait assigné — un `is_dir` faux, ou inversé, visait un AUTRE chemin, un
+/// dossier à la place du fichier coché, avec la taille du dossier. La garde de
+/// génération ne le voyait pas : elle est globale, et les deux identifiants
+/// étaient parfaitement valides à la même génération.
+///
+/// Le sélecteur supprime le choix : le bit DIT le type, le reste dit la
+/// position. Un client qui se trompe de bit ne peut plus atteindre un autre
+/// chemin que celui qu'il désigne — il atteint un chemin qui n'existe pas, et la
+/// simulation le déclare « identifiant irrésoluble » au lieu de viser à côté.
+///
+/// Borne : l'espace des identifiants est donc limité à 2³¹ entrées par volume.
+/// C'est sans commune mesure avec le disque (un dossier occupe au minimum une
+/// entrée de répertoire, soit 2¹⁶ entrées pour un To) ; `Snapshot::entree`
+/// refuse par ailleurs tout identifiant qui porterait le bit sans être dans les
+/// bornes du type annoncé.
+pub const BIT_FICHIER: u32 = 0x8000_0000;
+
+/// Sélecteur correspondant à une position et à un type.
+pub fn sel(id: u32, is_dir: bool) -> u32 {
+    if is_dir {
+        id
+    } else {
+        id | BIT_FICHIER
+    }
+}
+
+/// Ce qu'un sélecteur désigne dans l'index.
+///
+/// Un seul type, résolu en un seul endroit : la fonction qui résout le chemin et
+/// celle qui lit la taille SHARE le même `if`. Tant qu'elles lisaient toutes
+/// deux `is_dir` séparément, une incohérence entre les deux ne se voyait nulle
+/// part — et c'est la taille affichée qui aurait été fausse, pas le chemin.
+pub struct Entree {
+    pub path: PathBuf,
+    pub is_dir: bool,
+    pub size: u64,
+    pub count: u64,
 }
 
 fn now_ms() -> i64 {
@@ -380,6 +430,39 @@ impl Snapshot {
         p
     }
 
+    /// Résout un sélecteur : chemin, type, taille et nombre, ou `None` si
+    /// l'index ne connaît pas cet élément.
+    ///
+    /// Le type vient du sélecteur, jamais d'un champ séparé : c'est la seule
+    /// façon de ne pas avoir deux réponses à la question « qu'est-ce que cet
+    /// identifiant ? ». `None` couvre l'identifiant hors bornes ET le
+    /// débordement du bit de type — deux cas qu'un client peut fabriquer, et que
+    /// l'appelant doit donc traiter comme un refus, pas comme un défaut de
+    /// résolution.
+    pub fn entree(&self, sel: u32) -> Option<Entree> {
+        let fichier = sel & BIT_FICHIER != 0;
+        let i = (sel & !BIT_FICHIER) as usize;
+        if fichier {
+            let f = self.files.get(i)?;
+            Some(Entree {
+                path: self.file_path(i as u32),
+                is_dir: false,
+                size: f.size,
+                count: 1,
+            })
+        } else {
+            if i >= self.dirs.len() {
+                return None;
+            }
+            Some(Entree {
+                path: self.dir_path(i as u32),
+                is_dir: true,
+                size: self.size[i],
+                count: self.count[i],
+            })
+        }
+    }
+
     /// Recherche insensible à la casse sur les noms (dossiers puis fichiers).
     pub fn search(&self, needle_lower: &str, limit: usize) -> Vec<Row> {
         let needle = needle_lower.as_bytes();
@@ -392,6 +475,7 @@ impl Snapshot {
                 let i = d.id as usize;
                 out.push(Row {
                     id: d.id,
+                    sel: sel(d.id, true),
                     name: d.name.to_string(),
                     size: self.size[i],
                     count: self.count[i],
@@ -409,6 +493,7 @@ impl Snapshot {
                 if contains_ci(&f.name, needle) {
                     out.push(Row {
                         id: idx as u32,
+                        sel: sel(idx as u32, false),
                         name: f.name.to_string(),
                         size: f.size,
                         count: 1,
@@ -896,6 +981,95 @@ mod tests {
         assert_eq!(snapshot.count, vec![1, 1]);
         assert_eq!(snapshot.mtime, vec![30, 30]);
         assert_eq!(snapshot.dir_path(1), PathBuf::from("X:\\archive"));
+    }
+
+    /// Un index de test : deux dossiers, deux fichiers, et — c'est le but —
+    /// des identifiants qui se recouvrent. `dossier 1` et `fichier 1` existent
+    /// tous les deux, exactement comme sur n'importe quel volume réel.
+    fn index_de_test() -> Snapshot {
+        Snapshot::new(
+            "X:\\".into(),
+            vec![
+                DirRec {
+                    id: 0,
+                    parent: 0,
+                    name: "X:\\".into(),
+                    own_mtime: 10,
+                },
+                DirRec {
+                    id: 1,
+                    parent: 0,
+                    name: "dossier".into(),
+                    own_mtime: 20,
+                },
+            ],
+            vec![
+                FileRec {
+                    parent: 1,
+                    name: "a.txt".into(),
+                    size: 11,
+                    mtime: 30,
+                },
+                FileRec {
+                    parent: 1,
+                    name: "b.txt".into(),
+                    size: 22,
+                    mtime: 31,
+                },
+            ],
+            ScanStats {
+                elapsed_ms: 0,
+                unreadable: Vec::new(),
+                unreadable_total: 0,
+                unreadable_droits: 0,
+                skipped: 0,
+            },
+        )
+    }
+
+    #[test]
+    fn le_selecteur_designe_le_type_que_l_index_lui_attribue() {
+        // Le défaut que le sélecteur supprime : « dossier 1 » et « fichier 1 »
+        // sont tous deux valides, et rien ne disait lequel des deux le client
+        // demandait. Un `is_dir` faux visait l'autre chemin, en silence.
+        let s = index_de_test();
+        let d = s.entree(sel(1, true)).expect("dossier 1");
+        let f = s.entree(sel(1, false)).expect("fichier 1");
+        assert_eq!(d.path, PathBuf::from("X:\\dossier"));
+        assert!(d.is_dir);
+        assert_ne!(f.path, d.path, "les deux doivent être distincts");
+        assert!(!f.is_dir);
+        assert!(f.path.is_file() || f.path.extension().is_some());
+    }
+
+    #[test]
+    fn la_taille_annoncee_vient_du_meme_element_que_le_chemin() {
+        // La fonction qui résout le chemin et celle qui lit la taille ne
+        // peuvent plus diverger : c'est le même `if`, dans le même type. On ne
+        // suppose pas l'ordre des fichiers — on vérifie que la taille annoncée
+        // est celle de l'entrée dont on vient de résoudre le chemin.
+        let s = index_de_test();
+        let d = s.entree(sel(1, true)).unwrap();
+        assert_eq!((d.size, d.count), (33, 2), "le dossier vaut ses 2 fichiers");
+        let f = s.entree(sel(1, false)).unwrap();
+        let attendu = s.files[1].size;
+        assert_eq!(f.size, attendu);
+        assert_eq!(f.count, 1);
+        assert_ne!(
+            f.size, d.size,
+            "fichier et dossier ne valent pas la même chose"
+        );
+    }
+
+    #[test]
+    fn un_selecteur_hors_bornes_ou_deporte_est_refuse() {
+        let s = index_de_test();
+        assert!(s.entree(sel(2, true)).is_none(), "dossier hors bornes");
+        assert!(s.entree(sel(9, false)).is_none(), "fichier hors bornes");
+        // Un identifiant qui PORTE le bit de fichier sans être dans les bornes
+        // des fichiers ne doit pas retomber sur le même numéro côté dossiers :
+        // c'est le contournement obvious d'un sélecteur typé.
+        assert!(s.entree(sel(1, false) + 4).is_none());
     }
 
     #[test]

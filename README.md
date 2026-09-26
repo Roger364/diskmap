@@ -63,15 +63,26 @@ Defaults and guards:
   into a junction or symbolic link after the preview is not deleted.
 - The preview re-checks that each path still exists, and warns above 20 GB.
 - Every deletion is appended to `%LOCALAPPDATA%\diskmap\suppressions.log`
-  (timestamp, **outcome**, size, path). The outcome is one of `corbeille`,
-  `corbeille-refusee` or `definitif` — it records what took place, not what was
-  requested.
+  (timestamp, **outcome**, size, path, then `lot=`, `gen=`, `sel=`, `prevu=`,
+  `motif=`). The outcome is one of `corbeille`, `corbeille-refusee`,
+  `definitif` or `refuse` — it records what took place, not what was requested,
+  and refusals are logged too. `prevu` is the path the preview showed and the
+  fifth column the one actually processed: they are equal by construction, and
+  they are two columns so that this equality is checked by reading the log
+  rather than by re-reading the code. The `lot` groups every line of one
+  execution. The first five fields are unchanged, so older lines stay readable.
 - Identifiers are **positions in a snapshot**, and a position only means
   anything in the snapshot that produced it. Every snapshot therefore carries a
   generation number, served with the rows; a dry run that quotes a stale
   generation is refused with `409` instead of being resolved against the
   current index. The paths themselves are then frozen by the preview, and the
   execution deletes exactly those — it resolves nothing.
+- The type of a row is carried **inside** its identifier (the high bit, see
+  `Row.sel` in `src/scan.rs`), never as a separate field the client could get
+  wrong. Directory and file positions overlap on any volume — folder 34 and
+  file 34 coexist — so a separate `is_dir` let a wrong flag designate a
+  *different* path, with that other path's size. A mistyped selector now
+  designates nothing at all, and the preview says so.
 - A successful deletion triggers a re-scan of the volume, so totals do not keep
   showing entries that no longer exist.
 
@@ -158,10 +169,49 @@ interface — useful to check performance on another machine instead of assuming
 
 ## Tests
 
-The default CI runs only non-destructive probes. The probes that create or
-delete test files must be run manually, on a dedicated disposable volume, after
-setting `DISKMAP_SONDE_VOLUME` and `DISKMAP_SONDE_RACINE`. They must never be
-pointed at a working volume.
+```bat
+node tests\sondes\lancer.mjs --liste      the probe table, runs nothing
+node tests\sondes\lancer.mjs --volume V   everything, on a disposable volume
+```
+
+The probes that create and delete test files may only run on a **disposable
+volume**. Not a disposable folder: on 26/09/2026 a probe ran on the working
+volume `G:` and destroyed 65 real files permanently, sending 68 more to the
+Recycle Bin, scattered across the whole disk. The paths it aimed at were
+resolved against a rescanned index, so they designated other files than its own
+— see `SECURITY.md` and §3.6 of that report.
+
+`tests\sondes\creer-volume-test.ps1` creates a throwaway VHD for this. It needs
+administrator rights, which is the point: mounting a volume is already a
+privilege.
+
+```powershell
+# elevated, once
+.\tests\sondes\creer-volume-test.ps1
+
+set DISKMAP_SONDE_VOLUME=V
+set DISKMAP_SONDE_RACINE=V:\_diskmap_sondes
+node tests\sondes\lancer.mjs --volume V
+
+# when done
+.\tests\sondes\creer-volume-test.ps1 -Detacher
+```
+
+Two guards stand between a probe and the disk, and the second is the one that
+was missing:
+
+- the application freezes the paths a preview listed, and refuses a list whose
+  snapshot generation has moved on;
+- **the probes never speak to the server directly.** `lancer.mjs` interposes
+  `tests\sondes\filet.mjs`, which forwards a deletion only if the preview it
+  belongs to named nothing outside the working root. A probe run on its own
+  against a server bypasses that — which is why `sonde-filet.mjs` checks the
+  guard is present before it acts, and why the run is reported red if any probe
+  other than `filet` provoked a refusal.
+
+The default CI job still runs only the non-destructive probes, because it may
+run on a self-hosted machine where "disposable volume" is not a guarantee. A
+second job, on an ephemeral `windows-latest` runner, runs the lot.
 
 ## Limitations
 

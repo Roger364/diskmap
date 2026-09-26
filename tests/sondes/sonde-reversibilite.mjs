@@ -90,19 +90,21 @@ await attendreParcours();
 const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json())
   .rows.find(r => r.name === NOM);
 const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=100`)).json();
-const id = t.rows.find(r => r.name === 'cible.txt')?.id ?? null;
-// La génération accompagne toujours l'identifiant : un identifiant est une
+// `sel`, pas `id` : le sélecteur porte le type (bit de type — voir
+// `scan::BIT_FICHIER`), et c'est lui que l'interface renvoie.
+const sel = t.rows.find(r => r.name === 'cible.txt')?.sel ?? null;
+// La génération accompagne toujours le sélecteur : un sélecteur est une
 // position, et `dry` refuse désormais une liste qui ne dit pas de quel
 // instantané elle vient (mesuré le 26/09/2026 — voir `Snapshot::gen`).
 const gen = t.gen;
-verifier('la cible est dans l’instantané', id != null, `id=${id}`);
-if (id == null) process.exit(1);
+verifier('la cible est dans l’instantané', sel != null, `sel=${sel}`);
+if (sel == null) process.exit(1);
 
 // -------------------------------------------------- l'aperçu, puis la corbeille
 console.log('\n--- suppression demandée en mode « corbeille » ---');
 const lignesAvant = fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean).length;
 const dry = JSON.parse((await post('/api/delete', {
-  drive: VOL, items: [{ id, is_dir: false }], mode: 'dry', gen,
+  drive: VOL, items: [sel], mode: 'dry', gen,
 })).texte);
 verifier('l’aperçu se propose de l’effacer', dry.deletable === 1, JSON.stringify(dry.items));
 const r = await post('/api/delete', { drive: VOL, mode: 'recycle', token: dry.token });
@@ -142,7 +144,9 @@ if (!enCorbeille) {
     /DÉTRUIT/.test(JSON.stringify(d.results)), JSON.stringify(d.results));
 }
 
-// Le journal : il doit dire ce qui a EU LIEU, pas ce qui a été demandé.
+// Le journal : il doit dire ce qui a EU LIEU, pas ce qui a été demandé — et il
+// doit rattacher cette suppression à son lot et à son chemin prévu, ce que le
+// format de 2026 ne faisait pas (R6).
 const lignesApres = fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean);
 const nouvelles = lignesApres.slice(lignesAvant).filter(l => l.includes(NOM));
 console.log(`      journal : ${JSON.stringify(nouvelles)}`);
@@ -150,6 +154,9 @@ const motAttendu = enCorbeille ? 'corbeille' : 'corbeille-refusee';
 verifier('le journal enregistre l’issue réelle, pas le mode demandé',
   nouvelles.length === 1 && nouvelles[0].split('\t')[1] === motAttendu,
   `attendu « ${motAttendu} », lu ${JSON.stringify(nouvelles)}`);
+verifier('la ligne nomme le lot et le chemin prévu',
+  /lot=\S+/.test(nouvelles[0] || '') && /prevu=\S/.test(nouvelles[0] || ''),
+  JSON.stringify(nouvelles));
 
 // ------------------------------------------------------------- nettoyage
 //

@@ -98,7 +98,7 @@ if (!ligne) {
 // --- 2. l'aperçu est honnête, et le filet voit le débordement --------------
 console.log('\n--- 2. un aperçu hors racine est-il signalé, puis neutralisé ? ---');
 const dry = JSON.parse((await post('/api/delete', {
-  drive: VOL, items: [{ id: ligne.id, is_dir: false }], mode: 'dry', gen: t.gen,
+  drive: VOL, items: [ligne.sel], mode: 'dry', gen: t.gen,
 })).texte);
 
 verifier('l’aperçu annonce bien le fichier hors racine',
@@ -144,7 +144,7 @@ if (!pave) {
   console.log('PAS PU EPROUVER : le pavé n’est pas dans l’instantané.');
 } else {
   const d2r = JSON.parse((await post('/api/delete', {
-    drive: VOL, items: [{ id: pave.id, is_dir: false }], mode: 'dry', gen: t2.gen,
+    drive: VOL, items: [pave.sel], mode: 'dry', gen: t2.gen,
   })).texte);
   const e2 = await post('/api/delete', { drive: VOL, mode: 'recycle', token: d2r.token, confirm: 'EFFACER' });
   verifier('le filet laisse passer ce qui est sous la racine', e2.status === 200, `HTTP ${e2.status} — ${e2.texte.slice(0, 120)}`);

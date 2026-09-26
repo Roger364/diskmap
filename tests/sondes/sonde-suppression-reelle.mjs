@@ -146,7 +146,9 @@ function idDe(nom) {
     .then(r => r.json())
     .then(d => {
       const f = d.rows.find(r => r.name === nom);
-      return { id: f ? f.id : null, gen: d.gen };
+      // `sel`, pas `id` : c'est le sélecteur que l'interface renvoie, et lui
+      // seul porte le type (bit de type — voir `scan::BIT_FICHIER`).
+      return { id: f ? f.sel : null, gen: d.gen };
     });
 }
 
@@ -196,11 +198,11 @@ const vuA = await idDe('a.txt');
 const vuB = await idDe('b.txt');
 const idA = vuA.id;
 verifier('les deux fichiers sont dans l’instantané', idA !== null && vuB.id !== null,
-  `idA=${idA}, idB=${vuB.id}`);
+  `selA=${idA}, selB=${vuB.id}`);
 
 // ------------------------------------------------- 1. l'aperçu dit la vérité
 console.log('\n--- 1. l’aperçu montre ce qui sera supprimé ---');
-let r = await effacer(VOL, [{ id: idA, is_dir: false }], 'dry', { gen: vuA.gen });
+let r = await effacer(VOL, [idA], 'dry', { gen: vuA.gen });
 let d = JSON.parse(r.texte);
 verifier('l’aperçu annonce un seul élément', d.items.length === 1, `${d.items.length} élément(s)`);
 verifier('l’aperçu donne le chemin réel du fichier',
@@ -253,7 +255,7 @@ verifier('une réanalyse est déclenchée', d.rescan === true, `rescan=${d.resca
 await attendreFinParcours();
 const vuB2 = await idDe('b.txt');
 const idB2 = vuB2.id;
-verifier('b.txt est toujours indexé après la réanalyse', idB2 !== null, `id=${idB2}`);
+verifier('b.txt est toujours indexé après la réanalyse', idB2 !== null, `sel=${idB2}`);
 
 // ------------------------------- 4 bis. une liste périmée est REFUSÉE
 //
@@ -263,7 +265,7 @@ verifier('b.txt est toujours indexé après la réanalyse', idB2 !== null, `id=$
 // `p2.txt`, `blocked=false`, et l'aperçu proposait de supprimer ce que personne
 // n'avait coché. Le serveur doit refuser, pas viser à côté.
 console.log('\n--- 4 bis. une liste lue avant la réanalyse est refusée ---');
-r = await effacer(VOL, [{ id: idB2, is_dir: false }], 'dry', { gen: vuA.gen });
+r = await effacer(VOL, [idB2], 'dry', { gen: vuA.gen });
 verifier('un aperçu sur une génération périmée est REFUSÉ',
   r.status === 409,
   `HTTP ${r.status} — un 200 signifierait qu'une position périmée est re-résolue`);
@@ -272,7 +274,7 @@ verifier('b.txt est intact après le refus', fs.existsSync(B), 'le fichier a dis
 
 // --------------------------------------- 5. le définitif, avec le mot
 console.log('\n--- 5. suppression définitive ---');
-r = await effacer(VOL, [{ id: idB2, is_dir: false }], 'dry', { gen: vuB2.gen });
+r = await effacer(VOL, [idB2], 'dry', { gen: vuB2.gen });
 const jetonB = JSON.parse(r.texte).token;
 r = await effacer(VOL, [], 'permanent', { token: jetonB, confirm: 'EFFACER' });
 d = JSON.parse(r.texte);
@@ -299,11 +301,47 @@ verifier('le journal a gagné deux lignes', lignesApres.length === lignesAvant +
 const nouvelles = lignesApres.slice(lignesAvant);
 const tA = Buffer.byteLength(CONTENU_A), tB = Buffer.byteLength(CONTENU_B);
 verifier('la ligne de corbeille est datée, nommée et mesurée',
-  nouvelles.some(l => new RegExp(`^\\d{13}\\tcorbeille\\t${tA}\\t1\\t.*a\\.txt$`).test(l)),
+  nouvelles.some(l => new RegExp(`^\\d{13}\\tcorbeille\\t${tA}\\t1\\t.*a\\.txt\t`).test(l)),
   JSON.stringify(nouvelles));
 verifier('la ligne définitive est datée, nommée et mesurée',
-  nouvelles.some(l => new RegExp(`^\\d{13}\\tdefinitif\\t${tB}\\t1\\t.*b\\.txt$`).test(l)),
+  nouvelles.some(l => new RegExp(`^\\d{13}\\tdefinitif\\t${tB}\\t1\\t.*b\\.txt\t`).test(l)),
   JSON.stringify(nouvelles));
+
+// Ce que R6 corrige : le journal disait l'issue et le chemin traité, rien qui
+// rattache cette suppression à une demande. Le 26/09/2026, on a lu 168 lignes
+// de ce fichier sans pouvoir dire, pour aucune d'elles, ce que l'utilisateur
+// avait sélectionné.
+//
+// Chaque ligne nomme donc le lot, la génération, le sélecteur reçu, et le chemin
+// PRÉVU à l'aperçu. Le prévu et le réalisé sont égaux par construction ; ils
+// sont deux colonnes pour que cette égalité se VÉRIFIE à la lecture, et qu'un
+// jour où un chemin résolu à l'exécution réapparaîtrait, l'écart soit lisible
+// sans avoir à relire le code.
+//
+// Ici les deux suppressions sont deux EXÉCUTIONS distinctes — a.txt recyclée à
+// l'étape 3, b.txt en définitif à l'étape 5 — donc deux lots distincts, et c'est
+// attendu. Le regroupement des éléments d'un même lot se vérifie dans
+// `sonde-suppression-lot.mjs`, qui supprime vraiment par lots.
+const lots = nouvelles.map(l => (l.split('\t').find(c => c.startsWith('lot=')) || ''));
+verifier('chaque ligne nomme un lot', lots.length === 2 && lots.every(l => l.length > 'lot='.length),
+  JSON.stringify(lots));
+verifier('deux exécutions distinctes ont deux lots distincts',
+  lots[0] !== lots[1],
+  JSON.stringify(lots));
+verifier('chaque ligne nomme le sélecteur reçu et la génération',
+  nouvelles.every(l => /sel=\d+/.test(l) && /gen=\d+/.test(l)),
+  JSON.stringify(nouvelles));
+verifier('le prévu et le réalisé coïncident, chemin par chemin',
+  nouvelles.every(l => {
+    const champs = l.split('\t');
+    const prevu = (champs.find(c => c.startsWith('prevu=')) || '').slice('prevu='.length);
+    return prevu !== '' && prevu === champs[4];
+  }),
+  JSON.stringify(nouvelles));
+verifier('le chemin prévu est bien celui que l’aperçu avait montré',
+  nouvelles.some(l => l.includes(`prevu=${A.replace(/\//g, '\\')}`)) &&
+  nouvelles.some(l => l.includes(`prevu=${B.replace(/\//g, '\\')}`)),
+  `A=${A}, B=${B} — ${JSON.stringify(nouvelles)}`);
 
 // ------------------------------------------------------- 7. nettoyage
 //

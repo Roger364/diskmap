@@ -40,12 +40,14 @@ async function repos() {
   }
 }
 
-// Le nom ET la génération : c'est l'ensemble que le client détient.
+// Le nom ET la génération : c'est l'ensemble que le client détient. On retient
+// le `sel` et non le `id` brut : c'est lui que l'interface renvoie, et lui seul
+// porte le type (voir `scan::BIT_FICHIER`).
 async function listing() {
   const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json())
     .rows.find(r => r.name === NOM);
   const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=200`)).json();
-  return { ids: new Map(t.rows.filter(r => r.name.endsWith('.txt')).map(r => [r.name, r.id])), gen: t.gen };
+  return { ids: new Map(t.rows.filter(r => r.name.endsWith('.txt')).map(r => [r.name, r.sel])), gen: t.gen };
 }
 
 fs.mkdirSync(DOSSIER, { recursive: true });
@@ -57,7 +59,7 @@ await repos();
 // --- Instantané A : le client lit ici les identifiants ET la génération ------
 const A = await listing();
 const idP1 = A.ids.get('p1.txt');
-console.log(`instantané A (génération ${A.gen}) : p1.txt porte l'identifiant ${idP1}`);
+console.log(`instantané A (génération ${A.gen}) : p1.txt porte le sélecteur ${idP1}`);
 if (typeof A.gen !== 'number') { console.log('ROUGE la réponse /api/tree ne porte aucune génération'); rouges.push('génération absente'); }
 
 // --- Le disque change, et une ré-analyse rebase les positions ---------------
@@ -68,11 +70,11 @@ await repos();
 
 const B = await listing();
 const nomMaintenant = [...B.ids.entries()].find(([, id]) => id === idP1)?.[0];
-console.log(`instantané B (génération ${B.gen}) : l'identifiant ${idP1} désigne maintenant ${nomMaintenant ?? '(rien)'}`);
+console.log(`instantané B (génération ${B.gen}) : le sélecteur ${idP1} désigne maintenant ${nomMaintenant ?? '(rien)'}`);
 console.log('');
 
 // --- 1. Aperçu demandé avec la génération PÉRIMÉE : doit être refusé ---------
-const r1 = await post('/api/delete', { drive: VOL, items: [{ id: idP1, is_dir: false }], mode: 'dry', gen: A.gen });
+const r1 = await post('/api/delete', { drive: VOL, items: [idP1], mode: 'dry', gen: A.gen });
 console.log(`1. aperçu avec la génération ${A.gen} (périmée) : HTTP ${r1.status}`);
 console.log(`   ${r1.texte.slice(0, 150)}`);
 if (r1.status === 409) {
@@ -83,7 +85,7 @@ if (r1.status === 409) {
 }
 
 // --- 2. Sans génération du tout : doit être refusé aussi --------------------
-const r2 = await post('/api/delete', { drive: VOL, items: [{ id: idP1, is_dir: false }], mode: 'dry' });
+const r2 = await post('/api/delete', { drive: VOL, items: [idP1], mode: 'dry' });
 console.log('');
 console.log(`2. aperçu sans génération : HTTP ${r2.status}`);
 console.log(`   ${r2.texte.slice(0, 120)}`);
@@ -96,26 +98,33 @@ if (r2.status === 400) {
 
 // --- 3. Génération CORRECTE : l'aperçu doit viser le bon fichier ------------
 const idP2 = B.ids.get('p2.txt');
-const r3 = await post('/api/delete', { drive: VOL, items: [{ id: idP2, is_dir: false }], mode: 'dry', gen: B.gen });
+const r3 = await post('/api/delete', { drive: VOL, items: [idP2], mode: 'dry', gen: B.gen });
 const a3 = JSON.parse(r3.texte);
 const montre = (a3.items || []).map(i => i.path.replace(/\\/g, '/'));
 console.log('');
-console.log(`3. aperçu avec la génération ${B.gen} pour l'identifiant de p2.txt : HTTP ${r3.status}`);
+console.log(`3. aperçu avec la génération ${B.gen} pour le sélecteur de p2.txt : HTTP ${r3.status}`);
 for (const p of montre) console.log(`   ${p}`);
 if (montre.some(p => p.endsWith('/p2.txt'))) {
-  console.log('ok    l’aperçu vise bien le fichier dont l’identifiant a été lu');
+  console.log('ok    l’aperçu vise bien le fichier dont le sélecteur a été lu');
 } else {
   console.log('ROUGE l’aperçu ne vise pas p2.txt');
   rouges.push('aperçu hors cible');
 }
 
-// --- 4. Identifiant hors bornes : doit être SIGNALÉ, pas oublié -------------
+// --- 4. Sélecteur hors bornes : doit être SIGNALÉ, pas oublié --------------
 const nFiles = (await (await fetch(`${BASE}/api/state`)).json()).drives.find(d => d.letter === VOL)?.n_files ?? 0;
-const trop = nFiles + 500_000;
-const r4 = await post('/api/delete', { drive: VOL, items: [{ id: idP2, is_dir: false }, { id: trop, is_dir: false }], mode: 'dry', gen: B.gen });
+// Sélecteur de FICHIER hors bornes : le bit de type est mis, la position non.
+//
+// `>>> 0` est indispensable : le serveur attend un `u32`, et `(n + 0x80000000)`
+// en JavaScript est un nombre NÉGatif (les entiers y sont sur 32 bits signés).
+// Sans cette conversion, la sonde enverrait un entier négatif et le serveur
+// répondrait « corps illisible » — un échec de sonde qui n'aurait rien à voir
+// avec ce qu'elle mesure.
+const trop = ((nFiles + 500_000) | 0x80000000) >>> 0;
+const r4 = await post('/api/delete', { drive: VOL, items: [idP2, trop], mode: 'dry', gen: B.gen });
 const a4 = JSON.parse(r4.texte);
 console.log('');
-console.log(`4. aperçu demandé pour 2 éléments dont un hors bornes (id=${trop}) : ${(a4.items || []).length} élément(s)`);
+console.log(`4. aperçu demandé pour 2 éléments dont un hors bornes (sel=${trop}) : ${(a4.items || []).length} élément(s)`);
 for (const i of a4.items || []) console.log(`   ${i.path}   blocked=${i.blocked} raison="${i.reason}"`);
 if ((a4.items || []).length === 2 && a4.blocked === 1) {
   console.log('ok    l’élément hors bornes est présent, marqué bloqué, et compté');

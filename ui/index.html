@@ -437,12 +437,28 @@ async function refreshState() {
 // se dit une fois, sobrement. Il sert surtout à rendre vérifiable le conseil de
 // la modale des illisibles — « relancer en administrateur » n'a de sens que si
 // l'instance ne l'est pas déjà.
+//
+// Le bandeau, lui, est une AFFIRMATION sur ce que le niveau change. diskmap ne
+// refuse que sept noms (racine, Windows, Program Files, ProgramData, System
+// Volume Information, Recovery, $Recycle.Bin, et le dossier Users entier) : tout
+// le reste est effaçable. En administrateur, « le reste » inclut ce que les ACL
+// protégeaient encore — donc des fichiers que l'utilisateur ne pouvait pas
+// supprimer lui-même, et que cette application pourrait supprimer pour lui. Le
+// dire est la différence entre un outil qui cache ses limites et un outil qui
+// les annonce.
 function renderEleve() {
   const el = $('#eleve');
   if (!el) return;
-  const v = state.eleve
+  const chip = state.eleve
     ? '<span class="chip on">droits d\'administrateur</span>'
     : '<span class="chip">droits de l\'utilisateur</span>';
+  const bandeau = state.eleve
+    ? '<div class="warn" style="margin-top:8px">Instance <b>élevée</b> : les ' +
+      'protections de Windows ne s\'appliquent plus. Sept noms restent refusés ' +
+      '(systèmes, <code>Users</code>), mais <b>tout le reste est effaçable</b>, ' +
+      'y compris ce que les droits du compte ne permettaient pas.</div>'
+    : '';
+  const v = chip + bandeau;
   if (el.innerHTML !== v) el.innerHTML = v;
 }
 
@@ -981,7 +997,11 @@ $('#sdo').onclick = () => { $('#smodal').classList.add('hidden'); stopServer(tru
 async function openDelete() {
   const rows = selectedRows();
   if (!rows.length) return;
-  const items = rows.map(r => ({ id: r.id, is_dir: r.is_dir }));
+  // On renvoie le SÉLECTEUR, pas `{id, is_dir}`. Le type est porté par le
+  // sélecteur lui-même (bit de type) : le serveur n'a donc plus de type
+  // déclaré à croire, et un `is_dir` incohérent ne peut plus désigner un autre
+  // chemin que celui coché — il n'en désigne aucun.
+  const items = rows.map(r => r.sel);
   // On renvoie la génération de l'instantané d'où viennent ces identifiants.
   // Un identifiant est une POSITION : si l'index a été réanalysé depuis, la
   // même position désigne un autre fichier, et l'aperçu proposerait de
@@ -1029,6 +1049,15 @@ function renderDeleteBody() {
   if (d.blocked) {
     h += `<div class="warn"><b>${d.blocked}</b> élément(s) seront ignorés : ` +
          `répertoire système protégé, ou déjà absent du disque.</div>`;
+  }
+  // Le rappel se fait ICI, au moment de la décision, et pas seulement au
+  // lancement : c'est le seul endroit où l'utilisateur regarde une liste de
+  // chemins qui vont disparaître. Voir `renderEleve` pour ce que l'élévation
+  // change réellement.
+  if (state.eleve) {
+    h += `<div class="warn">Instance <b>élevée</b> : les protections de Windows ` +
+         `ne s'appliquent pas. Tout ce qui est listé ici est effaçable, y compris ` +
+         `ce que les droits du compte auraient refusés.</div>`;
   }
   h += `<p style="margin:0 0 10px">Va disparaître : <b>${nf.format(d.deletable)}</b> élément(s), ` +
        `<b>${hsize(d.total_size)}</b>.</p>`;

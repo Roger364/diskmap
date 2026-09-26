@@ -68,6 +68,10 @@ struct PendingDel {
     drive: char,
     items: Vec<Montre>,
     at_ms: i64,
+    /// Génération de l'instantané contre lequel les sélecteurs ont été résolus.
+    /// Elle est journalisée : un numéro d'identifiant ne veut rien dire sans
+    /// l'instantané qui lui donnait ce sens.
+    gen: u64,
 }
 
 /// Un élément tel qu'il a été MONTRÉ, figé au moment de l'aperçu.
@@ -89,6 +93,9 @@ struct PendingDel {
 #[derive(Clone)]
 struct Montre {
     path: PathBuf,
+    /// Sélecteur demandé par le client, tel qu'il l'a envoyé. Conservé pour le
+    /// journal uniquement : à l'exécution, c'est `path` qui fait foi, jamais lui.
+    sel: u32,
     is_dir: bool,
     size: u64,
     count: u64,
@@ -966,6 +973,7 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     for c in snap.child_dirs(id) {
         rows.push(Row {
             id: c,
+            sel: scan::sel(c, true),
             name: snap.dirs[c as usize].name.to_string(),
             size: snap.size[c as usize],
             count: snap.count[c as usize],
@@ -977,6 +985,7 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     for c in snap.child_files(id) {
         rows.push(Row {
             id: c,
+            sel: scan::sel(c, false),
             name: snap.files[c as usize].name.to_string(),
             size: snap.files[c as usize].size,
             count: 1,
@@ -1065,11 +1074,18 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
 // Par défaut c'est la corbeille (`recycle`), donc réversible. Le définitif
 // exige en plus le mot « EFFACER » tapé à la main.
 
-#[derive(serde::Deserialize, Clone)]
-struct DeleteItem {
-    id: u32,
-    is_dir: bool,
-}
+/// Un élément demandé par le client.
+///
+/// Il ne porte QUE son sélecteur. Le champ `is_dir` a disparu : le type se
+/// déduit du bit de `sel` (voir `scan::BIT_FICHIER`), donc le serveur n'a plus
+/// de type déclaré auquel accorder foi. Un `sel` mal typé n'atteint pas un autre
+/// chemin — il n'atteint rien, et l'aperçu le dit./// Un élément demandé par le client : un sélecteur, et rien d'autre.
+///
+/// Le champ `is_dir` a disparu du protocole. Le type se déduit du bit de type
+/// porté par le sélecteur lui-même (voir `scan::BIT_FICHIER`), donc le serveur
+/// n'a plus de type déclaré auquel accorder foi. Un sélecteur mal typé
+/// n'atteint pas un autre chemin — il n'atteint rien, et l'aperçu le dit.
+type DeleteItem = u32;
 
 #[derive(serde::Deserialize)]
 struct DeleteReq {
@@ -1078,8 +1094,13 @@ struct DeleteReq {
     /// jeton et jamais de la requête : sinon un appelant pourrait présenter un
     /// jeton valide obtenu sur une liste, et supprimer autre chose que ce qui a
     /// été montré.
+    ///
+    /// Une liste de sélecteurs nus. L'ancienne forme `{id, is_dir}` est
+    /// refusée : ce serveur n'a qu'un client — l'interface embarquée, mise à
+    /// jour dans le même changement — et une forme héritée qui continue de
+    /// fonctionner est une forme que l'on croit encore sûre.
     #[serde(default)]
-    items: Vec<DeleteItem>,
+    items: Vec<u32>,
     mode: String,
     token: Option<String>,
     confirm: Option<String>,
@@ -1133,33 +1154,21 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-fn resolve(snap: &Snapshot, it: &DeleteItem) -> Option<PathBuf> {
-    if it.is_dir {
-        if (it.id as usize) < snap.n_dirs() {
-            Some(snap.dir_path(it.id))
-        } else {
-            None
-        }
-    } else if (it.id as usize) < snap.n_files() {
-        Some(snap.file_path(it.id))
-    } else {
-        None
-    }
-}
-
-fn index_size(snap: &Snapshot, it: &DeleteItem) -> (u64, u64) {
-    if it.is_dir {
-        let i = it.id as usize;
-        if i < snap.n_dirs() {
-            (snap.size[i], snap.count[i])
-        } else {
-            (0, 0)
-        }
-    } else {
-        snap.files
-            .get(it.id as usize)
-            .map(|f| (f.size, 1))
-            .unwrap_or((0, 0))
+/// Comment un sélecteur illisible est-il nommé dans l'aperçu ?
+///
+/// On montre l'identifiant tel quel, en signalant qu'il n'a pas été résolu :
+/// afficher une taille ou un type pour un élément qu'on n'a pas résolu serait
+/// inventer une information, et c'est exactement le mensonge qui a fait passer
+/// une suppression à côté pour une suppression de la cible.
+fn irreductible(sel: u32) -> PreviewItem {
+    PreviewItem {
+        path: format!("(sélecteur {sel} absent de l’index actuel)"),
+        size: 0,
+        count: 0,
+        is_dir: false,
+        exists: false,
+        blocked: true,
+        reason: "identifiant irrésoluble : l’index ne le connaît plus".into(),
     }
 }
 
@@ -1289,21 +1298,14 @@ fn dry(
         // c'était le cas, `continue` suffisait à effacer la trace. Mesuré le
         // 26/09/2026 — un aperçu demandé pour deux éléments dont un hors bornes
         // en renvoyait UN, et `deletable=1` n'en soufflait mot.
-        let Some(path) = resolve(snap, it) else {
+        let Some(e) = snap.entree(*it) else {
             blocked += 1;
-            out.push(PreviewItem {
-                path: format!("(élément {} absent de l’index actuel)", it.id),
-                size: 0,
-                count: 0,
-                is_dir: it.is_dir,
-                exists: false,
-                blocked: true,
-                reason: "identifiant irrésoluble : l’index ne le connaît plus".into(),
-            });
+            out.push(irreductible(*it));
             continue;
         };
+        let path = e.path;
+        let (size, count) = (e.size, e.count);
         let ps = path.to_string_lossy().into_owned();
-        let (size, count) = index_size(snap, it);
         let reason = blocked_reason(&path);
         let exists = path.exists();
         let blocked_flag = reason.is_some() || !exists;
@@ -1312,9 +1314,13 @@ fn dry(
         } else {
             deletable += 1;
             total += size;
+            // Le sélecteur est figé avec le chemin : c'est lui qui permet au
+            // journal de nommer ce que le client AVAIT demandé, à côté de ce
+            // qui a été traité. Voir `LigneJournal`.
             montres.push(Montre {
                 path,
-                is_dir: it.is_dir,
+                sel: *it,
+                is_dir: e.is_dir,
                 size,
                 count,
             });
@@ -1323,7 +1329,7 @@ fn dry(
             path: ps,
             size,
             count,
-            is_dir: it.is_dir,
+            is_dir: e.is_dir,
             exists,
             blocked: blocked_flag,
             reason: reason
@@ -1353,6 +1359,7 @@ fn dry(
                 drive: letter,
                 items: montres,
                 at_ms: now_ms(),
+                gen: snap.gen,
             },
         );
     }
@@ -1416,7 +1423,11 @@ fn execute(
     let mut done = 0usize;
     let mut failed = 0usize;
     let mut freed = 0u64;
-    let mut journal_lines: Vec<String> = Vec::new();
+    // TOUT ce que le lot a touché, y compris ce qu'il n'a pas supprimé. Un
+    // journal qui n'écrit que les succès laisse le même vide que l'incident : on
+    // y voit des suppressions, mais pas les cibles refusées entre les deux —
+    // donc pas la preuve qu'un lot avait bien été artículos comme prévu.
+    let mut journal_lignes: Vec<LigneJournal> = Vec::new();
     // Demandés en corbeille, mais la corbeille ne les a pas pris : détruits.
     let mut irreversible = 0usize;
     // Sert de plancher aux fiches `$I` : une fiche plus ancienne décrit une
@@ -1424,9 +1435,9 @@ fn execute(
     // pour un succès. `now_ms` est signé, les dates de fiches ne le sont pas.
     let debut_ms = now_ms().max(0) as u64;
     // Éléments supprimés dont la réversibilité reste à juger : (index dans
-    // `results`, chemin, taille, compte). On les juge après la boucle, et non
-    // dedans — voir plus bas.
-    let mut a_juger: Vec<(usize, String, u64, u64)> = Vec::new();
+    // `results`, index dans `journal_lignes`). On les juge après la boucle, et
+    // non dedans — voir plus bas.
+    let mut a_juger: Vec<(usize, usize)> = Vec::new();
 
     // On ne résout PLUS les identifiants ici : `pending.items` porte les chemins
     // résolus au moment de l'aperçu, et c'est la seule chose qu'on s'autorise à
@@ -1436,9 +1447,26 @@ fn execute(
         let ps = m.path.to_string_lossy().into_owned();
         let size = m.size;
         let count = m.count;
+        // Ligne de journal d'un élément NON supprimé. `prevu` et `realise` sont
+        // identiques — c'est le chemin figé, et rien d'autre n'a été tenté — et
+        // le dire deux fois est le but : si un jour un chemin résolu à
+        // l'exécution réapparaît, les deux colonnes divergent et l'écart se lit
+        // sans avoir à comparer le journal au code.
+        let refuse = |motif: &str, realise: String| LigneJournal {
+            lot: token.clone(),
+            gen: pending.gen,
+            sel: m.sel,
+            prevu: ps.clone(),
+            realise,
+            issue: "refuse".into(),
+            taille: size,
+            count,
+            motif: motif.to_string(),
+        };
         let reason = blocked_reason(&m.path);
         if let Some(r) = reason {
             failed += 1;
+            journal_lignes.push(refuse(r, ps.clone()));
             results.push(PreviewItem {
                 path: ps,
                 size,
@@ -1452,6 +1480,7 @@ fn execute(
         }
         if !m.path.exists() {
             failed += 1;
+            journal_lignes.push(refuse("introuvable sur le disque", ps.clone()));
             results.push(PreviewItem {
                 path: ps,
                 size,
@@ -1469,6 +1498,7 @@ fn execute(
         match win32::is_reparse_point(&m.path) {
             Ok(true) => {
                 failed += 1;
+                journal_lignes.push(refuse("point d’analyse apparu depuis l’aperçu", ps.clone()));
                 results.push(PreviewItem {
                     path: ps,
                     size,
@@ -1482,6 +1512,8 @@ fn execute(
             }
             Err(e) => {
                 failed += 1;
+                let motif = format!("impossible de vérifier la cible avant suppression : {e}");
+                journal_lignes.push(refuse(&motif, ps.clone()));
                 results.push(PreviewItem {
                     path: ps,
                     size,
@@ -1489,7 +1521,7 @@ fn execute(
                     is_dir: m.is_dir,
                     exists: false,
                     blocked: true,
-                    reason: format!("impossible de vérifier la cible avant suppression : {e}"),
+                    reason: motif,
                 });
                 continue;
             }
@@ -1518,7 +1550,21 @@ fn execute(
                     blocked: false,
                     reason: String::new(),
                 });
-                a_juger.push((idx, ps, size, count));
+                let jdx = journal_lignes.len();
+                journal_lignes.push(LigneJournal {
+                    lot: token.clone(),
+                    gen: pending.gen,
+                    sel: m.sel,
+                    prevu: ps.clone(),
+                    realise: ps.clone(),
+                    // Issue provisoire : la réversibilité n'est pas encore
+                    // connue. Elle est écrite plus bas, au même emplacement.
+                    issue: String::new(),
+                    taille: size,
+                    count,
+                    motif: String::new(),
+                });
+                a_juger.push((idx, jdx));
             }
             Err(e) => {
                 failed += 1;
@@ -1527,6 +1573,7 @@ fn execute(
                 // disparu — et c'est ainsi qu'une suppression réussie a pu
                 // passer pour un échec sans que rien ne le contredise.
                 let encore = m.path.exists();
+                journal_lignes.push(refuse(&e, ps.clone()));
                 results.push(PreviewItem {
                     path: ps,
                     size,
@@ -1555,32 +1602,29 @@ fn execute(
         } else {
             None
         };
-        for (idx, ps, size, count) in &a_juger {
+        for (idx, jdx) in &a_juger {
+            let ps = journal_lignes[*jdx].realise.clone();
             let reversible = corbeille
                 .as_ref()
-                .map(|c| c.contient(ps, debut_ms))
+                .map(|c| c.contient(&ps, debut_ms))
                 .unwrap_or(false);
+            let l = &mut journal_lignes[*jdx];
+            l.issue = match (to_trash, reversible) {
+                (true, true) => "corbeille",
+                (true, false) => "corbeille-refusee",
+                _ => "definitif",
+            }
+            .into();
             if to_trash && !reversible {
                 irreversible += 1;
                 results[*idx].reason = "DÉTRUIT : la corbeille de ce volume ne l’a pas pris".into();
+                l.motif = "la corbeille de ce volume ne l’a pas pris".into();
             }
-            journal_lines.push(format!(
-                "{}\t{}\t{}\t{}\t{}",
-                now_ms(),
-                match (to_trash, reversible) {
-                    (true, true) => "corbeille",
-                    (true, false) => "corbeille-refusee",
-                    _ => "definitif",
-                },
-                size,
-                count,
-                ps
-            ));
         }
     }
 
-    if !journal_lines.is_empty() {
-        journal(app, &journal_lines);
+    if !journal_lignes.is_empty() {
+        journal(app, &journal_lignes);
     }
 
     // L'index ne reflète plus le disque : on relance une analyse pour que les
@@ -1614,7 +1658,7 @@ fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::confirmation_required;
+    use super::{confirmation_required, LigneJournal};
 
     #[test]
     fn requires_confirmation_when_recycling_would_destroy() {
@@ -1622,9 +1666,110 @@ mod tests {
         assert!(confirmation_required(false, true));
         assert!(!confirmation_required(true, true));
     }
+
+    fn ligne(corbeille: &str, prevu: &str, realise: &str) -> String {
+        LigneJournal {
+            lot: "1700000000000-0123456789abcdef".into(),
+            gen: 7,
+            sel: 12,
+            prevu: prevu.into(),
+            realise: realise.into(),
+            issue: corbeille.into(),
+            taille: 25,
+            count: 1,
+            motif: String::new(),
+        }
+        .ligne(1700000000000)
+    }
+
+    #[test]
+    fn le_journal_conserve_les_champs_de_2026() {
+        // Les ~2 500 lignes déjà écrites doivent rester lisibles : les cinq
+        // premiers champs ne changent pas de place ni de sens. C'est ce qui
+        // permet de relire l'incident avec le même parseur que le journal d'aujourd'hui.
+        let l = ligne("corbeille", "V:\\x\\a.txt", "V:\\x\\a.txt");
+        let champs: Vec<&str> = l.split('\t').collect();
+        assert_eq!(champs[0], "1700000000000");
+        assert_eq!(champs[1], "corbeille");
+        assert_eq!(champs[2], "25");
+        assert_eq!(champs[3], "1");
+        assert_eq!(champs[4], "V:\\x\\a.txt");
+    }
+
+    #[test]
+    fn le_journal_nomme_le_lot_le_prevu_et_le_realise() {
+        // C'est l'objet de R6 : un écart entre le chemin prévu et le chemin
+        // réalisé doit être lisible dans le journal, sans le code.
+        let l = ligne("definitif", "V:\\x\\prevu.txt", "V:\\autre\\realise.txt");
+        assert!(l.contains("lot=1700000000000-0123456789abcdef"), "{l}");
+        assert!(l.contains("gen=7"), "{l}");
+        assert!(l.contains("sel=12"), "{l}");
+        assert!(l.contains("prevu=V:\\x\\prevu.txt"), "{l}");
+        assert!(l.contains("V:\\autre\\realise.txt"), "{l}");
+        // Et l'écart est bien visible : deux chemins distincts, deux colonnes.
+        assert!(l.contains("\tprevu=V:\\x\\prevu.txt\t"), "{l}");
+    }
+
+    #[test]
+    fn le_journal_donne_a_savoir_quelle_issue_a_eu_lieu() {
+        // Les trois issues d'avant, plus le refus — qui n'était jamais écrit,
+        // et laissait le même vide que l'incident.
+        for issue in ["corbeille", "corbeille-refusee", "definitif", "refuse"] {
+            let l = ligne(issue, "V:\\x\\a.txt", "V:\\x\\a.txt");
+            assert_eq!(l.split('\t').nth(1), Some(issue));
+        }
+    }
 }
 
-fn journal(app: &Arc<App>, lines: &[String]) {
+/// Une ligne du journal : ce qui a été demandé, et ce qui a été fait.
+///
+/// Le journal du 26/09/2026 disait l'issue, la taille et le chemin traité —
+/// rien d'autre. C'est ce qui a rendu l'incident impossible à qualifier : rien ne
+/// reliait une suppression à une demande, donc rien ne permettait de dire si le
+/// chemin effacé était celui qu'on avait coché. 168 chemins ont été lus dans ce
+/// fichier, et aucun ne portait de quoi le rattacher à une sélection.
+///
+/// Une ligne porte donc les DEUX chemins — celui **prévu** à l'aperçu et celui
+/// **réalisé** — plus le lot et le sélecteur d'origine. Ils sont égaux par
+/// construction aujourd'hui : `execute` ne résout plus rien, il ne supprime que
+/// les chemins figés par l'aperçu. C'est PRÉCISÉMENT pour que cette égalité se
+/// vérifie à la lecture, et non par relecture du code, que les deux colonnes
+/// existent. Une ligne où ils diffèrent serait la preuve directe d'un écart.
+///
+/// Les cinq premiers champs sont ceux d'avant, à l'identique : les ~2 500 lignes
+/// déjà écrites restent lisibles, et une ligne de 2026 se reconnaît au premier
+/// coup d'œil dans une ligne de 2027. La suite est étiquetée (`lot=`, `gen=`,
+/// `sel=`, `prevu=`, `motif=`) pour que la ligne se lise sans le format.
+struct LigneJournal {
+    lot: String,
+    gen: u64,
+    sel: u32,
+    prevu: String,
+    realise: String,
+    issue: String,
+    taille: u64,
+    count: u64,
+    motif: String,
+}
+
+impl LigneJournal {
+    fn ligne(&self, ms: i64) -> String {
+        format!(
+            "{ms}\t{}\t{}\t{}\t{}\tlot={}\tgen={}\tsel={}\tprevu={}\tmotif={}",
+            self.issue,
+            self.taille,
+            self.count,
+            self.realise,
+            self.lot,
+            self.gen,
+            self.sel,
+            self.prevu,
+            self.motif,
+        )
+    }
+}
+
+fn journal(app: &Arc<App>, lignes: &[LigneJournal]) {
     use std::io::Write;
     let p = app.cache_dir.join("suppressions.log");
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -1632,8 +1777,13 @@ fn journal(app: &Arc<App>, lines: &[String]) {
         .append(true)
         .open(p)
     {
-        for l in lines {
-            let _ = writeln!(f, "{l}");
+        // Un seul `now_ms` par lot : plusieurs lignes portant la même
+        // milliseconde se regroupent déjà par `lot=`, et un horodatage par ligne
+        // donnerait l'illusion d'une chronologie à l'intérieur du lot alors
+        // qu'elle est celle de l'écriture.
+        let ms = now_ms();
+        for l in lignes {
+            let _ = writeln!(f, "{}", l.ligne(ms));
         }
     }
 }
