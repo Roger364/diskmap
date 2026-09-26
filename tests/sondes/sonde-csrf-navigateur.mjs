@@ -30,7 +30,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { chromium } from './navigateur.mjs';
-import { dossier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { dossier, attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -145,6 +145,12 @@ async function idVictime() {
   const rep = await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: { 'X-Diskmap': '1' } });
   if (!rep.ok) throw new Error(`réanalyse refusée : HTTP ${rep.status}`);
   await attendreParcours(true);
+  // On attend que le FAIT soit constaté : `victime.txt` doit APPARAITRE dans
+  // l'instantane. Sortir sur `!scanning` peut revenir avant que le fichier
+  // soit indexe, et la suite renverrait alors « la victime n'est pas dans
+  // l'instantane » — un verdict faux, sans lien avec le CSRF. Voir
+  // `attendreFichier` dans config.mjs.
+  await attendreFichier(BASE, VOL, 'victime.txt');
     const d1 = await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json();
   const dir = d1.rows.find(r => r.name === NOM);
   if (!dir) return null;
@@ -181,10 +187,21 @@ for (const cas of CAS) {
   const avant = journal().length;
   const page = await ctx.newPage();
   try {
-    await page.goto(cas.url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    // 60 s pour la navigation : le cas B passe par l'IP privée du runner, dont
+    // le réseau est plus lent que le loopback. À 20 s, le premier run GitHub a
+    // échoué là-dessus, et l'échec se lisait « la page n'a pas pu aller au bout »
+    // — ce qui suggère une protection active, alors que rien n'avait été jugé.
+    await page.goto(cas.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForFunction('window.__fini === true', null, { timeout: 90000 });
   } catch (e) {
-    verifier('la page a pu aller au bout de sa tentative', false, e.message.split('\n')[0]);
+    const motif = e.message.split('\n')[0];
+    verifier('la page a pu aller au bout de sa tentative', false, motif);
+    // Un timeout de navigation et un blocage réseau n'ont pas la même portée :
+    // le second veut dire qu'on n'a rien mesuré, et le dire évite qu'on lise ce
+    // ROUGE comme une preuve que l'attaque a réussi.
+    if (/Timeout .* exceeded/i.test(motif)) {
+      console.log(`      (timeout de navigation : rien n'a été mesuré sur « ${cas.nom} »)`);
+    }
     await page.close();
     continue;
   }

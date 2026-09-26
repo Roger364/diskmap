@@ -83,34 +83,59 @@ await page.waitForTimeout(800);
 // --- le geste : chercher, entrer, cocher, demander à supprimer ---------------
 await page.fill('#q', NOM);
 await page.press('#q', 'Enter');
-await page.waitForTimeout(1500);
 
+// On attend L'ÉLÉMENT, jamais une durée. Un `waitForTimeout(1500)` suppose
+// que la machine répond dans ce délai : sur le runner du premier run GitHub,
+// la recherche n'était pas rendue à ce moment-là, la suite annonçait « aucune
+// ligne trouvée », et le test concluait que l'interface ne listait rien. Un
+// délai fixe transforme une machine lente en défaut de l'application — et il
+// le fait SILENCIEUSEMENT, sans qu'aucune ligne dise qu'on a mal attendu.
+const ligneDossier = page.locator('#rows tr')
+  .filter({ has: page.getByText(NOM, { exact: true }) }).first();
+let dossierTrouve = false;
+try {
+  await ligneDossier.locator('.nm').waitFor({ state: 'visible', timeout: 60000 });
+  dossierTrouve = true;
+} catch { /* laissé false : le verdict est rendu juste après */ }
 // Texte EXACT, et non « contient » : la recherche remonte aussi tout fichier dont
 // le nom contient le motif — et un `hasText` partiel a déjà cliqué sur un fichier,
 // qui n'a pas de navigation, faisant conclure que l'interface ne listait rien.
-const ligneDossier = page.locator('#rows tr')
-  .filter({ has: page.getByText(NOM, { exact: true }) }).first();
-verifier('le dossier d’essai apparaît dans la recherche',
-  await ligneDossier.count() > 0, 'aucune ligne trouvée');
-await ligneDossier.locator('.nm').click();
-await page.waitForTimeout(1200);
+verifier('le dossier d’essai apparaît dans la recherche', dossierTrouve, 'aucune ligne trouvée');
+if (dossierTrouve) await ligneDossier.locator('.nm').click();
 
 const ligneFichier = page.locator('#rows tr')
   .filter({ has: page.getByText('cible.txt', { exact: true }) }).first();
+let fichierTrouve = false;
+if (dossierTrouve) {
+  try {
+    await ligneFichier.waitFor({ state: 'visible', timeout: 60000 });
+    fichierTrouve = true;
+  } catch { /* idem */ }
+}
 verifier('le fichier apparaît après être entré dans le dossier',
-  await ligneFichier.count() > 0, 'aucune ligne trouvée');
-await ligneFichier.locator('.chk').check();
+  fichierTrouve, 'aucune ligne trouvée');
 
-const bouton = page.locator('#delbtn');
-verifier('le bouton « Supprimer… » apparaît quand une ligne est cochée',
-  await bouton.isVisible(), 'bouton invisible');
-await bouton.click();
+let titre = null, corps = '';
+if (fichierTrouve) {
+  await ligneFichier.locator('.chk').check();
+  const bouton = page.locator('#delbtn');
+  let boutonVisible = false;
+  try {
+    await bouton.waitFor({ state: 'visible', timeout: 30000 });
+    boutonVisible = true;
+  } catch { /* rendu juste après */ }
+  verifier('le bouton « Supprimer… » apparaît quand une ligne est cochée',
+    boutonVisible, 'bouton invisible');
+  if (boutonVisible) await bouton.click();
+}
 
 // C'est ici que tout se joue : la modale ne s'ouvre que si l'appel POST
 // /api/delete en mode « dry » a été ACCEPTÉ. Un 403 la laisserait fermée.
-let titre = null, corps = '';
-try {
-  await page.waitForSelector('#modal:not(.hidden)', { timeout: 10000 });
+//
+// Le délai est large : c'est un POST qui resolve des chemins sur le disque, et
+// sur un runner lent il dépasse largement les 10 s d'avant.
+if (fichierTrouve) try {
+  await page.waitForSelector('#modal:not(.hidden)', { timeout: 60000 });
   titre = (await page.textContent('#dtitle')).trim();
   corps = (await page.textContent('#dbody')).replace(/\s+/g, ' ');
 } catch (e) {
