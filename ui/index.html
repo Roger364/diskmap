@@ -401,7 +401,19 @@ function ageClass(s) {
 }
 
 // ---------- API ----------
+// En-tête exigé par le serveur sur toute route qui modifie quelque chose.
+// Un en-tête personnalisé n'est pas un en-tête « simple » : le navigateur doit
+// demander un préflight avant de l'envoyer, et le serveur n'en sert aucun. C'est
+// ce qui rend ces routes inatteignables depuis une page tierce.
+const ENTETE_ACTION = { 'X-Diskmap': '1' };
+
 async function api(u, opt) {
+  // Posé ici, une seule fois, pour que l'interface ne puisse pas l'oublier : un
+  // appel POST sans cet en-tête reçoit un 403, et le défaut serait visible mais
+  // pénible à relier à sa cause.
+  if (opt && String(opt.method || '').toUpperCase() === 'POST') {
+    opt = { ...opt, headers: { ...ENTETE_ACTION, ...(opt.headers || {}) } };
+  }
   const r = await fetch(u, opt);
   if (!r.ok) {
     // Le code est conservé sur l'erreur : sans lui, distinguer « analyse en
@@ -656,7 +668,7 @@ function renderRows() {
       <td class="act"><button title="Ouvrir dans l'explorateur">⤢</button></td>`;
     if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; load(); };
     tr.querySelector('.act button').onclick = () =>
-      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST' });
+      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
     const chk = tr.querySelector('.sel .chk');
     chk.onchange = () => toggleSel(r, chk.checked);
     frag.appendChild(tr);
@@ -772,7 +784,7 @@ async function search() {
       <td class="act"><button title="Ouvrir dans l'explorateur">⤢</button></td>`;
     if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; $('#q').value = ''; load(); };
     tr.querySelector('.act button').onclick = () =>
-      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST' });
+      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
     const chk = tr.querySelector('.sel .chk');
     chk.onchange = () => toggleSel(r, chk.checked);
     frag.appendChild(tr);

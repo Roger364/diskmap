@@ -442,8 +442,10 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     let mut parts = line.split_whitespace();
     let method = parts.next().unwrap_or("").to_string();
     let target = parts.next().unwrap_or("/").to_string();
-    // En-têtes : on retient Content-Length, seul cas où un corps nous intéresse.
+    // En-têtes : on retient Content-Length, seul cas où un corps nous intéresse,
+    // plus X-Diskmap, qui distingue notre page d'une page tierce (voir `route`).
     let mut content_len: usize = 0;
+    let mut action = String::new();
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h)? == 0 {
@@ -455,6 +457,8 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
         let lower = h.to_ascii_lowercase();
         if let Some(v) = lower.strip_prefix("content-length:") {
             content_len = v.trim().parse().unwrap_or(0);
+        } else if let Some(v) = lower.strip_prefix("x-diskmap:") {
+            action = v.trim().to_string();
         }
     }
     let mut body = vec![0u8; content_len];
@@ -467,7 +471,7 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
         None => (target, HashMap::new()),
     };
 
-    let resp = route(app, &method, &path, &query, &body);
+    let resp = route(app, &method, &path, &query, &body, &action);
     let body: Vec<u8>;
     let (status, ctype) = match resp {
         Ok(Resp::Html(s)) => {
@@ -548,7 +552,28 @@ fn hex(c: u8) -> Option<u8> {
     }
 }
 
-fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8]) -> Result<Resp, (&'static str, String)> {
+fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8], action: &str) -> Result<Resp, (&'static str, String)> {
+    // Toute route qui MODIFIE quelque chose exige un en-tête que seule notre
+    // propre page sait poser. Ce n'est pas une formalité : un en-tête
+    // personnalisé ne fait pas partie des en-têtes « simples », donc un
+    // navigateur doit demander un préflight (OPTIONS) avant de l'envoyer — et
+    // nous n'en servons aucun. Une page tierce ne peut donc pas atteindre ces
+    // routes, alors qu'un simple POST « text/plain » lui suffisait.
+    //
+    // Mesuré le 26/09/2026 dans un vrai navigateur (Chromium 153), trois fois sur
+    // trois : sans ce contrôle, une page d'une autre origine — servie depuis le
+    // loopback, depuis l'IP privée, ou ouverte en file:// — supprimait un fichier
+    // du disque sans que l'utilisateur voie rien, et sans pouvoir lire la moindre
+    // réponse. Le jeton n'y changeait rien : il se recalcule à partir de
+    // l'horodatage qu'il contient, et la simulation laisse l'entrée en attente
+    // côté serveur. L'utilisateur n'a rien à confirmer pour qu'on lui efface un
+    // fichier.
+    if method == "POST" && action != "1" {
+        return Err((
+            "403 Forbidden",
+            "en-tête X-Diskmap absent : requête refusée".into(),
+        ));
+    }
     match (method, path) {
         ("GET", "/") | ("GET", "/index.html") => Ok(Resp::Html(UI.to_string())),
 
