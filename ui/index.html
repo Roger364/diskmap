@@ -65,6 +65,20 @@
   .bar > i { display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,#3f6fc0,#5b9dff); }
   .drive .meta { display:flex; gap:10px; font-size:11px; color:var(--muted); }
   .drive .meta b { color:var(--text); font-weight:500; }
+  /* L'écart entre ce que le disque occupe et ce que l'analyse a su attribuer.
+     Deux signes, deux problèmes distincts : positif, c'est une part invisible
+     (métadonnées NTFS, clichés, sous-arbres refusés) ; négatif, c'est qu'on
+     compte PLUS que le disque ne contient — donc un défaut de notre côté. Le
+     négatif est mis en avant : c'est le seul des deux qui accuse l'application. */
+  .drive .gap { display:flex; gap:8px; font-size:11px; color:var(--muted); margin-top:3px; cursor:help; }
+  .drive .gap .v { margin-left:auto; white-space:nowrap; }
+  .drive .gap.pos .v { color:var(--warm); }
+  .drive .gap.neg .v { color:var(--hot); font-weight:500; }
+  .chip {
+    display:inline-block; font-size:10.5px; color:var(--muted);
+    border:1px solid var(--line); border-radius:4px; padding:1px 6px;
+  }
+  .chip.on { color:var(--warm); border-color:#6b4a24; background:#3a2a18; }
   /* Avertissement de total incomplet. Volontairement sobre : il doit se voir sans
      crier, et rester cliquable pour donner la liste des chemins. */
   .drive .inc {
@@ -190,6 +204,18 @@
   .plist .p { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .plist .s { color:var(--muted); white-space:nowrap; }
   .plist .b { color:var(--hot); white-space:nowrap; }
+  /* Groupes d'illisibles. Les règles de .plist div visent TOUS les div
+     descendants ; ces sélecteurs plus spécifiques reprennent la main, sinon le
+     sous-titre des noms d'enfants hériterait du flex et du cadre. */
+  .plist .grp { display:block; padding:7px 10px; }
+  .plist .grp .gh { display:flex; gap:8px; align-items:baseline; border:none; padding:0; }
+  .plist .grp .gh .n { color:var(--muted); white-space:nowrap; }
+  .plist .grp .gh .p { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .plist .grp .gk {
+    display:block; border:none; padding:0; margin-top:2px;
+    color:var(--muted); font-size:11.5px; line-height:1.5;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
   .ok { color:#7fc0a0; }
   .ko { color:var(--hot); }
 </style>
@@ -213,7 +239,9 @@
       La <b>dernière activité</b> est la date d'écriture la plus récente dans le sous-arbre.<br />
       Jonctions et liens symboliques ne sont pas suivis (pas de double compte).<br />
       Un dossier illisible emporte <b>tout son sous-arbre</b> : la taille affichée est
-      alors un <b>plancher</b>, jamais une mesure exacte.
+      alors un <b>plancher</b>, jamais une mesure exacte.<br />
+      L'<b>écart</b> compare ce que le disque occupe à ce que l'analyse a su attribuer.
+      <div id="eleve" style="margin-top:8px"></div>
     </div>
   </aside>
 
@@ -331,6 +359,20 @@ async function api(u, opt) {
 async function refreshState() {
   state = await api('/api/state');
   renderDrives();
+  renderEleve();
+}
+
+// Le niveau de privilège est une propriété de l'instance, pas d'un volume : il
+// se dit une fois, sobrement. Il sert surtout à rendre vérifiable le conseil de
+// la modale des illisibles — « relancer en administrateur » n'a de sens que si
+// l'instance ne l'est pas déjà.
+function renderEleve() {
+  const el = $('#eleve');
+  if (!el) return;
+  const v = state.eleve
+    ? '<span class="chip on">droits d\'administrateur</span>'
+    : '<span class="chip">droits de l\'utilisateur</span>';
+  if (el.innerHTML !== v) el.innerHTML = v;
 }
 
 let driveSig = '';
@@ -365,6 +407,26 @@ function renderDrives() {
       ? `<div class="inc"><span>! <b>${nf.format(d.unreadable)}</b> dossier(s) illisible(s) — total incomplet</span>` +
         `<span class="go">voir</span></div>`
       : '';
+    // Écart entre ce que le disque occupe et ce que l'analyse a su attribuer.
+    // Affiché seulement s'il est significatif — au-delà de 0,5 % de la taille
+    // analysée OU de 20 Mo — sinon c'est une ligne de bruit sur un volume où les
+    // deux chiffres coïncident.
+    const ecart = (d.status === 'ready' && d.total) ? used - d.root_size : 0;
+    const seuil = Math.min(d.root_size * 0.005, 20 * 2 ** 20);
+    let gap = '';
+    if (Math.abs(ecart) > seuil) {
+      const pos = ecart > 0;
+      const expl = pos
+        ? `L'analyse a attribué ${hsize(d.root_size)} ; le disque en occupe ${hsize(used)}. ` +
+          `Les ${hsize(ecart)} manquants — métadonnées NTFS, clichés instantanés, sous-arbres refusés — ` +
+          `ne peuvent être rattachés à aucun dossier.`
+        : `L'analyse attribue ${hsize(-ecart)} de PLUS que le disque n'en occupe. ` +
+          `Des fichiers comptés deux fois (liens durs), ou comptés en taille logique alors que le disque ` +
+          `en stocke moins (compression, fichiers creux). C'est un défaut de l'analyse, pas du disque.`;
+      gap = `<div class="gap ${pos ? 'pos' : 'neg'}" title="${escapeHtml(expl)}">` +
+            `<span>${hsize(d.root_size)} attribués</span>` +
+            `<span class="v">${pos ? '+' : '\u2212'}${hsize(Math.abs(ecart))}</span></div>`;
+    }
     el.innerHTML = `
       <div class="top">
         <span class="ltr">${d.letter}:</span>
@@ -375,7 +437,7 @@ function renderDrives() {
       <div class="meta">
         <span><b>${hsize(used)}</b> / ${hsize(d.total)}</span>
         <span style="margin-left:auto">libre ${hsize(d.free)}</span>
-      </div>
+      </div>${gap}
       <div class="meta" style="margin-top:3px">
         <span>${st}</span>
         <span style="margin-left:auto">
@@ -683,18 +745,57 @@ async function showUnreadable(letter) {
   }
   let h = '';
   if (d.total) {
+    // Regrouper par dossier parent. Mesuré sur cette machine : 123 chemins ne
+    // vivent que dans 38 emplacements sur C:, et 113 dans 31 sur G:. Sans
+    // regroupement, la liste répète trente fois le même chemin de tête et devient
+    // illisible — alors que le regroupement est justement ce qui la rend utile.
+    const groupes = new Map();
+    for (const it of d.items) {
+      let p = it.path.replace(/\\[^\\]*$/, '') || it.path;
+      if (/^[A-Za-z]:$/.test(p)) p += '\\';
+      if (!groupes.has(p)) groupes.set(p, []);
+      groupes.get(p).push(it);
+    }
+    const liste = [...groupes.entries()].sort((a, b) => b[1].length - a[1].length);
+
     h += `<div class="warn">Ces <b>${nf.format(d.total)}</b> dossier(s) n'ont pas pu être ouverts. ` +
          `Leur contenu entier manque au total affiché : celui-ci est un <b>plancher</b>, pas une mesure.</div>`;
-    h += d.droits
-      ? `<p style="margin:0 0 10px">Dont <b>${nf.format(d.droits)}</b> par <b>refus de droits</b> — ` +
-        `relancer diskmap en administrateur les rendrait lisibles. Les autres causes ` +
-        `(volume défaillant, dossier détruit en cours de parcours) ne se règlent pas ainsi.</p>`
-      : `<p style="margin:0 0 10px">Aucun de ces échecs n'est dû à un refus de droits : ` +
-        `relancer en administrateur ne changerait rien ici.</p>`;
+
+    // Le conseil dépend de ce que l'instance est DÉJÀ. Conseiller une relance en
+    // administrateur à une instance qui l'est déjà enverrait chercher au mauvais
+    // endroit, et ferait douter d'un chiffre pourtant juste.
+    if (d.droits) {
+      h += state.eleve
+        ? `<p style="margin:0 0 10px">L'instance tourne <b>déjà en administrateur</b> : ces ` +
+          `${nf.format(d.droits)} refus ne viennent donc pas d'un manque de droits sur ce compte, mais ` +
+          `d'une ACL qui exclut aussi les administrateurs, ou d'un point d'analyse à ne pas suivre. ` +
+          `Relancer ne changerait rien.</p>`
+        : `<p style="margin:0 0 10px">Dont <b>${nf.format(d.droits)}</b> par <b>refus de droits</b> — ` +
+          `une relance en administrateur les rendrait lisibles. Les autres causes (volume défaillant, ` +
+          `dossier détruit en cours de parcours) ne se règlent pas ainsi.</p>`;
+    } else {
+      h += `<p style="margin:0 0 10px">Aucun de ces échecs n'est dû à un refus de droits : ` +
+           `relancer en administrateur ne changerait rien ici.</p>`;
+    }
+
+    h += `<div style="display:flex;align-items:center;gap:8px;margin:0 0 8px">` +
+         `<span style="color:var(--muted);font-size:12.5px">${nf.format(d.total)} chemin(s) dans ` +
+         `${nf.format(liste.length)} emplacement(s)</span><span style="flex:1"></span>` +
+         `<button class="btn" id="ucopy" style="padding:2px 8px;font-size:11.5px">Copier la liste</button></div>`;
+
     h += '<div class="plist">';
-    for (const it of d.items) {
-      h += `<div><span class="p" title="${escapeHtml(it.path)}">${escapeHtml(it.path)}</span>` +
-           `<span class="${it.droits ? 'b' : 's'}">${it.droits ? 'droits' : 'autre'}</span></div>`;
+    for (const [parent, items] of liste) {
+      const dr = items.filter(i => i.droits).length;
+      const cause = dr ? (dr === items.length ? 'droits' : `${dr}/${items.length} droits`) : 'autre';
+      // Les noms seuls : le parent est déjà sur la ligne du dessus, les répéter
+      // trente fois ferait exactement ce que le regroupement cherche à éviter.
+      const noms = items.map(i => i.path.slice(parent.length).replace(/^\\/, '')).join(', ');
+      h += `<div class="grp"><div class="gh">` +
+           (items.length > 1 ? `<span class="n">${items.length}\u00d7</span>` : '') +
+           `<span class="p" title="${escapeHtml(parent)}">${escapeHtml(parent)}</span>` +
+           `<span class="${dr ? 'b' : 's'}">${cause}</span>` +
+           `<button class="btn" data-reveal="${escapeHtml(parent)}" style="padding:1px 6px;font-size:11px">Ouvrir</button>` +
+           `</div><div class="gk" title="${escapeHtml(noms)}">${escapeHtml(noms)}</div></div>`;
     }
     h += '</div>';
     if (d.tronque) {
@@ -708,6 +809,36 @@ async function showUnreadable(letter) {
          `ou disparu pendant l'analyse). Coût : une entrée chacune, jamais un sous-arbre.</p>`;
   }
   $('#ubody').innerHTML = h || '<p style="margin:0">Aucune anomalie : ce volume a été lu en entier.</p>';
+
+  // Actions attachées après le rendu — les écouter avant serait les perdre.
+  const copie = $('#ucopy');
+  if (copie) {
+    copie.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(d.items.map(i => i.path).join('\r\n'));
+        copie.textContent = 'Copié';
+      } catch (e) {
+        copie.textContent = 'Copie refusée';
+      }
+      setTimeout(() => { copie.textContent = 'Copier la liste'; }, 1600);
+    };
+  }
+  document.querySelectorAll('#ubody [data-reveal]').forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await api('/api/reveal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ drive: letter, path: b.dataset.reveal }),
+        });
+      } catch (e) {
+        // Silencieux : l'absence d'ouverture dit déjà le refus, et une alerte par
+        // ligne serait plus gênante qu'informative.
+      }
+      b.disabled = false;
+    };
+  });
 }
 $('#uclose').onclick = () => $('#umodal').classList.add('hidden');
 

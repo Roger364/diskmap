@@ -26,6 +26,65 @@ extern "system" {
     ) -> i32;
 }
 
+#[link(name = "kernel32")]
+extern "system" {
+    fn GetCurrentProcess() -> *mut std::ffi::c_void;
+    fn CloseHandle(h: *mut std::ffi::c_void) -> i32;
+}
+
+// Le jeton du processus vit dans advapi32, pas dans kernel32.
+#[link(name = "advapi32")]
+extern "system" {
+    fn OpenProcessToken(process: *mut std::ffi::c_void, access: u32, token: *mut *mut std::ffi::c_void) -> i32;
+    fn GetTokenInformation(
+        token: *mut std::ffi::c_void,
+        class: u32,
+        info: *mut std::ffi::c_void,
+        info_len: u32,
+        ret_len: *mut u32,
+    ) -> i32;
+}
+
+/// TOKEN_QUERY : seul droit nécessaire pour lire le jeton, jamais pour agir.
+const TOKEN_QUERY: u32 = 0x0008;
+/// TokenElevation (TOKEN_INFORMATION_CLASS).
+const TOKEN_ELEVATION: u32 = 20;
+
+#[repr(C)]
+struct Elevation {
+    token_is_elevated: u32,
+}
+
+/// Vrai si le processus tourne avec un jeton élevé (administrateur).
+///
+/// Sert à ne pas conseiller une relance en administrateur à quelqu'un qui y est
+/// **déjà** : le conseil serait faux, et enverrait chercher au mauvais endroit.
+/// Un refus de droits qui survit à l'élévation a une autre cause — une ACL qui
+/// exclut aussi les administrateurs, ou un point d'analyse à ne pas suivre.
+///
+/// En cas d'échec on répond `false` : supposer qu'on n'est pas élevé conduit à
+/// conseiller une relance inutile, alors que supposer l'inverse ferait taire un
+/// conseil utile.
+pub fn est_eleve() -> bool {
+    unsafe {
+        let mut token: *mut std::ffi::c_void = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+        let mut info = Elevation { token_is_elevated: 0 };
+        let mut ret: u32 = 0;
+        let ok = GetTokenInformation(
+            token,
+            TOKEN_ELEVATION,
+            &mut info as *mut Elevation as *mut std::ffi::c_void,
+            std::mem::size_of::<Elevation>() as u32,
+            &mut ret,
+        );
+        CloseHandle(token);
+        ok != 0 && info.token_is_elevated != 0
+    }
+}
+
 // Types de lecteurs (WinBase.h)
 pub const DRIVE_UNKNOWN: u32 = 0;
 pub const DRIVE_NO_ROOT_DIR: u32 = 1;

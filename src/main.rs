@@ -58,6 +58,9 @@ struct App {
     scanning: Mutex<Option<char>>,
     queue: Mutex<Vec<char>>,
     cache_dir: PathBuf,
+    /// Fixé au démarrage : le niveau de privilège d'un processus ne change pas
+    /// en cours de route, et l'interface s'en sert à chaque rendu.
+    eleve: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -89,6 +92,10 @@ struct DriveJson {
 struct StateJson {
     drives: Vec<DriveJson>,
     scanning: Option<String>,
+    /// Vrai si l'instance tourne avec des droits d'administrateur. L'interface
+    /// s'en sert pour ne pas conseiller une relance élevée à quelqu'un qui l'est
+    /// déjà — le conseil serait faux, et enverrait chercher au mauvais endroit.
+    eleve: bool,
 }
 
 /// Vrai si une instance diskmap répond déjà sur ce port. On interroge notre
@@ -231,6 +238,7 @@ fn main() {
         queue: Mutex::new(Vec::new()),
         pending: Mutex::new(HashMap::new()),
         cache_dir: cache_dir(),
+        eleve: win32::est_eleve(),
     });
 
     // Les volumes sans cache sont mis en file : ils seront analysés les uns après
@@ -528,6 +536,8 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8]) -> Result
         ("GET", "/api/search") => search(app, q),
         ("GET", "/api/unreadable") => unreadable(app, q),
 
+        ("POST", "/api/reveal") => reveal(app, body),
+
         ("POST", "/api/delete") => delete(app, body),
 
         ("POST", "/api/open") => {
@@ -594,6 +604,7 @@ fn state_json(app: &Arc<App>) -> StateJson {
     StateJson {
         drives: out,
         scanning: app.scanning.lock().unwrap().map(|c| c.to_string()),
+        eleve: app.eleve,
     }
 }
 
@@ -1019,6 +1030,44 @@ fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     Ok(Resp::Json(
         serde_json::to_string(&serde_json::json!({ "rows": rows, "truncated": truncated })).unwrap(),
     ))
+}
+
+#[derive(serde::Deserialize)]
+struct RevealReq {
+    drive: String,
+    path: String,
+}
+
+/// Montre où se trouve un dossier illisible, sans essayer de l'ouvrir.
+///
+/// `/select,` ouvre le dossier **parent** et y surligne l'élément : c'est le
+/// seul comportement possible, puisque le dossier visé n'est pas lisible — c'est
+/// précisément pourquoi il figure dans cette liste.
+///
+/// Le chemin doit venir de NOTRE liste. Sans ce contrôle, la route ouvrirait
+/// n'importe quel chemin de la machine sur demande d'une page, et le navigateur
+/// est accessible à tout ce qui sait parler HTTP sur cette machine.
+fn reveal(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
+    let req: RevealReq = serde_json::from_slice(body)
+        .map_err(|e| ("400 Bad Request", format!("corps illisible : {e}")))?;
+    let letter = req
+        .drive
+        .chars()
+        .next()
+        .ok_or(("400 Bad Request", "drive manquant".into()))?
+        .to_ascii_uppercase();
+    let snap = {
+        let d = app.drives.lock().unwrap();
+        d.get(&letter)
+            .and_then(|s| s.snap.clone())
+            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
+    };
+    if !snap.unreadable.iter().any(|u| &*u.path == req.path) {
+        return Err(("400 Bad Request", "chemin hors de la liste des illisibles".into()));
+    }
+    // Guillemets : sans eux, une virgule dans le chemin couperait l'argument.
+    let _ = Command::new("explorer").arg(format!("/select,\"{}\"", req.path)).spawn();
+    Ok(Resp::Json("{\"ok\":true}".to_string()))
 }
 
 #[derive(serde::Serialize)]
