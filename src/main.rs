@@ -1015,7 +1015,12 @@ fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_tra
             }
             Err(e) => {
                 failed += 1;
-                results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: true, blocked: true, reason: e });
+                // `exists` doit dire la VÉRITÉ. Le figer à `true` faisait
+                // affirmer que le fichier était toujours là alors qu'il avait
+                // disparu — et c'est ainsi qu'une suppression réussie a pu
+                // passer pour un échec sans que rien ne le contredise.
+                let encore = path.exists();
+                results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: encore, blocked: true, reason: e });
             }
         }
     }

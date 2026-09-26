@@ -211,14 +211,27 @@ pub fn delete_path(path: &str, to_trash: bool) -> Result<(), String> {
         h_name_mappings: std::ptr::null_mut(),
         lpsz_progress_title: std::ptr::null(),
     };
+    let chemin = std::path::Path::new(path);
     let r = unsafe { SHFileOperationW(&mut op) };
-    if r != 0 {
-        return Err(format!("SHFileOperationW a renvoyé {r}"));
-    }
+
+    // Le code de retour n'est PAS un verdict, et s'y fier était le défaut.
+    // Mesuré sur cette machine le 26/09/2026, quatre fois sur quatre : le
+    // recyclage RÉUSSIT en renvoyant 2 (ERROR_FILE_NOT_FOUND), et le fichier
+    // est bien dans la corbeille. Conclure « échec » sur un code non nul
+    // rapportait donc chaque suppression réversible comme un échec — pendant
+    // que le fichier, lui, avait bel et bien disparu.
+    // Le seul juge est l'état du disque après coup ; le code ne sert plus qu'à
+    // décrire un échec réel, quand le chemin est toujours là.
     if op.f_any_operations_aborted != 0 {
         return Err("opération abandonnée par le système".into());
     }
-    Ok(())
+    if !chemin.exists() {
+        return Ok(());
+    }
+    if r != 0 {
+        return Err(format!("SHFileOperationW a renvoyé {r}"));
+    }
+    Err("le chemin existe toujours après l'opération".into())
 }
 
 fn space(w: &[u16]) -> Option<(u64, u64)> {
