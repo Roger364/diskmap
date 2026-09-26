@@ -329,6 +329,21 @@ pub fn corbeille_disponible(lettre: char) -> bool {
 /// Écart entre l'époque FILETIME (1601) et l'époque Unix, en unités de 100 ns.
 const EPOQUE_FILETIME: u64 = 116_444_736_000_000_000;
 
+/// La fiche a-t-elle été écrite depuis `plancher_ms` ?
+///
+/// En cas de doute — date illisible — on répond OUI. Un faux « non » écarterait
+/// la fiche qu'on cherche, et ferait journaliser une destruction comme une
+/// opération réversible : c'est le défaut qu'on cherche justement à ne plus
+/// commettre. Un faux « oui » ne coûte qu'une lecture inutile.
+fn fiche_recente(f: &std::fs::DirEntry, plancher_ms: u64) -> bool {
+    let Ok(md) = f.metadata() else { return true };
+    let Ok(m) = md.modified() else { return true };
+    match m.duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => d.as_millis() as u64 >= plancher_ms,
+        Err(_) => true,
+    }
+}
+
 /// Le fichier est-il RÉELLEMENT dans la corbeille du volume qui le portait ?
 ///
 /// On ne peut pas se fier à `FOF_ALLOWUNDO` : il signifie « mets à la corbeille
@@ -343,39 +358,78 @@ const EPOQUE_FILETIME: u64 = 116_444_736_000_000_000;
 /// date de la fiche soit postérieure au début de l'opération — sans quoi une
 /// fiche laissée par une suppression ANTÉRIEURE du même chemin ferait passer
 /// une destruction pour un succès.
-pub fn dans_corbeille(path: &str, depuis_ms: u64) -> bool {
-    let mut c = path.chars();
-    let Some(lettre) = c.next() else { return false };
-    if c.next() != Some(':') {
-        return false;
-    }
-    let racine = format!("{lettre}:\\$RECYCLE.BIN");
-    let Ok(sids) = std::fs::read_dir(&racine) else {
-        // Pas de corbeille du tout : c'est exactement le cas de E:, et la
-        // réponse est non.
-        return false;
-    };
-    let plancher = depuis_ms.saturating_sub(2_000) * 10_000 + EPOQUE_FILETIME;
-    for sid in sids.flatten() {
-        // Certains sous-dossiers appartiennent à d'autres comptes et renvoient
-        // EPERM : notre fichier est dans le nôtre, on saute les autres.
-        let Ok(fiches) = std::fs::read_dir(sid.path()) else { continue };
-        for f in fiches.flatten() {
-            let nom = f.file_name().to_string_lossy().into_owned();
-            if !nom.starts_with("$I") {
-                continue;
-            }
-            let Ok(b) = std::fs::read(f.path()) else { continue };
-            let Some((chemin, quand)) = fiche_i(&b) else { continue };
-            if quand < plancher {
-                continue;
-            }
-            if chemin.eq_ignore_ascii_case(path) {
-                return true;
+/// Les fiches `$I` d'un volume, lues **une fois**.
+///
+/// `execute` appelait la vérification pour CHAQUE élément supprimé, et chaque
+/// appel relisait toutes les fiches du volume : le coût était donc N × M, où M
+/// est le nombre de fiches — et M croît avec l'usage du disque. Mesuré le
+/// 26/09/2026 sur G: : **193 ms pour un seul balayage** de 1500 fiches, soit
+/// 19 s pour 100 fichiers et 96 s pour 500. Une suppression de dossier y
+/// devenait inutilisable, sans que rien ne le signale.
+///
+/// On lit donc l'index une fois, **après** les suppressions : c'est seulement
+/// là que les fiches des fichiers qu'on vient d'envoyer existent.
+pub struct Corbeille {
+    /// (chemin d'origine, date de suppression en FILETIME)
+    fiches: Vec<(String, u64)>,
+}
+
+impl Corbeille {
+    /// Lit les fiches du volume, en **écartant par la date avant de les ouvrir**.
+    ///
+    /// Une fiche n'est utile que si elle décrit une suppression récente : c'est
+    /// la seule question qu'on lui pose. Or sur cette machine, lire 1500 fiches
+    /// coûte 190 ms tandis que les ÉNUMÉRER en coûte 3 — c'est l'ouverture du
+    /// fichier qui porte tout le prix, pas le parcours du dossier. On compare
+    /// donc la date d'écriture de la fiche, que l'énumération fournit déjà
+    /// (`DirEntry::metadata` ne coûte aucun appel système supplémentaire sous
+    /// Windows), avant de l'ouvrir.
+    ///
+    /// Mesuré le 26/09/2026, corbeille de G: à ~1500 fiches : le balayage
+    /// complet coûtait 305 ms par requête, et c'est lui qui dominait le coût
+    /// d'une suppression d'UN fichier (335 ms au total).
+    pub fn lire(lettre: char, depuis_ms: u64) -> Corbeille {
+        let mut fiches = Vec::new();
+        let racine = format!("{lettre}:\\$RECYCLE.BIN");
+        // Pas de corbeille du tout : c'est exactement le cas de E:.
+        let Ok(sids) = std::fs::read_dir(&racine) else {
+            return Corbeille { fiches };
+        };
+        // Même marge que `contient` : deux arrondis valent mieux qu'un.
+        let plancher_ms = depuis_ms.saturating_sub(2_000);
+        for sid in sids.flatten() {
+            // Certains sous-dossiers appartiennent à d'autres comptes et
+            // renvoient EPERM : notre fichier est dans le nôtre, on saute les
+            // autres — et surtout on ne les confond pas avec « vide ».
+            let Ok(entrees) = std::fs::read_dir(sid.path()) else { continue };
+            for f in entrees.flatten() {
+                let nom = f.file_name().to_string_lossy().into_owned();
+                if !nom.starts_with("$I") {
+                    continue;
+                }
+                if !fiche_recente(&f, plancher_ms) {
+                    continue;
+                }
+                let Ok(b) = std::fs::read(f.path()) else { continue };
+                if let Some((chemin, quand)) = fiche_i(&b) {
+                    fiches.push((chemin, quand));
+                }
             }
         }
+        Corbeille { fiches }
     }
-    false
+
+    /// Ce chemin a-t-il été pris par la corbeille **depuis** `depuis_ms` ?
+    ///
+    /// Le plancher de date n'est pas une coquetterie : une fiche plus ancienne
+    /// décrit une suppression ANTÉRIEURE du même chemin, et ferait passer une
+    /// destruction pour une opération réversible.
+    pub fn contient(&self, path: &str, depuis_ms: u64) -> bool {
+        let plancher = depuis_ms.saturating_sub(2_000) * 10_000 + EPOQUE_FILETIME;
+        self.fiches
+            .iter()
+            .any(|(c, q)| *q >= plancher && c.eq_ignore_ascii_case(path))
+    }
 }
 
 fn space(w: &[u16]) -> Option<(u64, u64)> {

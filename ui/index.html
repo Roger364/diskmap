@@ -364,7 +364,7 @@
 <script>
 const $ = s => document.querySelector(s);
 let state = { drives: [], scanning: null };
-let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set() };
+let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set(), gen: 0 };
 let pendingDry = null;
 // Le serveur s'arrête à la demande de cette page. Une fois posé, plus rien ne
 // doit partir : chaque minuteur deviendrait une requête vers un port fermé, et
@@ -614,6 +614,7 @@ async function load(keepSel) {
   const res = await api('/api/tree?' + qs);
   endLoad();
   cur.rows = res.rows;
+  cur.gen = res.gen;
   cur.totalSize = res.total_size;
   cur.parentSize = res.parent_size;
   cur.truncated = res.truncated;
@@ -762,6 +763,7 @@ async function search() {
   if (!cur.drive) return;
   const res = await api(`/api/search?drive=${cur.drive}&q=${encodeURIComponent(q)}&limit=800`);
   cur.rows = res.rows;
+  cur.gen = res.gen;
   cur.parentSize = res.rows.reduce((s, r) => s + r.size, 0) || 1;
   cur.truncated = res.truncated;
   cur.path = [{ name: `${cur.drive}:\\`, id: 0 }, { name: `« ${q} »`, id: 0 }];
@@ -980,11 +982,32 @@ async function openDelete() {
   const rows = selectedRows();
   if (!rows.length) return;
   const items = rows.map(r => ({ id: r.id, is_dir: r.is_dir }));
+  // On renvoie la génération de l'instantané d'où viennent ces identifiants.
+  // Un identifiant est une POSITION : si l'index a été réanalysé depuis, la
+  // même position désigne un autre fichier, et l'aperçu proposerait de
+  // supprimer ce qu'on n'a pas coché. Le serveur refuse plutôt que de viser à
+  // côté — mesuré le 26/09/2026, voir `Snapshot::gen`.
   const res = await api('/api/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ drive: cur.drive, items, mode: 'dry' }),
+    body: JSON.stringify({ drive: cur.drive, items, mode: 'dry', gen: cur.gen }),
+  }).catch(e => {
+    // Le serveur refuse un aperçu dont les identifiants viennent d'un autre
+    // instantané, plutôt que de viser à côté. Ce refus doit se VOIR : sans ce
+    // rattrapage, le bouton « Supprimer » restait sans effet et le motif était
+    // avalé par une promesse rejetée que personne n'écoutait.
+    pendingDry = null;
+    $('#dtitle').textContent = '';
+    $('#ddo').disabled = true;
+    $('#dbody').innerHTML =
+      `<div class="warn">${escapeHtml(String(e.message || e))}</div>` +
+      `<p style="margin:12px 0 0"><button class="btn" id="dreload">Recharger la liste</button></p>`;
+    $('#modal').classList.remove('hidden');
+    const b = $('#dreload');
+    if (b) b.onclick = () => { $('#modal').classList.add('hidden'); cur.sel.clear(); load(); };
+    return null;
   });
+  if (!res) return;
   pendingDry = res;
   $('#dtitle').textContent = `${res.deletable} élément(s) — ${hsize(res.total_size)}`;
   $('#ddo').disabled = res.deletable === 0;

@@ -154,6 +154,21 @@ fn affichable(p: &Path) -> String {
 }
 
 pub struct Snapshot {
+    /// Numéro de génération, unique et croissant, attribué à la construction.
+    ///
+    /// Un identifiant d'élément n'est PAS une identité : c'est une POSITION
+    /// dans `dirs` ou `files`. Une position ne veut rien dire hors de
+    /// l'instantané qui l'a produite — la même position désigne un autre
+    /// fichier dès qu'une ré-analyse rebat les vecteurs.
+    ///
+    /// Mesuré le 26/09/2026 : `p1.txt` portait l'identifiant 16 ; après
+    /// suppression de `p1.txt`, ajout d'un fichier et ré-analyse, l'identifiant
+    /// 16 désignait `p2.txt`. Un aperçu demandé avec l'ancien identifiant
+    /// proposait donc de supprimer un fichier que personne n'avait coché.
+    ///
+    /// La génération rend la dépendance explicite et vérifiable, au lieu de la
+    /// laisser se traduire en silence par une cible qui a changé.
+    pub gen: u64,
     pub root: String,      // "C:\"
     pub dirs: Vec<DirRec>, // trié par id : dirs[i].id == i
     pub files: Vec<FileRec>,
@@ -205,6 +220,12 @@ fn ts(t: std::io::Result<SystemTime>) -> i64 {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }
+
+/// Source des numéros de génération. Un compteur par processus suffit : deux
+/// instantanés successifs du même volume doivent différer, et c'est tout ce
+/// qu'on leur demande. On part de 1 pour qu'une génération nulle signale
+/// toujours « pas d'instantané », jamais « premier instantané ».
+static GENERATION: AtomicU64 = AtomicU64::new(1);
 
 impl Snapshot {
     fn new(
@@ -282,6 +303,7 @@ impl Snapshot {
         }
 
         Snapshot {
+            gen: GENERATION.fetch_add(1, Ordering::Relaxed),
             root,
             dirs,
             files,

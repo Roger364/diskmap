@@ -46,8 +46,32 @@ struct DriveState {
 #[derive(Clone)]
 struct PendingDel {
     drive: char,
-    items: Vec<DeleteItem>,
+    items: Vec<Montre>,
     at_ms: i64,
+}
+
+/// Un élément tel qu'il a été MONTRÉ, figé au moment de l'aperçu.
+///
+/// On mémorise le **chemin résolu**, jamais l'identifiant d'instantané.
+/// `execute` résolvait l'identifiant contre l'instantané **courant** ; une
+/// réanalyse intercalée entre l'aperçu et l'exécution décale ces identifiants,
+/// et l'application supprime alors un fichier qui n'a jamais été montré.
+///
+/// Ce n'est pas un cas d'école : elle relance une analyse après chaque
+/// suppression, et met en file celles des volumes sans cache au démarrage. Le
+/// jeton d'aperçu vit dix minutes — la fenêtre est largement ouverte. Mesuré le
+/// 26/09/2026 : l'aperçu annonçait `G:\_diskmap_coh\f06.txt`, et l'exécution a
+/// supprimé `G:\.pnpm-store\v11\index.db` — un autre dossier, un autre fichier,
+/// jamais sélectionné.
+///
+/// La taille et le compte sont figés avec le chemin : ils viennent du même
+/// instantané que lui, et les recalculer après coup rouvrirait le même écart.
+#[derive(Clone)]
+struct Montre {
+    path: PathBuf,
+    is_dir: bool,
+    size: u64,
+    count: u64,
 }
 
 struct App {
@@ -466,6 +490,7 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
             host = v.trim().to_string();
         }
     }
+
     let mut body = vec![0u8; content_len];
     if content_len > 0 {
         reader.read_exact(&mut body)?;
@@ -769,6 +794,10 @@ struct TreeJson {
     total_size: u64,
     parent_size: u64,
     truncated: bool,
+    /// Génération de l'instantané d'où viennent ces `id`. Le client doit la
+    /// renvoyer pour supprimer : les identifiants sont des positions, et une
+    /// position n'a de sens que dans l'instantané qui l'a produite.
+    gen: u64,
 }
 
 fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
@@ -848,6 +877,7 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             total_size: total as u64,
             parent_size,
             truncated,
+            gen: snap.gen,
         })
         .unwrap(),
     ))
@@ -881,6 +911,11 @@ struct DeleteReq {
     mode: String,
     token: Option<String>,
     confirm: Option<String>,
+    /// Génération de l'instantané d'où viennent les `items`. Les identifiants
+    /// sont des positions : re-résoudre une position contre un instantané plus
+    /// récent revient à viser un autre fichier. Mesuré — voir `Snapshot::gen`.
+    #[serde(default)]
+    gen: Option<u64>,
 }
 
 #[derive(serde::Serialize)]
@@ -1004,11 +1039,43 @@ fn delete(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
             .and_then(|s| s.snap.clone())
             .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
     };
+    // Les identifiants sont des POSITIONS dans l'instantané, et une position ne
+    // vaut que dans l'instantané qui l'a produite : re-résoudre un identifiant
+    // contre un instantané plus récent revient à viser un AUTRE fichier.
+    //
+    // Mesuré le 26/09/2026 : `p1.txt` portait l'identifiant 16. Après
+    // suppression de `p1.txt`, ajout d'un fichier et ré-analyse, l'identifiant
+    // 16 désignait `p2.txt` — et un aperçu demandé avec l'ancien identifiant
+    // proposait `G:\_diskmap_perime\p2.txt`, `blocked=false`, `deletable=1`.
+    // Le fichier montré n'était pas le fichier coché, et rien ne le disait.
+    //
+    // L'exécution, elle, n'a pas besoin de cette garde : elle ne résout plus
+    // rien et ne supprime que les chemins figés par l'aperçu.
+    let gen_vue = req.gen;
     match req.mode.as_str() {
-        "dry" => dry(app, letter, &snap, req.items),
-        // `req.items` est délibérément ignoré à l'exécution.
-        "recycle" => execute(app, letter, &snap, req, true),
-        "permanent" => execute(app, letter, &snap, req, false),
+        "dry" => {
+            let Some(gen_vue) = gen_vue else {
+                return Err((
+                    "400 Bad Request",
+                    "génération de l’instantané absente : recharge la liste avant de supprimer".into(),
+                ));
+            };
+            if gen_vue != snap.gen {
+                return Err((
+                    "409 Conflict",
+                    format!(
+                        "la liste a été lue à la génération {gen_vue}, l’index est à la {0} : \
+                         les positions ont pu changer. Recharge la liste avant de supprimer.",
+                        snap.gen
+                    ),
+                ));
+            }
+            dry(app, letter, &snap, req.items)
+        }
+        // `req.items` est délibérément ignoré à l'exécution : on ne supprime que
+        // ce que `dry` a résolu et montré.
+        "recycle" => execute(app, letter, req, true),
+        "permanent" => execute(app, letter, req, false),
         _ => Err(("400 Bad Request", "mode inconnu".into())),
     }
 }
@@ -1019,8 +1086,27 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
     let mut deletable = 0usize;
     let mut blocked = 0usize;
 
+    // Ce qu'on retient pour l'exécution : le chemin résolu, figé ici. C'est la
+    // seule liste que `execute` consultera.
+    let mut montres: Vec<Montre> = Vec::new();
+
     for it in &items {
+        // Un identifiant irrésoluble ne doit pas DISPARAÎTRE. Le client en
+        // demande N et n'en verrait revenir N-1, sans rien pour le lui dire :
+        // c'était le cas, `continue` suffisait à effacer la trace. Mesuré le
+        // 26/09/2026 — un aperçu demandé pour deux éléments dont un hors bornes
+        // en renvoyait UN, et `deletable=1` n'en soufflait mot.
         let Some(path) = resolve(snap, it) else {
+            blocked += 1;
+            out.push(PreviewItem {
+                path: format!("(élément {} absent de l’index actuel)", it.id),
+                size: 0,
+                count: 0,
+                is_dir: it.is_dir,
+                exists: false,
+                blocked: true,
+                reason: "identifiant irrésoluble : l’index ne le connaît plus".into(),
+            });
             continue;
         };
         let ps = path.to_string_lossy().into_owned();
@@ -1033,6 +1119,7 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
         } else {
             deletable += 1;
             total += size;
+            montres.push(Montre { path, is_dir: it.is_dir, size, count });
         }
         out.push(PreviewItem {
             path: ps,
@@ -1051,7 +1138,7 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
     let token = format!("{}-{:016x}", now_ms(), win32::alea_u64());
     {
         let mut p = app.pending.lock().unwrap();
-        p.insert(token.clone(), PendingDel { drive: letter, items, at_ms: now_ms() });
+        p.insert(token.clone(), PendingDel { drive: letter, items: montres, at_ms: now_ms() });
     }
 
     Ok(Resp::Json(
@@ -1067,7 +1154,7 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
     ))
 }
 
-fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_trash: bool) -> Result<Resp, (&'static str, String)> {
+fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Result<Resp, (&'static str, String)> {
     let token = req.token.clone().unwrap_or_default();
 
     // On valide tout avant de consommer le jeton : une demande refusée (mauvais
@@ -1110,66 +1197,54 @@ fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_tra
     // suppression ANTÉRIEURE du même chemin, et ferait passer une destruction
     // pour un succès. `now_ms` est signé, les dates de fiches ne le sont pas.
     let debut_ms = now_ms().max(0) as u64;
+    // Éléments supprimés dont la réversibilité reste à juger : (index dans
+    // `results`, chemin, taille, compte). On les juge après la boucle, et non
+    // dedans — voir plus bas.
+    let mut a_juger: Vec<(usize, String, u64, u64)> = Vec::new();
 
-    for it in &pending.items {
-        let Some(path) = resolve(snap, it) else { continue };
-        let ps = path.to_string_lossy().into_owned();
-        let (size, count) = index_size(snap, it);
-        let reason = blocked_reason(&path);
+    // On ne résout PLUS les identifiants ici : `pending.items` porte les chemins
+    // résolus au moment de l'aperçu, et c'est la seule chose qu'on s'autorise à
+    // supprimer. Résoudre à nouveau contre l'instantané courant revenait à faire
+    // confiance à un index qui a pu être remplacé depuis (voir `Montre`).
+    for m in &pending.items {
+        let ps = m.path.to_string_lossy().into_owned();
+        let size = m.size;
+        let count = m.count;
+        let reason = blocked_reason(&m.path);
         if let Some(r) = reason {
             failed += 1;
-            results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: true, blocked: true, reason: r.to_string() });
+            results.push(PreviewItem { path: ps, size, count, is_dir: m.is_dir, exists: true, blocked: true, reason: r.to_string() });
             continue;
         }
-        if !path.exists() {
+        if !m.path.exists() {
             failed += 1;
-            results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: false, blocked: true, reason: "introuvable sur le disque".into() });
+            results.push(PreviewItem { path: ps, size, count, is_dir: m.is_dir, exists: false, blocked: true, reason: "introuvable sur le disque".into() });
             continue;
         }
         match win32::delete_path(&ps, to_trash) {
             Ok(()) => {
                 done += 1;
                 freed += size;
-                // La réversibilité se CONSTATE, elle ne se déduit pas du mode
-                // demandé. `FOF_ALLOWUNDO` signifie « mets à la corbeille SI
-                // c'est possible » : mesuré le 26/09/2026, sur E: — volume sans
-                // corbeille — l'opération réussit, renvoie 0, et le fichier est
-                // DÉTRUIT. Journaliser « corbeille » sur la foi de la demande
-                // enregistrait donc une destruction comme une opération
-                // réversible, et l'utilisateur n'avait aucun moyen de le savoir.
-                let reversible = to_trash && win32::dans_corbeille(&ps, debut_ms);
-                if to_trash && !reversible {
-                    irreversible += 1;
-                }
-                // Le journal d'abord : `ps` est déplacé dans la ligne de résultat.
-                journal_lines.push(format!(
-                    "{}\t{}\t{}\t{}\t{}",
-                    now_ms(),
-                    match (to_trash, reversible) {
-                        (true, true) => "corbeille",
-                        (true, false) => "corbeille-refusee",
-                        _ => "definitif",
-                    },
-                    size,
-                    count,
-                    ps
-                ));
+                // La réversibilité se CONSTATE, et elle se lit dans la corbeille
+                // — mais les fiches des fichiers qu'on vient de lui envoyer n'y
+                // sont qu'APRÈS l'opération. On note donc l'élément tel quel, et
+                // on jugera plus bas, en une seule lecture de la corbeille : la
+                // relire ici, pour chaque élément, coûtait N × M (voir
+                // `win32::Corbeille`).
+                let idx = results.len();
                 results.push(PreviewItem {
-                    path: ps,
+                    path: ps.clone(),
                     size,
                     count,
-                    is_dir: it.is_dir,
+                    is_dir: m.is_dir,
                     // Après l'opération le chemin n'existe plus, et c'est vrai
-                    // dans les deux cas. Le champ dit désormais la même chose des
-                    // deux côtés de la branche — il ne l'affirme plus.
+                    // dans les deux cas. Le champ dit la même chose des deux
+                    // côtés de la branche — il ne l'affirme plus.
                     exists: false,
                     blocked: false,
-                    reason: if to_trash && !reversible {
-                        "DÉTRUIT : la corbeille de ce volume ne l’a pas pris".into()
-                    } else {
-                        String::new()
-                    },
+                    reason: String::new(),
                 });
+                a_juger.push((idx, ps, size, count));
             }
             Err(e) => {
                 failed += 1;
@@ -1177,9 +1252,45 @@ fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_tra
                 // affirmer que le fichier était toujours là alors qu'il avait
                 // disparu — et c'est ainsi qu'une suppression réussie a pu
                 // passer pour un échec sans que rien ne le contredise.
-                let encore = path.exists();
-                results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: encore, blocked: true, reason: e });
+                let encore = m.path.exists();
+                results.push(PreviewItem { path: ps, size, count, is_dir: m.is_dir, exists: encore, blocked: true, reason: e });
             }
+        }
+    }
+
+    // La réversibilité, jugée une fois pour toutes — après les suppressions,
+    // parce que c'est seulement là que la corbeille porte les fiches des
+    // fichiers qu'on vient de lui envoyer.
+    //
+    // `FOF_ALLOWUNDO` signifie « mets à la corbeille SI c'est possible » :
+    // mesuré le 26/09/2026, sur E: — volume sans corbeille — l'opération
+    // réussit, renvoie 0, et le fichier est DÉTRUIT. Journaliser « corbeille »
+    // sur la foi de la demande enregistrait donc une destruction comme une
+    // opération réversible, et l'utilisateur n'avait aucun moyen de le savoir.
+    if !a_juger.is_empty() {
+        let corbeille = if to_trash { Some(win32::Corbeille::lire(letter, debut_ms)) } else { None };
+        for (idx, ps, size, count) in &a_juger {
+            let reversible = corbeille
+                .as_ref()
+                .map(|c| c.contient(ps, debut_ms))
+                .unwrap_or(false);
+            if to_trash && !reversible {
+                irreversible += 1;
+                results[*idx].reason =
+                    "DÉTRUIT : la corbeille de ce volume ne l’a pas pris".into();
+            }
+            journal_lines.push(format!(
+                "{}\t{}\t{}\t{}\t{}",
+                now_ms(),
+                match (to_trash, reversible) {
+                    (true, true) => "corbeille",
+                    (true, false) => "corbeille-refusee",
+                    _ => "definitif",
+                },
+                size,
+                count,
+                ps
+            ));
         }
     }
 
@@ -1229,7 +1340,7 @@ fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     rows.sort_by(|a, b| b.size.cmp(&a.size));
     let truncated = rows.len() >= limit;
     Ok(Resp::Json(
-        serde_json::to_string(&serde_json::json!({ "rows": rows, "truncated": truncated })).unwrap(),
+        serde_json::to_string(&serde_json::json!({ "rows": rows, "truncated": truncated, "gen": snap.gen })).unwrap(),
     ))
 }
 
