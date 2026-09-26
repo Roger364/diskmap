@@ -6,7 +6,7 @@
 //  1. Le correctif CSRF exige un en-tête sur toute route POST, posé par le helper
 //     `api()` de l'interface. Mes autres sondes exercent /api/delete depuis NODE :
 //     elles ne disent donc rien du chemin de l'interface, et un correctif qui
-//     aurait cassé le geste de Maître les aurait laissées toutes vertes.
+//     aurait cassé le geste dans l'interface les aurait laissées toutes vertes.
 //
 //  2. La modale PROMETTAIT « tu peux les restaurer depuis l'explorateur ». Sur un
 //     volume sans corbeille, cette phrase est fausse — mesuré sur E:, le mode

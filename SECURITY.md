@@ -35,34 +35,39 @@ Le journal enregistre `horodatage\tressultat\ttaille\tcount\tchemin`. Sur 957 li
 **168 concernent des données réelles** ; les 789 autres sont les fichiers de test que les
 sondes créent (`_diskmap_*`, `essai-*`).
 
+Les noms de dossiers et de fichiers ci-dessous sont des **placeholders** : les chemins réels
+ont été remplacés, parce que ce rapport est public et qu'il n'a rien à divulguer du contenu
+d'un disque personnel. La structure, les volumes, les horaires et les effets sont ceux du
+journal ; seule la divulgation des noms a été neutralisée.
+
 | Heure (26/09) | Effet | Cible |
 |---|---|---|
-| 05:05:16 | corbeille | `G:\.pnpm-store\v11\index.db` |
-| **05:55:14** | **définitif — 25 fichiers** | `G:\Deepseek Harness\repo\*` : LICENSE, README(.i18n/.zh), SAFETY*, THIRD_PARTY_NOTICES, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, pytest.ini, tsconfig* (10) |
-| 05:55:25 | corbeille — 5 | `G:\Deepseek Harness\repo\website\{.gitignore,AGENTS.md}`, `G:\sauvegardes\waifu\{LISEZMOI-sauvegarde.md, waifu-main-2026-09-21.bundle, waifu-main-2026-09-22.bundle}` |
-| **05:56:11** | **définitif — 25 fichiers** | `G:\Copie Docs et Photos du Desktop Rosemary juillet 21\Photos\cd imagerie\RadiAnt DICOM Viewer 64-bit\RA64\*.dll` |
-| **05:56:15** | **définitif — 11 fichiers** | `G:\c\Users\Ro\AppData\Local\Temp\restaure-12616\waifu-hermes\*` (11), `G:\buffy\waifu\{DECISIONS,PROJECT_STATE,ROADMAP,README}.md` + 6, `G:\Users\Public\desktop.ini`, `G:\Deepseek Harness\.freebuff\project-id` |
-| 05:56:15 | définitif — 2 | `G:\sauvegardes\incident-2026-09-22\stash-gitignore-trading-bot{,-Agnes}.patch` |
-| 05:56:24 → 05:56:51 | corbeille — ~62 | `G:\ggames\*` (30), `G:\games 24\Age of Empires IV [FitGirl Repack]` (14), `G:\Copie Docs et Photos…\Copie docs laptop juillet 21` (12), `G:\sauvegardes\*` (6) |
+| 05:05:16 | corbeille | `G:\<cache pnpm>\v11\index.db` |
+| **05:55:14** | **définitif — 25 fichiers** | `G:\<projet A>\*` : LICENSE, README(.i18n/.zh), SAFETY*, THIRD_PARTY_NOTICES, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, pytest.ini, tsconfig* (10) |
+| 05:55:25 | corbeille — 5 | `G:\<projet A>\website\{.gitignore,AGENTS.md}`, `G:\<sauvegardes>\<projet B>\{LISEZMOI-sauvegarde.md, projet-B-2026-09-21.bundle, projet-B-2026-09-22.bundle}` |
+| **05:56:11** | **définitif — 25 fichiers** | `G:\<sauvegarde photos>\Photos\<dossier imagerie>\<lecteur DICOM>\*.dll` |
+| **05:56:15** | **définitif — 11 fichiers** | `G:\<profil utilisateur>\AppData\Local\Temp\<restauration>\<projet B>\*` (11), `G:\<projet C>\{DECISIONS,PROJECT_STATE,ROADMAP,README}.md` + 6, `G:\Users\Public\desktop.ini`, `G:\<projet A>\<config d'agent>\project-id` |
+| 05:56:15 | définitif — 2 | `G:\<sauvegardes>\incident-2026-09-22\stash-*.patch` |
+| 05:56:24 → 05:56:51 | corbeille — ~62 | `G:\<vapeurs>*` (30), `G:\<jeux>*` (14), `G:\<sauvegarde photos>\…` (12), `G:\<sauvegardes>\*` (6) |
 
 Deux entrées du 25/09 à 21:02 (`E:_diskmap_test`) sont des sondes, pas des données.
 
 **Indices de mécanisme :**
 
-- La suppression de 05:05:16 (`G:\.pnpm-store\v11\index.db`) correspond **mot pour mot** au
+- La suppression de 05:05:16 (`G:\<cache pnpm>\v11\index.db`) correspond **mot pour mot** au
   symptôme consigné dans le commentaire `Montre` de `src/main.rs` : l'agent qui a écrit le
   correctif a reproduit le bug sur le disque réel avant de le corriger.
 - Les lots font **exactement 25 fichiers**, à 4–15 secondes d'intervalle, et traversent des
-  racines sans rapport entre elles (`G:\c\Users\Ro\…`, `G:\Users\Public`, `G:\Deepseek
-  Harness\…`, `G:\buffy\waifu`). Un nettoyage manuel choisit dans **un** dossier. C'est la
-  signature d'identifiants résolus contre un index décalé.
+  racines sans rapport entre elles (`G:\<profil utilisateur>\…`, `G:\Users\Public`,
+  `G:\<projet A>\…`, `G:\<projet C>\…`). Un nettoyage manuel choisit dans **un** dossier.
+  C'est la signature d'identifiants résolus contre un index décalé.
 - La dernière suppression réelle est à 05:56:51. Le correctif du défaut d'index est commité
   à **06:29:57** (`bb5c60e`), soit 33 minutes plus tard.
 
-**Ce qui a déclenché ces suppressions.** L'agent `workbuddy`, qui développait
-l'application, a lancé son harnais de sondes sur le volume de travail `G:` — le volume
+**Ce qui a déclenché ces suppressions.** L'agent de développement qui écrivait
+l'application a lancé son harnais de sondes sur le volume de travail `G:` — le volume
 réel, celui qui contient les données. La sonde de coût, `sonde-suppression-lot.mjs`,
-posait des fichiers sous `G:\workspaces\workbuddy-ai\diskmap\target\essai-*` et envoyait au
+posait des fichiers sous un dossier de travail de l'agent et envoyait au
 serveur des **identifiants** en espérant qu'ils désigneraient ces fichiers. Le serveur les
 a résolus contre un index réanalysé depuis (§3.1) : les chemins visés désignaient d'autres
 fichiers, et l'agent, qui ne pouvait pas le voir, n'a rien constaté. La sonde n'a pas
@@ -437,18 +442,18 @@ Les 168 chemins du journal ont été comparés un par un à l'état du disque le
 | État | Nb | Détail |
 |---|---|---|
 | Intacts, taille identique à la destruction | 111 | photos, jeux, sauvegardes, bundles |
-| Présents, taille différente | 43 | 25 DLL du lecteur DICOM, 18 fichiers de `G:\buffy\waifu` |
+| Présents, taille différente | 43 | 25 DLL d'un lecteur d'imagerie, 18 fichiers d'un projet de code |
 | Encore absents | 14 | 2,28 Mo |
 
 Sur les 14 absents : 2,05 Mo sont des `.tsbuildinfo` — cache d'incrémental TypeScript,
 régénéré par le prochain `tsc` ; 174 octets sont un `desktop.ini`, que Windows recrée ;
-et 234 Ko sont 11 fichiers du projet `waifu-hermes`, dont **les 11 sont présents dans le
-dépôt d'origine** `C:\Hermes\Waifu qwen3.8max mix\waifu`, lui-même sauvegardé en trois
-bundles git dont un hors machine (Proton Drive).
+et 234 Ko sont 11 fichiers d'un projet de code, dont **les 11 sont présents dans le dépôt
+d'origine** sur un autre volume, lui-même sauvegardé en trois bundles git dont un hors
+machine.
 
-Des 43 « taille différente » : les 18 de `G:\buffy\waifu` portent des dates du 26/09
-06:03–08:34, **après** la destruction de 05:56 — ce projet a continué à être travaillé,
-l'écart est du travail normal. Les 25 DLL du lecteur DICOM sont des tables de
+Des 43 « taille différente » : les 18 fichiers du projet de code portent des dates du
+26/09 06:03–08:34, **après** la destruction de 05:56 — ce projet a continué à être travaillé,
+l'écart est du travail normal. Les 25 DLL du lecteur d'imagerie sont des tables de
 redirection sans code ni donnée, toutes remplacées par des équivalents.
 
 **Conclusion : aucune donnée unique n'a été perdue.** Le journal

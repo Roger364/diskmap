@@ -1,8 +1,8 @@
 // Playwright, charge de facon portable.
 //
-// Les sondes l'empruntaient au projet `waifu` voisin, par
-// `createRequire('G:/workspaces/workbuddy-ai/waifu/')`. C'est un chemin de ce
-// poste, et il les rendait inutilisables ailleurs — d'abord en integration
+// Les sondes l'empruntaient au projet voisin, par
+// `createRequire('G:/workspaces/<projet voisin>/')`. C'est un chemin de la
+// machine de développement, et il les rendait inutilisables ailleurs — d'abord en integration
 // continue, ou le depot n'a que lui-meme.
 //
 // On resout desormais depuis `tests/sondes/`, ou `npm install` a pose

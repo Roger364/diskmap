@@ -346,8 +346,8 @@ verifier('le chemin prévu est bien celui que l’aperçu avait montré',
 // ------------------------------------------------------- 7. nettoyage
 //
 // Le test a lui-même mis un fichier à la corbeille : il le reprend. Sans ça,
-// chaque exécution laisserait un résidu de 25 octets chez Maître — un test qu'on
-// hésite à relancer est un test qu'on ne relance pas.
+// chaque exécution laisserait un résidu de 25 octets dans le dossier du
+// developpeur — un test qu'on hesite a relancer est un test qu'on ne relance pas.
 // On retire la paire $R (le contenu) et $I (la fiche), qui partagent leur suffixe.
 console.log('\n--- 7. le test reprend ce qu’il a mis à la corbeille ---');
 let rendus = 0;
