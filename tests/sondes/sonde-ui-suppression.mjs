@@ -29,7 +29,17 @@ const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
 const CONTRE = process.argv[4] === 'sans-en-tete';
 // Un dossier a nous, sous la racine de travail, retire apres coup.
-const DOSSIER = dossier(VOL, 'ui');
+// Le nom est préfixé par `sonde-`, et il doit l'être : le dossier s'appelait
+// `ui`, ce qui est aussi le nom d'un dossier du DÉPÔT. Sur la machine de
+// développement, `D:\ui` n'existait pas et la recherche ne trouvait qu'un
+// candidat. Sur le runner, le dépôt est sur le volume analysé — donc sur
+// `D:` — et la recherche remontait le `ui` du dépôt en premier : la sonde
+// naviguait dans le code de l'interface au lieu du dossier d'essai, et
+// concluait « le fichier n'apparaît pas ».
+//
+// Un nom de sonde doit être unique PARMI CE QUE LA SONDE ANALYSE. Le volume de
+// travail n'est pas vierge, et il ne le sera jamais sur un runner.
+const DOSSIER = dossier(VOL, 'sonde-ui');
 const NOM = DOSSIER.split('/').pop();
 const A_CORBEILLE = aCorbeille(VOL);
 
