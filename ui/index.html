@@ -87,7 +87,7 @@
   .drive .inc {
     margin-top:6px; font-size:11px; line-height:1.45; color:var(--muted);
     background:var(--panel2); border:1px solid var(--line); border-radius:5px;
-    padding:4px 7px; cursor:pointer; display:flex; gap:6px; align-items:baseline;
+    padding:4px 7px; cursor:pointer; display:flex; gap:6px; align-items:center;
   }
   .drive .inc:hover { border-color:var(--accent-dim); color:var(--text); }
   .drive .inc b { color:var(--warm); font-weight:500; }
@@ -462,8 +462,17 @@ function renderDrives() {
     // présente comme exact et l'utilisateur n'a aucun moyen de le savoir.
     // On n'affiche rien quand il n'y a que des entrées sautées : leur coût est
     // d'une entrée chacune, ce qui ne fausse pas le total de façon lisible.
+    // Le libellé est court à dessein : mesuré dans cette barre de 250 px, la
+    // formulation longue (« 124 dossier(s) illisible(s) — total incomplet », 47
+    // caractères) se repliait sur deux lignes, et le mot « incomplet » se
+    // retrouvait orphelin sous « voir ». Celui-ci tient sur une ligne jusqu'à
+    // cinq chiffres ; au-delà il replie, mais proprement.
+    // « total incomplet » reste affiché, jamais relégué à l'infobulle : c'est
+    // toute l'information — sans lui, le chiffre se présente comme une mesure.
     const inc = (d.status === 'ready' && d.unreadable)
-      ? `<div class="inc"><span>! <b>${nf.format(d.unreadable)}</b> dossier(s) illisible(s) — total incomplet</span>` +
+      ? `<div class="inc" title="Des dossiers n'ont pas pu être ouverts : leur contenu ` +
+        `entier manque au total, qui est un plancher et non une mesure. Cliquer pour la liste.">` +
+        `<span>! <b>${nf.format(d.unreadable)}</b> illisible(s) · total incomplet</span>` +
         `<span class="go">voir</span></div>`
       : '';
     // Écart entre ce que le disque occupe et ce que l'analyse a su attribuer.
