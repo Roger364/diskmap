@@ -82,26 +82,48 @@ async function jetonInerte() {
 // ---------------------------------------------------------------- 1. refus
 console.log('--- 1. chemins que l’effacement doit refuser (vérifiés en simulation) ---');
 
-// Sélecteurs de dossiers relevés par /api/tree?drive=C&id=0 sur cette machine.
+// Les sélecteurs sont RÉSOLUS par leur NOM, jamais écrits en dur.
+//
+// Ils l'étaient : 34 pour `Windows`, 32 pour `Users`, relevés sur la machine de
+// développement. Ces numéros sont des POSITIONS dans un instantané de CETTE
+// machine — sur un runner GitHub, le dossier 34 est un autre, et la sonde
+// concluait « l'effacement ne protège pas `C:\Windows` » alors qu'elle venait
+// simplement de viser un dossier sans rapport. Un test qui ne marche que chez
+// celui qui l'a écrit n'est pas un test, c'est un souvenir.
+//
+// On demande donc la racine de C: et on retrouve chaque dossier par son nom.
+const racineC = await (await fetch(`${BASE}/api/tree?drive=C&id=0&limit=200`)).json();
+const parNom = new Map(racineC.rows.map(r => [r.name, r.sel]));
+const selWindows = parNom.get('Windows');
 const SYSTEMES = [
-  ['racine du volume C:', 0, 'racine du volume'],
-  ['C:\\Windows', 34, 'répertoire système protégé'],
-  ['C:\\Program Files', 23, 'répertoire système protégé'],
-  ['C:\\ProgramData', 25, 'répertoire système protégé'],
-  ['C:\\Users', 32, 'profil utilisateur protégé'],
+  ['racine du volume C:', 'racine du volume'],
+  ['Windows', 'répertoire système protégé'],
+  ['Program Files', 'répertoire système protégé'],
+  ['ProgramData', 'répertoire système protégé'],
+  ['Users', 'profil utilisateur protégé'],
 ];
 
-for (const [nom, sel, attendu] of SYSTEMES) {
+// Un dossier protégé qu'une machine n'a pas (`Program Files` sur une
+// installation minimale) ne peut pas être éprouvé. La sonde le DIT et
+// s'en abstient — elle ne le compte ni pour un succès ni pour un échec.
+const absents = [];
+for (const [nom, attendu] of SYSTEMES) {
+  const sel = nom.includes(':') ? 0 : parNom.get(nom);
+  if (sel === undefined) { absents.push(`C:\\${nom}`); continue; }
   const r = await effacer('C', [sel], 'dry');
   let d = null;
   try { d = JSON.parse(r.texte); } catch { /* laissé null */ }
   const it = d && d.items && d.items[0];
-  verifier(`${nom} est signalé bloqué`, r.status === 200 && it && it.blocked === true,
-    `HTTP ${r.status} — ${r.texte.slice(0, 120)}`);
+  const affiche = nom.includes(':') ? nom : `C:\\${nom}`;
+  verifier(`${affiche} est signalé bloqué`, r.status === 200 && it && it.blocked === true,
+    `sel=${sel} — HTTP ${r.status} — ${r.texte.slice(0, 120)}`);
   if (it) {
-    verifier(`${nom} : la raison est « ${attendu} »`, it.reason === attendu, `« ${it.reason} »`);
-    verifier(`${nom} n’est pas compté comme effaçable`, d.deletable === 0, `deletable = ${d.deletable}`);
+    verifier(`${affiche} : la raison est « ${attendu} »`, it.reason === attendu, `« ${it.reason} »`);
+    verifier(`${affiche} n’est pas compté comme effaçable`, d.deletable === 0, `deletable = ${d.deletable}`);
   }
+}
+if (absents.length) {
+  console.log(`      (absents de cette machine, non éprouvés : ${absents.join(', ')})`);
 }
 
 // ------------------------------------------------------- 2. le jeton exigé
@@ -151,7 +173,7 @@ console.log('\n--- 3. la liste vient du jeton, jamais de la requête ---');
 // faisait foi, c'est Windows qui serait visé — et ce test le dirait sans jamais
 // l'avoir tenté.
 const j2 = await jetonInerte();
-r = await effacer('C', [34], 'recycle', { token: j2 });
+r = await effacer('C', [selWindows ?? INERTE], 'recycle', { token: j2 });
 if (r.status === 200) {
   const d = JSON.parse(r.texte);
   verifier('les items de la requête sont ignorés',
