@@ -398,11 +398,12 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **10** | `racine()` refuse une racine posée sur un autre volume | `tests/sondes/config.mjs` | **fait** |
 | **11** | Aligner les noms de dossiers des cinq sondes sur `dossier()` | `tests/sondes/*.mjs` | **fait** |
 | **12** | Vérifier R9 sur un nom à espace finale (au lieu de le supposer) | `src/win32.rs`, `src/scan.rs` | **vérifié, sans défaut** |
-| **13** | Publication : anonymisation, CI verte sur GitHub | `SECURITY.md`, `.github/workflows/build.yml` | **fait** |
+| **13** | Publication : anonymisation, CI verte sur GitHub | `SECURITY.md`, `.github/workflows/build.yml`, `tests/sondes/*.mjs` | **fait** — 11/11 vertes sur `windows-latest` |
 
-**Ce que le premier run sur GitHub a révélé — et qui ne concerne pas
-l'application.** Trois échecs, tous dans le harnais, tous masqués par des
-messages trompeurs :
+**Ce que les runs sur GitHub ont révélé — et qui ne concerne pas
+l'application.** Cinq échecs successifs, tous dans le harnais, tous masqués
+par des messages trompeurs. Aucun ne venait de l'application ; tous étaient
+des tests qui incapacité une machine différente à mesurer quoi que ce soit :
 
 1. `cargo build --offline` échouait sur un runner vierge (`no matching package
    named rayon`). C'était ma commande, et le message d'aide du harnais la
@@ -418,10 +419,42 @@ messages trompeurs :
    défaut inexistant** — la pire des fautes pour un test de sécurité. Elles
    attendent désormais que le FAIT soit constaté (`attendreFichier`), pas qu'un
    drapeau soit baissé.
+4. Trois tests étaient réglés sur la machine de l'auteur : 10 ms par fichier,
+   1500 ms de rendu, 20 s de navigation. Le runner en fait 7,1 ms, ne rend pas
+   dans ces délais, et expire sur l'IP privée. Le premier annonçait que le coût
+   venait de l'API — ce qui reste vrai ; le deuxième concluait « l'interface ne
+   liste rien » ; le troisième, « la protection CSRF a cédé ». Aucun n'avait
+   mesuré quoi que ce soit.
+5. La sonde `ui` nommait son dossier d'essai `ui` — comme le dossier de
+   l'interface du dépôt. Sur le runner, le dépôt est sur le volume analysé : la
+   recherche remontait le mauvais dossier, et la sonde naviguait dans le code
+   au lieu de ses propres fichiers.
 
-Le troisième est le plus important, et il s'applique aussi à `sonde-lot` :
-compter les fichiers du volume mesurait l'activité des AUTRES sondes, pas la
-sienne. Une attente doit constater ce qu'elle attend, jamais un substitut.
+**Le point commun est plus important que la liste.** Aucun de ces tests ne
+mesurait un défaut de l'application ; tous produisaient un **verdict faux**,
+et rien dans leur sortie ne permettait de le distinguer d'un échec réel. Pour
+un test de sécurité, c'est la faute la plus coûteuse qui soit : un test qui
+accuse à tort apprend à ignorer les ROUGE, et le jour où une protection cède
+vraiment, personne ne le regarde.
+
+Trois règles en découlent, toutes appliquées :
+
+- **Une attente constate ce qu'elle attend**, jamais un substitut. Un drapeau
+  qui baisse n'est pas un fait ; compter des fichiers du volume mesure
+  l'activité des AUTRES sondes, pas la sienne.
+- **Un cas non mesuré ne vaut ni succès ni échec.** Une page inatteignable se
+  dit telle quelle : la compter comme un échec de sécurité affirmait une
+  attaque réussie qui n'a pas eu lieu.
+- **Un nom de sonde est unique parmi ce que la sonde analyse.** Le volume de
+  travail n'est pas vierge, et sur un runner il ne le sera jamais.
+
+État au 26/09/2026, après publication :
+
+```
+run 36271618869 : windows SUCCESS · sondes SUCCESS
+11/11 sondes vertes sur windows-latest, aucun cas non mesuré
+231 suppressions, toutes sur D: — le runner est éphémère et jeté après le job
+```
 
 Aucune des neuf conclusions du rapport n'est restée ouverte après vérification. R9 était le
 dernier doute, et il est fermé : un nom non adressable en forme normale est visible dans
