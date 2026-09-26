@@ -21,6 +21,14 @@ use std::thread;
 const UI: &str = include_str!("../ui/index.html");
 const DEFAULT_PORT: u16 = 8756;
 
+/// Taille maximale d'un corps de requête accepté.
+///
+/// Le plus gros corps légitime est une liste d'éléments à supprimer :
+/// l'interface en envoie un par ligne sélectionnée, une trentaine d'octets
+/// chacun. 4 Mio laissent donc passer plus de cent mille éléments — bien
+/// au-delà de ce que la table sait afficher.
+const CORPS_MAX: usize = 4 * 1024 * 1024;
+
 #[derive(Clone, Copy, PartialEq, serde::Serialize)]
 enum Status {
     #[serde(rename = "empty")]
@@ -471,6 +479,12 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     // nomme la machine visée (voir `hote_local` — c'est la défense contre un
     // rebinding DNS).
     let mut content_len: usize = 0;
+    // Un corps annoncé plus gros que ce qu'on accepte est retenu comme tel,
+    // sans jamais être alloué. `vec![0u8; content_len]` sur un en-tête venu du
+    // réseau est une allocation arbitraire : mesuré le 26/09/2026, un seul
+    // « Content-Length: 999999999999 » suffisait à faire tomber le processus
+    // entier — aucune route n'était même atteinte.
+    let mut trop_gros = false;
     let mut action = String::new();
     let mut host = String::new();
     loop {
@@ -483,12 +497,29 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
         }
         let lower = h.to_ascii_lowercase();
         if let Some(v) = lower.strip_prefix("content-length:") {
-            content_len = v.trim().parse().unwrap_or(0);
+            let n: usize = v.trim().parse().unwrap_or(0);
+            if n > CORPS_MAX {
+                trop_gros = true;
+            } else {
+                content_len = n;
+            }
         } else if let Some(v) = lower.strip_prefix("x-diskmap:") {
             action = v.trim().to_string();
         } else if let Some(v) = lower.strip_prefix("host:") {
             host = v.trim().to_string();
         }
+    }
+
+    // On ne lit pas le corps : c'est justement lui qu'on refuse d'allouer.
+    if trop_gros {
+        let corps = format!("corps annoncé trop gros : {CORPS_MAX} octets au maximum");
+        let entete = format!(
+            "HTTP/1.1 413 Payload Too Large\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
+            corps.len()
+        );
+        stream.write_all(entete.as_bytes())?;
+        stream.write_all(corps.as_bytes())?;
+        return stream.flush();
     }
 
     let mut body = vec![0u8; content_len];
