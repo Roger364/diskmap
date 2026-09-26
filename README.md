@@ -6,6 +6,20 @@ folders **and** files, sortable, with tree navigation and a global search.
 A local HTTP server serves a single-page interface; the volume scan itself is
 written in Rust and runs in parallel.
 
+## Status
+
+**Version 0.1.0 — early, and explicit about what that means.** It does what the
+next section describes, on Windows, and it has been measured on one machine.
+
+- **The interface is in French**, as are the code, the comments and the commit
+  messages. An English interface is not planned yet.
+- **The binary is not signed.** Windows will show a SmartScreen warning on first
+  run, and an unsigned executable that walks an entire disk is the kind of thing
+  antivirus heuristics dislike. Signing is a per-year certificate cost this
+  project has not paid — see *Build and run* to compile it yourself instead.
+- **There is no installer and no published release.** Build from source, or take
+  the binary the CI workflow produces as an artifact.
+
 ## What it does
 
 - **A folder's size includes everything under it**, not just the files directly
@@ -29,14 +43,22 @@ delete something that was not shown first, or on the strength of a stale list.
 
 Defaults and guards:
 
-- **Recycle Bin by default**, so the operation stays reversible. Permanent
-  deletion is available but requires typing `EFFACER`.
+- **Recycle Bin by default**, so the operation stays reversible — *where a
+  Recycle Bin exists*. A volume can have none: an exFAT volume has no
+  `$RECYCLE.BIN` at all, and `FOF_ALLOWUNDO` only ever meant "move to the
+  Recycle Bin *if possible*". There, Windows destroys the file instead. So the
+  preview says which case you are in **before** you confirm, and afterwards the
+  app reports what actually happened rather than what was asked for: an entry
+  requested for the Recycle Bin but destroyed is counted, named, and logged as
+  such. Permanent deletion is available but requires typing `EFFACER`.
 - **Protected paths are refused**: volume roots, `Windows`, `Program Files`,
   `ProgramData`, `System Volume Information`, `$Recycle.Bin`, `Recovery`, and
   whole user profiles.
 - The preview re-checks that each path still exists, and warns above 20 GB.
 - Every deletion is appended to `%LOCALAPPDATA%\diskmap\suppressions.log`
-  (timestamp, mode, size, path).
+  (timestamp, **outcome**, size, path). The outcome is one of `corbeille`,
+  `corbeille-refusee` or `definitif` — it records what took place, not what was
+  requested.
 - A successful deletion triggers a re-scan of the volume, so totals do not keep
   showing entries that no longer exist.
 
@@ -44,6 +66,25 @@ One implementation note: deletion deliberately uses normal paths (`C:\...`),
 never the verbatim `\\?\` form used for scanning. With that prefix,
 `SHFileOperationW` bypasses the Recycle Bin and deletes permanently — the exact
 opposite of the intended default.
+
+## Local only, and why that is not enough by itself
+
+The server binds `127.0.0.1` and nothing else, so it is unreachable from the
+network. Two further guards close what a loopback binding leaves open — worth
+knowing if you script the API, since both answer `403`:
+
+- **Every mutating route is a `POST` and requires the header `X-Diskmap: 1`.**
+  A custom header is not a "simple" header, so a browser must request a
+  preflight before sending one, and none is ever served. A plain `text/plain`
+  POST from another page therefore cannot reach them.
+- **Every route, reads included, requires `Host` to name this machine**
+  (`127.0.0.1`, `localhost` or `::1`; the port is free). Without that check,
+  **DNS rebinding** would defeat the first guard entirely: once the attacker's
+  hostname resolves to `127.0.0.1`, the browser considers the requests
+  same-origin, sends them itself, preflights nothing, and sets the custom header
+  freely. Measured with the check removed — a page served under a rebinding
+  hostname loads the real interface and reads the whole tree, `/api/tree`
+  included.
 
 ## Why it is fast
 
