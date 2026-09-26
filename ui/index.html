@@ -1024,9 +1024,17 @@ function renderDeleteBody() {
     h += `<div class="warn" style="margin-top:12px">Suppression <b>définitive</b>, ` +
          `aucune récupération possible depuis la corbeille. Tape <b>EFFACER</b> pour confirmer.</div>` +
          `<input class="search" id="dconfirm" placeholder="EFFACER" style="width:150px;margin-top:9px" />`;
-  } else {
+  } else if (d.corbeille) {
     h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
          `Les éléments iront dans la corbeille : tu peux les restaurer depuis l'explorateur.</p>`;
+  } else {
+    // La promesse de réversibilité était écrite ici en dur — et fausse sur un
+    // volume sans corbeille. Mesuré sur E: le 26/09/2026 : le mode « corbeille »
+    // y DÉTRUIT les fichiers, sans que rien ne le dise. On le dit AVANT l'acte,
+    // pas seulement après.
+    h += `<div class="warn" style="margin-top:12px"><b>Ce volume n’a pas de corbeille.</b> ` +
+         `Ces éléments seront <b>définitivement détruits</b> : aucune restauration ` +
+         `ne sera possible.</div>`;
   }
   $('#dbody').innerHTML = h;
 }
@@ -1055,15 +1063,34 @@ async function doDelete() {
     return;
   }
 
+  // La réversibilité se DIT. Elle ne se déduit pas du mode demandé : sur un
+  // volume sans corbeille, « corbeille » détruit le fichier. L'interface
+  // annonçait « N supprimé(s) · X libérés » sans jamais préciser lequel des
+  // deux — et c'est exactement ce qui laissait le défaut invisible.
   let h = `<p style="margin:0 0 10px"><span class="ok"><b>${res.done}</b> supprimé(s)</span>` +
           (res.failed ? ` · <span class="ko"><b>${res.failed}</b> échec(s)</span>` : '') +
-          ` · ${hsize(res.freed)} libérés</p>`;
+          ` · ${hsize(res.freed)} libérés` +
+          (res.done
+            ? (res.to_trash
+                ? ` · <span class="ok">récupérables dans la corbeille</span>`
+                : ` · <span class="ko"><b>définitif</b></span>`)
+            : '') +
+          `</p>`;
+  if (res.irreversible) {
+    h += `<div class="warn"><b>${nf.format(res.irreversible)}</b> élément(s) ont été ` +
+         `<b>DÉTRUITS</b> : la corbeille de ce volume ne les a pas pris. ` +
+         `Ils ne sont pas récupérables.</div>`;
+  }
   if (res.results && res.results.length) {
     h += '<div class="plist">';
     for (const it of res.results.slice(0, 30)) {
+      // `reason` porte désormais aussi la vérité d'une suppression réussie mais
+      // non réversible : un « ok » vert y serait un mensonge.
+      const etat = (it.blocked || it.reason)
+        ? `<span class="b">${escapeHtml(it.reason || 'ignoré')}</span>`
+        : `<span class="s ok">ok</span>`;
       h += `<div><span class="p" title="${escapeHtml(it.path)}">${escapeHtml(it.path)}</span>` +
-           (it.blocked ? `<span class="b">${escapeHtml(it.reason || 'ignoré')}</span>`
-                       : `<span class="s ok">ok</span>`) + '</div>';
+           etat + '</div>';
     }
     h += '</div>';
   }

@@ -821,6 +821,9 @@ struct DeletePreview {
     total_size: u64,
     deletable: usize,
     blocked: usize,
+    /// Le volume a-t-il une corbeille ? Faux ⇒ une suppression « corbeille »
+    /// détruirait les fichiers. On le dit AVANT, pas seulement après.
+    corbeille: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -828,7 +831,10 @@ struct DeleteOutcome {
     done: usize,
     failed: usize,
     freed: u64,
+    /// L'opération ÉTAIT-elle réversible — et non : l'a-t-on demandée réversible.
     to_trash: bool,
+    /// Demandés en corbeille, mais détruits faute d'avoir été pris par elle.
+    irreversible: usize,
     results: Vec<PreviewItem>,
     rescan: bool,
 }
@@ -969,7 +975,15 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
     }
 
     Ok(Resp::Json(
-        serde_json::to_string(&DeletePreview { token, items: out, total_size: total, deletable, blocked }).unwrap(),
+        serde_json::to_string(&DeletePreview {
+            token,
+            items: out,
+            total_size: total,
+            deletable,
+            blocked,
+            corbeille: win32::corbeille_disponible(letter),
+        })
+        .unwrap(),
     ))
 }
 
@@ -1010,6 +1024,12 @@ fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_tra
     let mut failed = 0usize;
     let mut freed = 0u64;
     let mut journal_lines: Vec<String> = Vec::new();
+    // Demandés en corbeille, mais la corbeille ne les a pas pris : détruits.
+    let mut irreversible = 0usize;
+    // Sert de plancher aux fiches `$I` : une fiche plus ancienne décrit une
+    // suppression ANTÉRIEURE du même chemin, et ferait passer une destruction
+    // pour un succès. `now_ms` est signé, les dates de fiches ne le sont pas.
+    let debut_ms = now_ms().max(0) as u64;
 
     for it in &pending.items {
         let Some(path) = resolve(snap, it) else { continue };
@@ -1030,16 +1050,46 @@ fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_tra
             Ok(()) => {
                 done += 1;
                 freed += size;
+                // La réversibilité se CONSTATE, elle ne se déduit pas du mode
+                // demandé. `FOF_ALLOWUNDO` signifie « mets à la corbeille SI
+                // c'est possible » : mesuré le 26/09/2026, sur E: — volume sans
+                // corbeille — l'opération réussit, renvoie 0, et le fichier est
+                // DÉTRUIT. Journaliser « corbeille » sur la foi de la demande
+                // enregistrait donc une destruction comme une opération
+                // réversible, et l'utilisateur n'avait aucun moyen de le savoir.
+                let reversible = to_trash && win32::dans_corbeille(&ps, debut_ms);
+                if to_trash && !reversible {
+                    irreversible += 1;
+                }
                 // Le journal d'abord : `ps` est déplacé dans la ligne de résultat.
                 journal_lines.push(format!(
                     "{}\t{}\t{}\t{}\t{}",
                     now_ms(),
-                    if to_trash { "corbeille" } else { "definitif" },
+                    match (to_trash, reversible) {
+                        (true, true) => "corbeille",
+                        (true, false) => "corbeille-refusee",
+                        _ => "definitif",
+                    },
                     size,
                     count,
                     ps
                 ));
-                results.push(PreviewItem { path: ps, size, count, is_dir: it.is_dir, exists: true, blocked: false, reason: String::new() });
+                results.push(PreviewItem {
+                    path: ps,
+                    size,
+                    count,
+                    is_dir: it.is_dir,
+                    // Après l'opération le chemin n'existe plus, et c'est vrai
+                    // dans les deux cas. Le champ dit désormais la même chose des
+                    // deux côtés de la branche — il ne l'affirme plus.
+                    exists: false,
+                    blocked: false,
+                    reason: if to_trash && !reversible {
+                        "DÉTRUIT : la corbeille de ce volume ne l’a pas pris".into()
+                    } else {
+                        String::new()
+                    },
+                });
             }
             Err(e) => {
                 failed += 1;
@@ -1064,8 +1114,12 @@ fn execute(app: &Arc<App>, letter: char, snap: &Snapshot, req: DeleteReq, to_tra
         start_scan(app, letter);
     }
 
+    // `to_trash` répond à la question utile : « l'opération était-elle
+    // réversible ? » — et non « l'a-t-on demandée réversible ? ». Les deux
+    // différaient silencieusement tant qu'on ne vérifiait pas la corbeille.
+    let reversible = to_trash && irreversible == 0;
     Ok(Resp::Json(
-        serde_json::to_string(&DeleteOutcome { done, failed, freed, to_trash, results, rescan }).unwrap(),
+        serde_json::to_string(&DeleteOutcome { done, failed, freed, to_trash: reversible, irreversible, results, rescan }).unwrap(),
     ))
 }
 

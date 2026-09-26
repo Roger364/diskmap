@@ -275,6 +275,109 @@ pub fn delete_path(path: &str, to_trash: bool) -> Result<(), String> {
     Err("le chemin existe toujours après l'opération".into())
 }
 
+/// Une fiche `$I` de la corbeille nomme le fichier qu'elle décrit. On la lit.
+///
+/// Format MESURÉ sur cette machine le 26/09/2026, sur les 1194 fiches de G: —
+/// toutes en version 2, et toutes décodées en chemins bien formés (`X:\…`) :
+///   0x00  u32  version (2)
+///   0x08  u64  taille du fichier
+///   0x10  u64  date de suppression (FILETIME)
+///   0x18  u32  longueur du chemin, en caractères
+///   0x1C  …    chemin d'origine, UTF-16LE, terminé par un zéro
+///
+/// La longueur n'est utilisée que comme borne : on s'arrête au premier zéro, ce
+/// qui rend le décodage insensible à ce qu'elle compte exactement (caractères
+/// utiles, ou zéro final compris).
+fn fiche_i(b: &[u8]) -> Option<(String, u64)> {
+    if b.len() < 0x20 {
+        return None;
+    }
+    let version = u32::from_le_bytes(b[0..4].try_into().ok()?);
+    if version != 2 {
+        return None;
+    }
+    let quand = u64::from_le_bytes(b[0x10..0x18].try_into().ok()?);
+    let n = u32::from_le_bytes(b[0x18..0x1C].try_into().ok()?) as usize;
+    if n == 0 {
+        return None;
+    }
+    let fin = (0x1C + n * 2).min(b.len());
+    let mut u: Vec<u16> = Vec::with_capacity(n);
+    let mut i = 0x1C;
+    while i + 1 < fin {
+        let c = u16::from_le_bytes([b[i], b[i + 1]]);
+        if c == 0 {
+            break;
+        }
+        u.push(c);
+        i += 2;
+    }
+    Some((String::from_utf16_lossy(&u), quand))
+}
+
+/// Le volume a-t-il une corbeille où aller ? Sert à AVERTIR avant, et non
+/// seulement à constater après.
+///
+/// Ce n'est qu'un indice, et il faut le présenter comme tel : un volume peut
+/// avoir une corbeille et la refuser quand même — fichier plus gros que la taille
+/// maximale allouée, par exemple. Son ABSENCE, en revanche, est un fait : c'est
+/// le cas de `E:`, mesuré, où Windows supprime définitivement sans le dire.
+pub fn corbeille_disponible(lettre: char) -> bool {
+    std::path::Path::new(&format!("{lettre}:\\$RECYCLE.BIN")).is_dir()
+}
+
+/// Écart entre l'époque FILETIME (1601) et l'époque Unix, en unités de 100 ns.
+const EPOQUE_FILETIME: u64 = 116_444_736_000_000_000;
+
+/// Le fichier est-il RÉELLEMENT dans la corbeille du volume qui le portait ?
+///
+/// On ne peut pas se fier à `FOF_ALLOWUNDO` : il signifie « mets à la corbeille
+/// **si c'est possible** ». Mesuré le 26/09/2026 : sur `E:`, volume sans
+/// corbeille, l'opération réussit, renvoie 0, et le fichier est **DÉTRUIT** —
+/// pendant que l'application annonçait une opération réversible et journalisait
+/// « corbeille ». Un fichier introuvable dans toutes les corbeilles de la
+/// machine.
+///
+/// Le seul juge est donc la corbeille elle-même : chaque fichier recyclé y
+/// laisse une fiche `$I` portant son chemin d'origine. On exige en plus que la
+/// date de la fiche soit postérieure au début de l'opération — sans quoi une
+/// fiche laissée par une suppression ANTÉRIEURE du même chemin ferait passer
+/// une destruction pour un succès.
+pub fn dans_corbeille(path: &str, depuis_ms: u64) -> bool {
+    let mut c = path.chars();
+    let Some(lettre) = c.next() else { return false };
+    if c.next() != Some(':') {
+        return false;
+    }
+    let racine = format!("{lettre}:\\$RECYCLE.BIN");
+    let Ok(sids) = std::fs::read_dir(&racine) else {
+        // Pas de corbeille du tout : c'est exactement le cas de E:, et la
+        // réponse est non.
+        return false;
+    };
+    let plancher = depuis_ms.saturating_sub(2_000) * 10_000 + EPOQUE_FILETIME;
+    for sid in sids.flatten() {
+        // Certains sous-dossiers appartiennent à d'autres comptes et renvoient
+        // EPERM : notre fichier est dans le nôtre, on saute les autres.
+        let Ok(fiches) = std::fs::read_dir(sid.path()) else { continue };
+        for f in fiches.flatten() {
+            let nom = f.file_name().to_string_lossy().into_owned();
+            if !nom.starts_with("$I") {
+                continue;
+            }
+            let Ok(b) = std::fs::read(f.path()) else { continue };
+            let Some((chemin, quand)) = fiche_i(&b) else { continue };
+            if quand < plancher {
+                continue;
+            }
+            if chemin.eq_ignore_ascii_case(path) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn space(w: &[u16]) -> Option<(u64, u64)> {
     let mut avail: u64 = 0;
     let mut total: u64 = 0;
