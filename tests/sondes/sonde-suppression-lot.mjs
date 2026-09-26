@@ -38,7 +38,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { dossier, corbeille, aCorbeille, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { dossier, corbeille, aCorbeille, attendreAnalyse, attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -70,13 +70,23 @@ const post = (chemin, corps) => fetch(BASE + chemin, {
   method: 'POST', headers: H, body: JSON.stringify(corps),
 }).then(async r => ({ status: r.status, texte: await r.text() }));
 
-async function repos() {
-  for (let i = 0; i < 400; i++) {
-    const s = await (await fetch(`${BASE}/api/state`)).json();
-    if (!s.scanning) return;
-    await new Promise(r => setTimeout(r, 300));
-  }
-}
+/**
+ * Attend que le volume soit analysé ET que l'instantané contienne nos fichiers.
+ *
+ * Attendre seulement `!scanning` ne suffit pas, et l'échec est silencieux :
+ * l'analyse peut s'être terminée AVANT que les fichiers soient sur le disque,
+ * ou le runner peut servir un instantané déjà en cache, plus ancien que la
+ * création. Dans les deux cas `scanning` passe à faux au premier tour, la sonde
+ * repart sur un index qui ne connaît pas ses fichiers, et elle conclut
+ * « les deux dossiers d'essai ne sont pas dans l'instantané » — un verdict
+ * faux, sur un défaut qui n'existe pas.
+ *
+ * On attend donc que le FAIT soit constaté, et non que le processus ait fini.
+ *
+ * Délégué à `attendreAnalyse` (config.mjs), où la course est décrite une fois
+ * pour toutes : c'était la troisième sonde à en souffrir.
+ */
+const repos = (attendus = 0) => attendreAnalyse(BASE, VOL, attendus);
 
 const nom = i => `f${String(i).padStart(3, '0')}.txt`;
 function monter(dossier, n) {
@@ -103,7 +113,17 @@ async function idsDuDossier(nomDossier) {
 monter(DOSSIER_A, N_A);
 monter(DOSSIER_B, N_B);
 await post(`/api/scan/${VOL}`, {});
-await repos();
+// Le volume doit porter au moins nos deux dossiers ; le nombre de fichiers
+// AVANT la création est relevé pour que l'attente soit une condition et non
+// une espérance.
+// Le fait, pas un compte : on attend que le DERNIER fichier créé apparaisse
+// dans l'instantane. Compter les fichiers du volume ne marche pas ici — les
+// sondes qui precedents en ont supprime, et le volume en a donc MOINS qu'au
+// depart, alors que notre dossier est complet. C'est un plancher qui mesure
+// l'activite des autres, pas la nôtre. Voir `attendreFichier`.
+verifier('le volume est analysé et porte le dernier fichier créé',
+  await attendreFichier(BASE, VOL, nom(N_A)),
+  `« ${nom(N_A)} » n’apparaît pas dans l’index de ${VOL}`);
 const vA = await idsDuDossier(path.basename(DOSSIER_A));
 const vB = await idsDuDossier(path.basename(DOSSIER_B));
 verifier('les deux dossiers d’essai sont dans l’instantané',

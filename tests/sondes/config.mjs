@@ -97,3 +97,65 @@ export function aCorbeille(vol) {
 export function journal() {
   return path.join(process.env.LOCALAPPDATA || '', 'diskmap', 'suppressions.log');
 }
+
+/**
+ * Attend qu'un volume soit analyse ET que l'instantaner voie ce qu'on vient de
+ * creer.
+ *
+ * Attendre seulement `!scanning` est une course, et elle est SILENCIEUSE :
+ * l'analyse peut s'achever avant que les fichiers soient ecrits — ou le runner
+ * peut servir un instantane en cache, plus vieux que la creation. Dans les deux
+ * cas la boucle sort au premier tour, la sonde interroge un index qui ne
+ * connait pas ses fichiers, et elle conclut « absent » ou « dossier hors de
+ * l'instantane » : un verdict FAUX, sur un defaut qui n'existe pas. C'est ce
+ * que le premier run sur GitHub a produit, et le diagnostic indiquait « les
+ * protections ne fonctionnent plus » — alors que rien de tout cela n'etait vrai.
+ *
+ * `attendus` est le nombre de fichiers que le volume doit porter au minimum.
+ * On le releve AVANT la creation et on y ajoute le nombre cree : la comparaison
+ * porte alors sur le volume entier, donc elle marche aussi sur un runner deja
+ * rempli, sans rien savoir du nom du dossier de travail.
+ *
+ * `attendreFichier` est préférable dans la plupart des cas — voir plus bas.
+ *
+ * Renvoie `true` si le volume porte bien le nombre attendu, `false` sinon. Un
+ * `false` n'est pas une panne : la sonde appelante decide ce qu'il vaut, parce
+ * que la consequence n'est pas la meme partout.
+ */
+export async function attendreAnalyse(base, vol, attendus = 0, tours = 600) {
+  for (let i = 0; i < tours; i++) {
+    const s = await (await fetch(`${base}/api/state`)).json();
+    const d = (s.drives || []).find((x) => x.letter === String(vol).toUpperCase());
+    if (s && !s.scanning) {
+      if (!attendus) return true;
+      if (d && d.n_files >= attendus) return true;
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return false;
+}
+
+/**
+ * Attend qu'un fichier APPARAISSE dans l'instantane d'un volume.
+ *
+ * C'est le critere de FAIT, et il est meilleur qu'un compte de fichiers : le
+ * volume perd des fichiers en cours de run — les sondes en suppriment, c'est
+ * leur raison d'être — donc un plancher sur `n_files` peut être franchi même
+ * quand l'instantané n'a pas encore le fichier qu'on cherche. Compter, c'est
+ * constater une conséquence ; chercher le nom, c'est constater le fait.
+ *
+ * La recherche passe par `/api/search`, qui cherche dans le nom, et l'attente
+ * est bornee : au pire, la sonde appelante constate l'absence et le dit.
+ */
+export async function attendreFichier(base, vol, nom, tours = 600) {
+  const cible = encodeURIComponent(nom);
+  for (let i = 0; i < tours; i++) {
+    const s = await (await fetch(`${base}/api/state`)).json();
+    if (s && !s.scanning) {
+      const r = await (await fetch(`${base}/api/search?drive=${vol}&q=${cible}`)).json();
+      if ((r.rows || []).some((x) => x.name === nom)) return true;
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return false;
+}

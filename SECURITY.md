@@ -398,6 +398,30 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **10** | `racine()` refuse une racine posée sur un autre volume | `tests/sondes/config.mjs` | **fait** |
 | **11** | Aligner les noms de dossiers des cinq sondes sur `dossier()` | `tests/sondes/*.mjs` | **fait** |
 | **12** | Vérifier R9 sur un nom à espace finale (au lieu de le supposer) | `src/win32.rs`, `src/scan.rs` | **vérifié, sans défaut** |
+| **13** | Publication : anonymisation, CI verte sur GitHub | `SECURITY.md`, `.github/workflows/build.yml` | **fait** |
+
+**Ce que le premier run sur GitHub a révélé — et qui ne concerne pas
+l'application.** Trois échecs, tous dans le harnais, tous masqués par des
+messages trompeurs :
+
+1. `cargo build --offline` échouait sur un runner vierge (`no matching package
+   named rayon`). C'était ma commande, et le message d'aide du harnais la
+   conseillait.
+2. Le délai de 180 s par volume était dépassé sur `C:`, qui contient toute
+   l'image de l'agent — et le harnais rapportait « ECHEC », ce qui accuse
+   l'application d'un défaut qu'elle n'a pas. Un dépassement est désormais
+   rapporté comme tel.
+3. Trois sondes attendaient `!scanning` avant d'interroger l'instantané. Sur
+   un runner lent, l'analyse se termine avant que les fichiers créés soient
+   vus : les sondes repartaient sur un index incomplet et concluaient « absent »
+   ou « les protections ne fonctionnent plus ». **Un verdict faux, sur un
+   défaut inexistant** — la pire des fautes pour un test de sécurité. Elles
+   attendent désormais que le FAIT soit constaté (`attendreFichier`), pas qu'un
+   drapeau soit baissé.
+
+Le troisième est le plus important, et il s'applique aussi à `sonde-lot` :
+compter les fichiers du volume mesurait l'activité des AUTRES sondes, pas la
+sienne. Une attente doit constater ce qu'elle attend, jamais un substitut.
 
 Aucune des neuf conclusions du rapport n'est restée ouverte après vérification. R9 était le
 dernier doute, et il est fermé : un nom non adressable en forme normale est visible dans

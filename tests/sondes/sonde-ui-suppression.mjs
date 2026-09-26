@@ -23,7 +23,7 @@
 import fs from 'fs';
 
 import { chromium } from './navigateur.mjs';
-import { dossier, aCorbeille, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { dossier, aCorbeille, attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -45,14 +45,16 @@ const H = { 'X-Diskmap': '1' };   // la sonde joue le client légitime
 console.log(`--- ${VOL}: — corbeille ${A_CORBEILLE ? 'présente' : 'ABSENTE'} ---`);
 
 // --- montage : un fichier à nous, dans l'instantané --------------------------
+// L'attente porte sur le FAIT : le fichier doit APPARAITRE dans l'instantane.
+// `!scanning` peut revenir avant que le fichier soit indexe, et la suite
+// irait alors chercher une ligne qui n'existe pas encore. Voir
+// `attendreFichier` dans config.mjs.
 fs.mkdirSync(DOSSIER, { recursive: true });
 fs.writeFileSync(DOSSIER + '/cible.txt', `cible-${Date.now()}\n`);
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
-for (let i = 0; i < 300; i++) {
-  const s = await (await fetch(`${BASE}/api/state`)).json();
-  if (!s.scanning) break;
-  await new Promise(r => setTimeout(r, 300));
-}
+const indexe = await attendreFichier(BASE, VOL, 'cible.txt');
+verifier('le fichier d’essai est dans l’instantané', indexe,
+  `« cible.txt » n’apparaît pas dans l’index de ${VOL}`);
 
 const navig = await chromium.launch();
 const page = await navig.newPage();
