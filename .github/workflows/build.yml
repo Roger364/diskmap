@@ -33,8 +33,11 @@ jobs:
       # sur un volume jetable explicitement configuré. Le job « sondes » plus bas
       # les exécute quand même, mais sur un runner GitHub éphémère, qui est
       # jeté après le job.
+      #
+      # Même délai long que ci-dessous, pour la même raison : C: est analysé
+      # aussi, et sur un runner il contient l'image entière de l'agent.
       - name: Sondes non destructives
-        run: node tests/sondes/lancer.mjs --volume D --sans generation,reelle,lot,ui,csrf,erreurs
+        run: node tests/sondes/lancer.mjs --volume D --attendre 900 --sans generation,reelle,lot,ui,csrf,erreurs
 
       - name: Publier le binaire
         uses: actions/upload-artifact@v7
@@ -59,7 +62,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Compiler
-        run: cargo build --release --offline
+        run: cargo build --release
 
       - name: Installer les sondes navigateur
         working-directory: tests/sondes
@@ -70,8 +73,15 @@ jobs:
       # Le filet est le sujet de ce job autant que les sondes : c'est lui qui doit
       # empêcher qu'une sonde vise hors de sa racine, et la sortie est ROUGE si
       # une autre sonde qu'`filet` a provoqué un incident. Voir tests/sondes/filet.mjs.
+      #
+      # `--attendre 900` : le runner analyse D: ET C:, et C: contient toute
+      # l'image de l'agent. Sur la machine de développement, C: est un disque de
+      # données et s'analyse en quelques secondes ; ici, le délai par défaut
+      # (180 s par volume) était dépassé. Le harness le dit maintenant « délai
+      # dépassé » et non « ECHEC » : les deux n'ont pas la même cause, et
+      # confondre les deux accuse l'application là où il n'y a rien.
       - name: Toutes les sondes, filet compris
         env:
           DISKMAP_SONDE_VOLUME: D
           DISKMAP_SONDE_RACINE: 'D:\_diskmap_sondes'
-        run: node tests/sondes/lancer.mjs --volume D
+        run: node tests/sondes/lancer.mjs --volume D --attendre 900

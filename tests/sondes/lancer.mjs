@@ -226,19 +226,31 @@ async function demarrer(binaire, port) {
   return { processus: p, adresse };
 }
 
-/** Analyse un volume et attend la fin. Un instantane absent ferait conclure sur du vide. */
+/**
+ * Analyse un volume et attend la fin. Un instantane absent ferait conclure sur du vide.
+ *
+ * Deux SORTIES, parce qu'un dépassement de délai n'a pas la même cause qu'un refus
+ * du disque, et que les confondre rend le diagnostic faux : sur l'intégration
+ * continue du 26/09, un délai dépassé était rapporté « ECHEC », ce qui faisait
+ * croire à un défaut de l'application alors que C: simplement prenait plus de
+ * trois minutes à être analysé sur le runner.
+ *
+ * `delai` distingue donc les deux, et le message dit lequel des deux s'est produit.
+ */
 async function analyser(url, lettre, limiteSecondes) {
   const base = url.replace(/\/$/, '');
   await fetch(`${base}/api/scan/${lettre}`, { method: 'POST', headers: { 'X-Diskmap': '1' } });
   const limite = Date.now() + limiteSecondes * 1000;
+  let vu = null;
   while (Date.now() < limite) {
     const e = await etat(url);
     const d = e && (e.drives || []).find((x) => x.letter === lettre);
-    if (d && d.status === 'ready') return d;
-    if (d && d.status === 'error') return null;
+    if (d) vu = d;
+    if (d && d.status === 'ready') return { ...d, delai: false };
+    if (d && d.status === 'error') return { ...d, delai: false };
     await attendre(400);
   }
-  return null;
+  return { ...(vu || { letter: lettre }), delai: true };
 }
 
 // ------------------------------------------------------------------ racines
@@ -297,7 +309,11 @@ try {
     const binaire = opt.binaire || path.join(DEPOT, 'target', 'release', 'diskmap.exe');
     if (!fs.existsSync(binaire)) {
       console.error(`Binaire introuvable : ${binaire}`);
-      console.error('Construis-le :  cargo build --release --offline');
+      // `--offline` compile depuis un cache chaud, et échoue sur une machine
+      // qui n'a jamais construit le projet (`no matching package named
+      // rayon`). Il ne doit pas être conseillé ici : le lecteur peut très bien
+      // partir d'une copie fraîche du dépôt.
+      console.error('Construis-le :  cargo build --release');
       process.exit(2);
     }
     const port = (await portLibre(8801)) || 8801;
@@ -312,9 +328,22 @@ try {
   process.stdout.write(`  analyse de ${volume}: et de C: ...`);
   const dv = await analyser(url, volume, opt.attendre);
   const dc = await analyser(url, 'C', opt.attendre);
-  console.log(` ${dv ? `${dv.n_dirs} dossiers, ${dv.n_files} fichiers` : 'ECHEC'} `
-    + `/ C: ${dc ? 'prete' : 'ECHEC'}`);
-  if (!dv) { console.error(`Le volume ${volume}: n a pas pu etre analyse.`); process.exit(2); }
+  // Le volume de travail est INDISPENSABLE : sans son instantané, les sondes
+  // interrogent un index vide et concluent « absent » sans explication. C: ne
+  // l'est pas — seule la sonde `suppression` le consulte, et elle s'abstient si
+  // le volume n'a pas été analysé. Un délai dépassé se dit « délai », jamais
+  // « ECHEC » : les deux n'ont rien à voir, et le confondre envoie chercher un
+  // défaut là où il n'y en a pas.
+  const etat = (d) => d.delai
+    ? `delai de ${opt.attendre}s dépassé`
+    : d.status === 'ready' ? `${d.n_dirs} dossiers, ${d.n_files} fichiers`
+    : d.status === 'error' ? 'refusee par le disque' : 'inconnue';
+  console.log(` ${etat(dv)} / C: ${etat(dc)}`);
+  if (dv.delai || dv.status !== 'ready') {
+    console.error(`Le volume ${volume} n'a pas produit d'instantané exploitable (${etat(dv)}).`);
+    console.error("Augmente le delai avec --attendre, ou verifie que le volume existe.");
+    process.exit(2);
+  }
 
   console.log('');
   // Le filet est DEMANDÉ avant toute sonde, et son URL est celle que les sondes
