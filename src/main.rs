@@ -1435,6 +1435,38 @@ fn execute(
             });
             continue;
         }
+        // Le scan ignore déjà les points d'analyse. On les refuse aussi juste
+        // avant l'action : une cible normale peut avoir été remplacée depuis
+        // l'aperçu par une jonction ou un lien symbolique.
+        match win32::is_reparse_point(&m.path) {
+            Ok(true) => {
+                failed += 1;
+                results.push(PreviewItem {
+                    path: ps,
+                    size,
+                    count,
+                    is_dir: m.is_dir,
+                    exists: true,
+                    blocked: true,
+                    reason: "point d’analyse apparu depuis l’aperçu : suppression refusée".into(),
+                });
+                continue;
+            }
+            Err(e) => {
+                failed += 1;
+                results.push(PreviewItem {
+                    path: ps,
+                    size,
+                    count,
+                    is_dir: m.is_dir,
+                    exists: false,
+                    blocked: true,
+                    reason: format!("impossible de vérifier la cible avant suppression : {e}"),
+                });
+                continue;
+            }
+            Ok(false) => {}
+        }
         match win32::delete_path(&ps, to_trash) {
             Ok(()) => {
                 done += 1;

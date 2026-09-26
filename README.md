@@ -54,6 +54,8 @@ Defaults and guards:
 - **Protected paths are refused**: volume roots, `Windows`, `Program Files`,
   `ProgramData`, `System Volume Information`, `$Recycle.Bin`, `Recovery`, and
   whole user profiles.
+- **Reparse points are refused again at execution time**. A path that changed
+  into a junction or symbolic link after the preview is not deleted.
 - The preview re-checks that each path still exists, and warns above 20 GB.
 - Every deletion is appended to `%LOCALAPPDATA%\diskmap\suppressions.log`
   (timestamp, **outcome**, size, path). The outcome is one of `corbeille`,

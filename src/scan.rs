@@ -837,3 +837,54 @@ fn contains_ci(hay: &str, needle: &[u8]) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_aggregates_file_size_and_activity_to_its_parents() {
+        let snapshot = Snapshot::new(
+            "X:\\".into(),
+            vec![
+                DirRec {
+                    id: 0,
+                    parent: 0,
+                    name: "X:\\".into(),
+                    own_mtime: 10,
+                },
+                DirRec {
+                    id: 1,
+                    parent: 0,
+                    name: "archive".into(),
+                    own_mtime: 20,
+                },
+            ],
+            vec![FileRec {
+                parent: 1,
+                name: "rapport.txt".into(),
+                size: 42,
+                mtime: 30,
+            }],
+            ScanStats {
+                elapsed_ms: 0,
+                unreadable: Vec::new(),
+                unreadable_total: 0,
+                unreadable_droits: 0,
+                skipped: 0,
+            },
+        );
+
+        assert_eq!(snapshot.size, vec![42, 42]);
+        assert_eq!(snapshot.count, vec![1, 1]);
+        assert_eq!(snapshot.mtime, vec![30, 30]);
+        assert_eq!(snapshot.dir_path(1), PathBuf::from("X:\\archive"));
+    }
+
+    #[test]
+    fn reader_rejects_an_overflowing_length_without_panicking() {
+        let mut reader = Reader { b: &[0; 4], p: 2 };
+        assert!(reader.take(usize::MAX).is_err());
+        assert_eq!(reader.p, 2);
+    }
+}

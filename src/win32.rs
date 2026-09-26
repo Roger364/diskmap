@@ -3,6 +3,9 @@
 // fonctions — déclarées ici à la main, avec la convention `system` (stdcall sur x86).
 
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::os::windows::fs::MetadataExt;
+
+const REPARSE_POINT: u32 = 0x0000_0400;
 
 #[link(name = "kernel32")]
 extern "system" {
@@ -281,6 +284,15 @@ pub fn delete_path(path: &str, to_trash: bool) -> Result<(), String> {
         return Err(format!("SHFileOperationW a renvoyé {r}"));
     }
     Err("le chemin existe toujours après l'opération".into())
+}
+
+/// Indique si l'entrée elle-même est une jonction, un lien symbolique ou un
+/// autre point d'analyse. `symlink_metadata` est essentiel : `metadata` suit le
+/// lien et inspecterait sa cible au lieu de l'entrée qui va être supprimée.
+pub fn is_reparse_point(path: &std::path::Path) -> Result<bool, String> {
+    std::fs::symlink_metadata(path)
+        .map(|meta| meta.file_attributes() & REPARSE_POINT != 0)
+        .map_err(|e| e.to_string())
 }
 
 /// Une fiche `$I` de la corbeille nomme le fichier qu'elle décrit. On la lit.
