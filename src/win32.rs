@@ -186,6 +186,47 @@ extern "system" {
     fn SHFileOperationW(op: *mut ShFileOpStructW) -> i32;
 }
 
+#[link(name = "bcrypt")]
+extern "system" {
+    fn BCryptGenRandom(alg: *mut std::ffi::c_void, buf: *mut u8, len: u32, flags: u32) -> i32;
+}
+
+/// Laisse Windows choisir son propre générateur.
+const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+
+/// Octets imprévisibles fournis par le système.
+///
+/// Remplace un xorshift semé par l'horodatage, et c'était là le défaut : le jeton
+/// de suppression s'écrivait `<ms>-<xorshift(ms)>`, donc l'horodatage était publié
+/// en clair dans le jeton et le reste s'en déduisait entièrement. Mesuré le
+/// 26/09/2026 : les deux horodatages étaient identiques, et explorer ±5 ms —
+/// onze candidats au lieu de 2^32 — retrouvait le jeton. Un aléa qui ne dépend
+/// pas de ce qu'on publie ne se déduit pas.
+pub fn alea_u64() -> u64 {
+    let mut b = [0u8; 8];
+    let r = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            b.as_mut_ptr(),
+            b.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if r == 0 {
+        return u64::from_le_bytes(b);
+    }
+    // Repli : jamais une constante, qui serait le pire des cas — un jeton
+    // prévisible pour tout le monde. On combine trois choses que l'appelant ne
+    // voit pas : les nanosecondes, une adresse de pile (l'ASLR les rend
+    // imprévisibles) et l'identifiant du processus.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let adresse = &nanos as *const u64 as u64;
+    nanos ^ adresse.rotate_left(17) ^ ((std::process::id() as u64) << 32)
+}
+
 /// `to_trash = true` : corbeille (réversible). `false` : suppression définitive.
 pub fn delete_path(path: &str, to_trash: bool) -> Result<(), String> {
     if path.starts_with(r"\\?\") {

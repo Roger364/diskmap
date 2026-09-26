@@ -959,7 +959,10 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
         });
     }
 
-    let token = format!("{}-{}", now_ms(), rand_u32());
+    // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
+    // cacher quoi que ce soit, puisqu'il est écrit en clair juste à côté. C'est
+    // l'aléa qui doit être imprévisible — et lui seul.
+    let token = format!("{}-{:016x}", now_ms(), win32::alea_u64());
     {
         let mut p = app.pending.lock().unwrap();
         p.insert(token.clone(), PendingDel { drive: letter, items, at_ms: now_ms() });
@@ -1074,15 +1077,6 @@ fn journal(app: &Arc<App>, lines: &[String]) {
             let _ = writeln!(f, "{l}");
         }
     }
-}
-
-/// Suffisant pour qu'un jeton ne soit pas devinable : l'usage est local.
-fn rand_u32() -> u32 {
-    let mut seed = now_ms() as u64;
-    seed ^= seed << 13;
-    seed ^= seed >> 7;
-    seed ^= seed << 17;
-    (seed & 0xffff_ffff) as u32
 }
 
 fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
