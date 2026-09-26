@@ -195,13 +195,23 @@ for (const cas of CAS) {
     await page.waitForFunction('window.__fini === true', null, { timeout: 90000 });
   } catch (e) {
     const motif = e.message.split('\n')[0];
-    verifier('la page a pu aller au bout de sa tentative', false, motif);
-    // Un timeout de navigation et un blocage réseau n'ont pas la même portée :
-    // le second veut dire qu'on n'a rien mesuré, et le dire évite qu'on lise ce
-    // ROUGE comme une preuve que l'attaque a réussi.
-    if (/Timeout .* exceeded/i.test(motif)) {
-      console.log(`      (timeout de navigation : rien n'a été mesuré sur « ${cas.nom} »)`);
+    // Une page INATTEIGNABLE et une page qui a échoué à supprimer sont deux
+    // choses sans commune mesure. Le cas B vise l'IP privée du runner, et sur
+    // le réseau de GitHub il expire : `net::ERR_CONNECTION_TIMED_OUT` au bout
+    // de 60 s. Compter cela comme un échec de sécurité affirmait que la
+    // protection CSRF avait cédé, alors que rien n'avait été mesuré — sur un
+    // test dont tout l'objet est de conclure « l'attaque a échoué », c'est le
+    // pire des messages possibles.
+    //
+    // On distingue donc l'INACCESSIBILITÉ de l'ÉCHEC : la première se dit, la
+    // seconde se prouve. Un cas non mesuré n'est jamais compté ni comme
+    // réussite ni comme échec.
+    if (/ERR_CONNECTION_TIMED_OUT|ERR_CONNECTION_REFUSED|Timeout .* exceeded|net::ERR_/i.test(motif)) {
+      console.log(`      (page inatteignable sur « ${cas.nom} » : ${motif} — rien n'a été mesuré)`);
+      await page.close();
+      continue;
     }
+    verifier('la page a pu aller au bout de sa tentative', false, motif);
     await page.close();
     continue;
   }

@@ -92,6 +92,16 @@ await page.press('#q', 'Enter');
 // le fait SILENCIEUSEMENT, sans qu'aucune ligne dise qu'on a mal attendu.
 const ligneDossier = page.locator('#rows tr')
   .filter({ has: page.getByText(NOM, { exact: true }) }).first();
+
+// Diagnostics : « aucune ligne trouvée » ne dit pas CE QUI était à l'écran. Deux
+// échecs très différents — une liste vide, ou une liste de dossiers seulement —
+// donnaient le même message, et on ne pouvait pas les distinguer sans deviner.
+const contenuLignes = async () => {
+  const t = await page.locator('#rows tr').allTextContents().catch(() => []);
+  return t.length ? `lignes affichées : ${JSON.stringify(t.slice(0, 5))}` : 'aucune ligne dans #rows';
+};
+const filAriane = () => page.textContent('#crumbs').catch(() => '');
+
 let dossierTrouve = false;
 try {
   await ligneDossier.locator('.nm').waitFor({ state: 'visible', timeout: 60000 });
@@ -100,8 +110,20 @@ try {
 // Texte EXACT, et non « contient » : la recherche remonte aussi tout fichier dont
 // le nom contient le motif — et un `hasText` partiel a déjà cliqué sur un fichier,
 // qui n'a pas de navigation, faisant conclure que l'interface ne listait rien.
-verifier('le dossier d’essai apparaît dans la recherche', dossierTrouve, 'aucune ligne trouvée');
-if (dossierTrouve) await ligneDossier.locator('.nm').click();
+verifier('le dossier d’essai apparaît dans la recherche', dossierTrouve,
+  await contenuLignes());
+if (dossierTrouve) {
+  // Le clic déclenche une requête asynchrone : on attend que le MIEL change de
+  // contenu, pas qu'un délai s'écoule. Un clic suivi d'un `waitForTimeout` ne
+  // distingue pas « la navigation a eu lieu » de « le clic n'a rien fait ».
+  const avant = await filAriane();
+  await ligneDossier.locator('.nm').click();
+  try {
+    await page.waitForFunction(
+      (avant) => document.querySelector('#crumbs')?.textContent !== avant,
+      avant, { timeout: 60000 });
+  } catch { /* rendu plus bas, avec le diagnostic */ }
+}
 
 const ligneFichier = page.locator('#rows tr')
   .filter({ has: page.getByText('cible.txt', { exact: true }) }).first();
@@ -113,7 +135,7 @@ if (dossierTrouve) {
   } catch { /* idem */ }
 }
 verifier('le fichier apparaît après être entré dans le dossier',
-  fichierTrouve, 'aucune ligne trouvée');
+  fichierTrouve, `${await contenuLignes()} · fil : ${await filAriane()}`);
 
 let titre = null, corps = '';
 if (fichierTrouve) {
