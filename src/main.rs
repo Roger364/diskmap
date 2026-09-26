@@ -13,7 +13,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -28,6 +28,12 @@ const DEFAULT_PORT: u16 = 8756;
 /// chacun. 4 Mio laissent donc passer plus de cent mille éléments — bien
 /// au-delà de ce que la table sait afficher.
 const CORPS_MAX: usize = 4 * 1024 * 1024;
+/// Une interface locale n'a aucune raison d'envoyer des en-têtes volumineux.
+const ENTETE_LIGNE_MAX: usize = 8 * 1024;
+const ENTETES_MAX: usize = 32 * 1024;
+const CONNEXIONS_MAX: usize = 64;
+const DELAI_CONNEXION: Duration = Duration::from_secs(10);
+static CONNEXIONS_ACTIVES: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize)]
 enum Status {
@@ -337,12 +343,31 @@ fn main() {
     }
 
     for s in listener.incoming().flatten() {
+        if CONNEXIONS_ACTIVES
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                (n < CONNEXIONS_MAX).then_some(n + 1)
+            })
+            .is_err()
+        {
+            // Le client sera fermé par la fin de portée. Préserver les 64
+            // connexions déjà admises vaut mieux que créer des threads sans fin.
+            continue;
+        }
         let app = app.clone();
         thread::spawn(move || {
+            let _guard = ConnectionGuard;
             if let Err(e) = handle(&app, s) {
                 eprintln!("connexion : {e}");
             }
         });
+    }
+}
+
+struct ConnectionGuard;
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        CONNEXIONS_ACTIVES.fetch_sub(1, Ordering::Release);
     }
 }
 
@@ -477,9 +502,12 @@ fn start_scan(app: &Arc<App>, letter: char) {
 // ---------------------------- HTTP ----------------------------
 
 fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
+    stream.set_read_timeout(Some(DELAI_CONNEXION))?;
+    stream.set_write_timeout(Some(DELAI_CONNEXION))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();
-    if reader.read_line(&mut line)? == 0 {
+    let mut head_size = 0;
+    if !read_header_line(&mut reader, &mut line, &mut head_size)? {
         return Ok(());
     }
     let mut parts = line.split_whitespace();
@@ -500,7 +528,7 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     let mut host = String::new();
     loop {
         let mut h = String::new();
-        if reader.read_line(&mut h)? == 0 {
+        if !read_header_line(&mut reader, &mut h, &mut head_size)? {
             break;
         }
         if h.trim().is_empty() {
@@ -568,6 +596,48 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     )?;
     stream.write_all(&body)?;
     stream.flush()
+}
+
+/// Lit une ligne HTTP sans accorder à un pair local une allocation sans borne.
+///
+/// `BufRead::read_line` agrandit sa chaîne jusqu'au prochain saut de ligne. Une
+/// connexion lente pouvait donc retenir un thread et faire grossir sa mémoire
+/// indéfiniment avant même que les routes ou l'en-tête Host ne soient vérifiés.
+fn read_header_line(
+    reader: &mut BufReader<TcpStream>,
+    line: &mut String,
+    head_size: &mut usize,
+) -> std::io::Result<bool> {
+    line.clear();
+    loop {
+        let (chunk, consumed, complete) = {
+            let buf = reader.fill_buf()?;
+            if buf.is_empty() {
+                return Ok(!line.is_empty());
+            }
+            let newline = buf.iter().position(|b| *b == b'\n');
+            let n = newline.map_or(buf.len(), |i| i + 1);
+            (
+                String::from_utf8_lossy(&buf[..n]).into_owned(),
+                n,
+                newline.is_some(),
+            )
+        };
+        if line.len().saturating_add(chunk.len()) > ENTETE_LIGNE_MAX
+            || head_size.saturating_add(consumed) > ENTETES_MAX
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "en-têtes HTTP trop volumineux",
+            ));
+        }
+        reader.consume(consumed);
+        line.push_str(&chunk);
+        *head_size += consumed;
+        if complete {
+            return Ok(true);
+        }
+    }
 }
 
 enum Resp {

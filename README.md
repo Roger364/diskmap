@@ -143,6 +143,13 @@ else, the next free port is used and the address is printed.
 `diskmap bench <LETTER>` times the walk of a single volume with no server and no
 interface — useful to check performance on another machine instead of assuming it.
 
+## Tests
+
+The default CI runs only non-destructive probes. The probes that create or
+delete test files must be run manually, on a dedicated disposable volume, after
+setting `DISKMAP_SONDE_VOLUME` and `DISKMAP_SONDE_RACINE`. They must never be
+pointed at a working volume.
+
 ## Limitations
 
 - **Windows only**: direct Win32 calls, verbatim paths, launching Explorer. No

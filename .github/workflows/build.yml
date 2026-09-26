@@ -28,8 +28,11 @@ jobs:
           npm ci
           npx playwright install chromium
 
-      - name: Sondes de regression
-        run: node tests/sondes/lancer.mjs --volume D --sans erreurs
+      # La CI doit rester sûre même sur un runner auto-hébergé : les scénarios
+      # qui créent ou suppriment des fichiers ne sont lancés que manuellement,
+      # sur un volume jetable explicitement configuré.
+      - name: Sondes non destructives
+        run: node tests/sondes/lancer.mjs --volume D --sans generation,reelle,lot,ui,csrf,erreurs
 
       - name: Publier le binaire
         uses: actions/upload-artifact@v7
