@@ -79,16 +79,20 @@
     border:1px solid var(--line); border-radius:4px; padding:1px 6px;
   }
   .chip.on { color:var(--warm); border-color:#6b4a24; background:#3a2a18; }
-  /* Avertissement de total incomplet. Volontairement sobre : il doit se voir sans
-     crier, et rester cliquable pour donner la liste des chemins. */
+  /* Avertissement de total incomplet. Sobre à dessein : c'est une réserve sur un
+     chiffre, pas une alerte — la plupart du temps ces dossiers sont des artefacts
+     système qu'on ne veut pas ouvrir. Il doit se voir sans crier, et rester
+     cliquable pour donner la liste des chemins. Seul le NOMBRE garde une teinte
+     chaude : c'est l'information, le reste n'est que son habillage. */
   .drive .inc {
-    margin-top:6px; font-size:11px; line-height:1.45; color:#e8c89c;
-    background:#3a2a18; border:1px solid #6b4a24; border-radius:5px;
+    margin-top:6px; font-size:11px; line-height:1.45; color:var(--muted);
+    background:var(--panel2); border:1px solid var(--line); border-radius:5px;
     padding:4px 7px; cursor:pointer; display:flex; gap:6px; align-items:baseline;
   }
-  .drive .inc:hover { border-color:#8f6530; background:#42301b; }
-  .drive .inc b { color:#f2d9b4; font-weight:500; }
-  .drive .inc .go { margin-left:auto; color:#a8895f; white-space:nowrap; }
+  .drive .inc:hover { border-color:var(--accent-dim); color:var(--text); }
+  .drive .inc b { color:var(--warm); font-weight:500; }
+  .drive .inc .go { margin-left:auto; color:var(--muted); white-space:nowrap; }
+  .drive .inc:hover .go { color:var(--accent); }
 
   section { flex:1; display:flex; flex-direction:column; min-width:0; }
   .crumbs {
@@ -215,6 +219,17 @@
     display:block; border:none; padding:0; margin-top:2px;
     color:var(--muted); font-size:11.5px; line-height:1.5;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  /* Les boutons « Ouvrir » se répètent une fois par groupe — jusqu'à 38 sur C:.
+     En boutons pleins, ils formaient un mur qui attirait l'œil plus que les
+     chemins eux-mêmes. En fantôme, l'action reste là mais s'efface derrière son
+     contenu ; le survol la rappelle. */
+  .plist .grp .gh .btn {
+    padding:0 6px; font-size:11px; background:transparent;
+    border-color:transparent; color:var(--muted);
+  }
+  .plist .grp .gh .btn:hover {
+    background:transparent; border-color:var(--accent-dim); color:var(--accent);
   }
   .ok { color:#7fc0a0; }
   .ko { color:var(--hot); }
