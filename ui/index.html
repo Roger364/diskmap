@@ -510,8 +510,8 @@ function renderDrives() {
     el.innerHTML = `
       <div class="top">
         <span class="ltr">${d.letter}:</span>
-        <span class="lbl">${d.label || ''}</span>
-        ${d.fs ? `<span class="fs">${d.fs}</span>` : ''}
+        <span class="lbl">${escapeHtml(d.label || '')}</span>
+        ${d.fs ? `<span class="fs">${escapeHtml(d.fs)}</span>` : ''}
       </div>
       <div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>
       <div class="meta">
@@ -1033,14 +1033,16 @@ function renderDeleteBody() {
   h += `<p style="margin:0 0 10px">Va disparaître : <b>${nf.format(d.deletable)}</b> élément(s), ` +
        `<b>${hsize(d.total_size)}</b>.</p>`;
   h += '<div class="plist">';
-  for (const it of d.items.slice(0, 25)) {
+  // La liste est COMPLÈTE. Elle était tronquée à 25 entrées alors que le
+  // bouton supprimait tout le lot : « tout sélectionner » dans un dossier de
+  // 200 entrées effaçait 175 chemins que personne n'avait vus. Le serveur
+  // refuse désormais les lots au-delà de 5000 éléments, donc ce qui suit peut
+  // être lu en entier avant de valider.
+  for (const it of d.items) {
     h += `<div><span class="p" title="${escapeHtml(it.path)}">${escapeHtml(it.path)}</span>` +
          `<span class="s">${hsize(it.size)}</span>` +
          (it.blocked ? `<span class="b">${escapeHtml(it.reason || 'ignoré')}</span>` : '') +
          '</div>';
-  }
-  if (d.items.length > 25) {
-    h += `<div><span class="p" style="color:var(--muted)">… et ${d.items.length - 25} autre(s)</span></div>`;
   }
   h += '</div>';
   if (mode === 'permanent' || !d.corbeille) {

@@ -36,13 +36,23 @@
 //
 // Usage : node sonde-suppression-lot.mjs http://127.0.0.1:8806/ G
 import fs from 'fs';
+import path from 'path';
 
-import { dossier, corbeille, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { dossier, corbeille, aCorbeille, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
 const DOSSIER_A = dossier(VOL, 'lot-cout');
 const DOSSIER_B = dossier(VOL, 'lot-coherence');
+// La confirmation se calcule À CHAQUE APPEL, pas une fois pour toutes.
+//
+// Le définitif la demande toujours. Le « recycle » aussi, mais seulement sur
+// un volume SANS corbeille — où FOF_ALLOWUNDO detruit sans prévenir. Or la
+// corbeille apparaît en cours de route : `$RECYCLE.BIN` n'existe pas sur un
+// volume neuf, et le premier lot la fait naître. Une constante figée au
+// chargement serait fausse dès le lot suivant, et la sonde conclurait à un
+// défaut de l'application là où il n'y en a pas.
+const confirmation = (mode) => (mode === 'permanent' || !aCorbeille(VOL) ? 'EFFACER' : undefined);
 const CORBEILLE = corbeille(VOL);
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
 const N_A = 240;   // fichiers du dossier de coût (227 consommés par la section 2)
@@ -94,8 +104,8 @@ monter(DOSSIER_A, N_A);
 monter(DOSSIER_B, N_B);
 await post(`/api/scan/${VOL}`, {});
 await repos();
-const vA = await idsDuDossier('_diskmap_lot_cout');
-const vB = await idsDuDossier('_diskmap_lot_coherence');
+const vA = await idsDuDossier(path.basename(DOSSIER_A));
+const vB = await idsDuDossier(path.basename(DOSSIER_B));
 verifier('les deux dossiers d’essai sont dans l’instantané',
   vA && vA.ids.size === N_A && vB && vB.ids.size === N_B,
   `coût ${vA ? vA.ids.size : 'absent'}/${N_A}, cohérence ${vB ? vB.ids.size : 'absent'}/${N_B}`);
@@ -117,7 +127,7 @@ fs.unlinkSync(`${DOSSIER_B}/${nom(1)}`);
 await post(`/api/scan/${VOL}`, {});
 await repos();
 
-const exec = await post('/api/delete', { drive: VOL, mode: 'recycle', token: dryB.token });
+const exec = await post('/api/delete', { drive: VOL, mode: 'recycle', token: dryB.token, confirm: confirmation('recycle') });
 const d = JSON.parse(exec.texte);
 console.log(`      réponse : HTTP ${exec.status} · done=${d.done} · failed=${d.failed} · ` +
   `chemin rapporté : ${d.results && d.results[0] ? d.results[0].path : '(aucun)'}`);
@@ -155,15 +165,50 @@ async function supprimer(noms, mode) {
   // réanalyse, donc la génération a changé et les positions ont pu bouger. Un
   // lot mesuré avec les identifiants du lot précédent viserait autre chose —
   // c'est exactement le défaut corrigé le 26/09/2026.
-  const v = await idsDuDossier('_diskmap_lot_cout');
-  const items = noms.map(n => ({ id: v.ids.get(n), is_dir: false }));
-  const dryRep = await post('/api/delete', { drive: VOL, items, mode: 'dry', gen: v.gen });
-  const dry = JSON.parse(dryRep.texte);
-  if (!dry.token) {
-    return { ms: 0, r: dryRep, n: noms.length, refuse: `HTTP ${dryRep.status} : ${dryRep.texte.slice(0, 120)}` };
+  //
+  // Et le relire ne suffit pas toujours : la réanalyse déclenchée par le lot
+  // précédent peut se terminer ENTRE la lecture et la simulation, auquel cas le
+  // serveur refuse — à raison. Un 409 ici n'est pas un défaut à contourner, c'est
+  // la garde qui fait son travail ; on recharge et on réessaie, comme le fait
+  // l'interface quand elle affiche « Recharge la liste ».
+  let dry = null;
+  let dryRep = null;
+  for (let essai = 0; essai < 8; essai++) {
+    const v = await idsDuDossier(path.basename(DOSSIER_A));
+    if (!v) {
+      await repos();
+      continue;
+    }
+    // Un nom absent de la liste signifie que l'instantané lu est partiel : la
+    // réanalyse Suit encore. Envoyer `id: undefined` ne donnerait qu'un « corps
+    // illisible » — un échec de la sonde qui n'aurait rien à voir avec ce qu'elle
+    // mesure. On attend, comme on attend après un 409.
+    if (noms.some(n => v.ids.get(n) === undefined)) {
+      await repos();
+      continue;
+    }
+    const items = noms.map(n => ({ id: v.ids.get(n), is_dir: false }));
+    dryRep = await post('/api/delete', { drive: VOL, items, mode: 'dry', gen: v.gen });
+    if (dryRep.status === 200) {
+      try { dry = JSON.parse(dryRep.texte); } catch { dry = null; }
+      if (dry && dry.token) break;
+    }
+    if (dryRep.status !== 409) {
+      return { ms: 0, r: dryRep, n: noms.length, refuse: `HTTP ${dryRep.status} : ${dryRep.texte.slice(0, 120)}` };
+    }
+    await repos();
   }
-  const corps = { drive: VOL, mode, token: dry.token };
-  if (mode === 'permanent') corps.confirm = 'EFFACER';
+  if (!dry || !dry.token) {
+    return {
+      ms: 0,
+      r: dryRep,
+      n: noms.length,
+      refuse: dryRep
+        ? `HTTP ${dryRep.status} : ${String(dryRep.texte).slice(0, 120)}`
+        : 'l instantane ne contient pas les fichiers du lot apres 8 tentatives',
+    };
+  }
+  const corps = { drive: VOL, mode, token: dry.token, confirm: confirmation(mode) };
   const t0 = Date.now();
   const r = await post('/api/delete', corps);
   const ms = Date.now() - t0;
@@ -179,7 +224,14 @@ for (const [mode, taille] of [['recycle', 1], ['recycle', 25], ['recycle', 100],
   const m = await supprimer(noms, mode);
   if (m.refuse) { console.log(`ROUGE le lot ${mode}/${taille} a été refusé : ${m.refuse}`); process.exit(1); }
   T[`${mode}/${taille}`] = m.ms;
-  console.log(`      ${mode.padEnd(9)} ${String(taille).padStart(3)} fichiers : ${String(m.ms).padStart(6)} ms  ${(m.ms / taille).toFixed(1).padStart(6)} ms/fichier  done=${m.r ? JSON.parse(m.r.texte).done : '?'}`);
+  let fait = '?';
+  if (m.r) {
+    // Un refus est un resultat, pas une exception : le parse doit survivre a
+    // un corps en clair, sinon la sonde meurt sur le detail au lieu de dire ce
+    // que le serveur a repondu.
+    try { fait = JSON.parse(m.r.texte).done; } catch { fait = `refus ${m.r.status}`; }
+  }
+  console.log(`      ${mode.padEnd(9)} ${String(taille).padStart(3)} fichiers : ${String(m.ms).padStart(6)} ms  ${(m.ms / taille).toFixed(1).padStart(6)} ms/fichier  done=${fait}`);
 }
 
 const pente1 = (T['recycle/25'] - T['recycle/1']) / 24;
@@ -225,8 +277,8 @@ function reprendre(marque) {
   }
   return repris;
 }
-const n1 = reprendre('_diskmap_lot_cout');
-const n2 = reprendre('_diskmap_lot_coherence');
+const n1 = reprendre(path.basename(DOSSIER_A));
+const n2 = reprendre(path.basename(DOSSIER_B));
 console.log(`      corbeille : ${n1 + n2} élément(s) d’essai repris (${n1} coût, ${n2} cohérence)`);
 for (const d of [DOSSIER_A, DOSSIER_B]) {
   try { for (const e of fs.readdirSync(d)) fs.unlinkSync(`${d}/${e}`); } catch { /* absent */ }

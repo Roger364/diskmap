@@ -29,7 +29,8 @@ import { dossier, corbeille, journal, VOLUME_SANS_CORBEILLE, URL_DEFAUT } from '
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_SANS_CORBEILLE).toUpperCase();
-const DOSSIER = dossier(VOL, 'reversibilite');
+const NOM = 'reversibilite';
+const DOSSIER = dossier(VOL, NOM);
 const FICHIER = DOSSIER + '/cible.txt';
 const CORBEILLE = corbeille(VOL);
 const JOURNAL = journal();
@@ -86,8 +87,8 @@ verifier('le fichier est créé', fs.existsSync(FICHIER), 'absent');
 await post(`/api/scan/${VOL}`, {});
 await attendreParcours();
 
-const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=_diskmap_reversibilite`)).json())
-  .rows.find(r => r.name === '_diskmap_reversibilite');
+const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json())
+  .rows.find(r => r.name === NOM);
 const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=100`)).json();
 const id = t.rows.find(r => r.name === 'cible.txt')?.id ?? null;
 // La génération accompagne toujours l'identifiant : un identifiant est une
@@ -143,7 +144,7 @@ if (!enCorbeille) {
 
 // Le journal : il doit dire ce qui a EU LIEU, pas ce qui a été demandé.
 const lignesApres = fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean);
-const nouvelles = lignesApres.slice(lignesAvant).filter(l => l.includes('_diskmap_reversibilite'));
+const nouvelles = lignesApres.slice(lignesAvant).filter(l => l.includes(NOM));
 console.log(`      journal : ${JSON.stringify(nouvelles)}`);
 const motAttendu = enCorbeille ? 'corbeille' : 'corbeille-refusee';
 verifier('le journal enregistre l’issue réelle, pas le mode demandé',

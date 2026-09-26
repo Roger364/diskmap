@@ -7,3 +7,9 @@
 # Binaires : celui construit en CI est téléchargé ici, il ne se versionne pas
 *.exe
 *.pdb
+
+# Journal du filet de sécurité des sondes (local, jamais versionné)
+tests/sondes/filet-suppressions.log
+
+# Dépendances des sondes navigateur (installées par `npm ci`, cf. package-lock)
+tests/sondes/node_modules/

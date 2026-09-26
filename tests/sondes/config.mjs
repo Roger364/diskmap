@@ -50,9 +50,25 @@ export const VOLUME_SANS_CORBEILLE = (process.env.DISKMAP_SONDE_VOLUME_SANS_CORB
  *
  * `DISKMAP_SONDE_RACINE` l'emporte quand elle est posee — c'est ainsi que
  * l'integration continue designe un dossier temporaire sans toucher au code.
+ *
+ * Elle doit/designer le volume qu'on analyse. Le defaut, `C:\...` contre un
+ * `V:` scans, ne coincidait avec rien : les sondes creaient leurs fichiers sur
+ * un volume, interrogeaient l'instantane d'un autre, et concluaient « absent »
+ * sans qu'aucune ligne ne dise pourquoi. Le genre de defaut qui fait perdre une
+ * afternoon — et le genre qui, le jour ou la suppression suit, ne protege de
+ * rien non plus.
  */
 export function racine(vol) {
-  return process.env.DISKMAP_SONDE_RACINE || `${vol}:/_diskmap_sondes`;
+  const r = process.env.DISKMAP_SONDE_RACINE || `${vol}:/_diskmap_sondes`;
+  const de = (r.match(/^([A-Za-z]):/) || [])[1];
+  if (de && de.toUpperCase() !== String(vol).toUpperCase()) {
+    throw new Error(
+      `DISKMAP_SONDE_RACINE vaut « ${r} », qui est sur ${de.toUpperCase()}:, ` +
+      `mais le volume analysé est ${String(vol).toUpperCase()}:. ` +
+      `Les sondes créeraient leurs fichiers hors de l'instantane qu'elles interrogent.`
+    );
+  }
+  return r;
 }
 
 /** Dossier de travail d'une sonde, sous la racine. */

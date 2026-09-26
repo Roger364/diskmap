@@ -41,6 +41,11 @@ exactly what will disappear and issued a one-shot token; the execution must
 present that token, and it expires after ten minutes. So it is impossible to
 delete something that was not shown first, or on the strength of a stale list.
 
+The list is shown in full, scrollable, and a selection larger than **5 000
+entries is refused outright** rather than truncated: an earlier version showed
+the first 25 paths and then deleted the whole lot, which is precisely the
+"deleted something that was not shown" case it claimed to make impossible.
+
 Defaults and guards:
 
 - **Recycle Bin by default**, so the operation stays reversible — *where a
@@ -61,6 +66,12 @@ Defaults and guards:
   (timestamp, **outcome**, size, path). The outcome is one of `corbeille`,
   `corbeille-refusee` or `definitif` — it records what took place, not what was
   requested.
+- Identifiers are **positions in a snapshot**, and a position only means
+  anything in the snapshot that produced it. Every snapshot therefore carries a
+  generation number, served with the rows; a dry run that quotes a stale
+  generation is refused with `409` instead of being resolved against the
+  current index. The paths themselves are then frozen by the preview, and the
+  execution deletes exactly those — it resolves nothing.
 - A successful deletion triggers a re-scan of the volume, so totals do not keep
   showing entries that no longer exist.
 

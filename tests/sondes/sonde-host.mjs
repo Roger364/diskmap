@@ -144,8 +144,22 @@ for (const [host, nom] of LEURRES) {
 }
 
 // Sans en-tête Host du tout — un client HTTP/1.0, par exemple.
+//
+// Derrière le filet, cette requête ne peut pas l'atteindre : Node refuse
+// lui-même, au parseur, une requête HTTP/1.1 sans Host, et le filet est un
+// serveur Node. Le point de la vérification — « ça ne passe pas » — tient
+// toujours ; seule la main qui refuse change. Le filet n'est donc PAS
+// transparent, et on ne le prétend pas : le croire transparent ferait passer
+// une preuve pour une autre.
+const derriereFilet = await fetch(`${BASE}/filet`).then(r => r.json()).catch(() => null);
+const viaFilet = !!(derriereFilet && derriereFilet.filet);
 const sans = await requete('GET', '/api/state', null);
-verifier('l’absence d’en-tête Host est refusée', sans.status === 403, `HTTP ${sans.status} · ${sans.corps.slice(0, 90)}`);
+verifier(
+  viaFilet
+    ? 'l’absence d’en-tête Host est refusée — par le parseur du filet'
+    : 'l’absence d’en-tête Host est refusée — par l’application',
+  viaFilet ? sans.status === 400 : sans.status === 403,
+  `HTTP ${sans.status} · ${sans.corps.slice(0, 90)}`);
 
 // ------------------------------------------------ 4. le rebinding, pour de vrai
 console.log('\n--- 4. le rebinding DNS, joué dans un vrai navigateur ---');

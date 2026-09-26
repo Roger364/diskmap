@@ -24,7 +24,8 @@ import { dossier, corbeille, journal, VOLUME_DEFAUT, URL_DEFAUT } from './config
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
-const DOSSIER = dossier(VOL, 'suppression-reelle');
+const NOM = 'suppression-reelle';
+const DOSSIER = dossier(VOL, NOM);
 const A = DOSSIER + '/a.txt';
 const B = DOSSIER + '/b.txt';
 const CORBEILLE = corbeille(VOL);
@@ -138,9 +139,9 @@ function fouillerCorbeille(contenu) {
 // qui l'a produite. Depuis le 26/09/2026, `dry` refuse une liste qui ne dit pas
 // de quel index elle vient.
 function idDe(nom) {
-  return fetch(`${BASE}/api/search?drive=${VOL}&q=essai-suppression`)
+  return fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)
     .then(r => r.json())
-    .then(d => d.rows.find(r => r.name === 'essai-suppression').id)
+    .then(d => { const r = d.rows.find(x => x.name === NOM); if (!r) throw new Error(`dossier ${NOM} absent de l'instantane`); return r.id; })
     .then(dirId => fetch(`${BASE}/api/tree?drive=${VOL}&id=${dirId}&limit=100`))
     .then(r => r.json())
     .then(d => {
@@ -203,7 +204,11 @@ let r = await effacer(VOL, [{ id: idA, is_dir: false }], 'dry', { gen: vuA.gen }
 let d = JSON.parse(r.texte);
 verifier('l’aperçu annonce un seul élément', d.items.length === 1, `${d.items.length} élément(s)`);
 verifier('l’aperçu donne le chemin réel du fichier',
-  d.items[0].path === A.replace(/\//g, '\\\\'),
+  // `'\\\\'` dans un littéral JS vaut DEUX antislashs : la comparaison ne pouvait
+  // jamais être vraie, et l'échec se lisait « l'aperçu est faux » alors que
+  // l'aperçu était juste. On normalise par une expression régulière, pas par
+  // une chaîne : un antislash y est un antislash.
+  d.items[0].path === A.replace(/\//g, '\\'),
   `« ${d.items[0].path} »`);
 verifier('le fichier est compté comme effaçable', d.deletable === 1 && d.items[0].blocked === false,
   `deletable=${d.deletable}, blocked=${d.items[0].blocked}`);

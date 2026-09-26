@@ -34,7 +34,8 @@ import { dossier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
-const DOSSIER = dossier(VOL, 'csrf');
+const NOM = 'csrf';
+const DOSSIER = dossier(VOL, NOM);
 const PAGE_LOCALE = dossier(VOL, 'page-tierce.html');
 const PORTE_PAGE = 8899;
 const IP_PRIVEE = '172.22.22.68';
@@ -144,8 +145,8 @@ async function idVictime() {
   const rep = await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: { 'X-Diskmap': '1' } });
   if (!rep.ok) throw new Error(`réanalyse refusée : HTTP ${rep.status}`);
   await attendreParcours(true);
-    const d1 = await (await fetch(`${BASE}/api/search?drive=${VOL}&q=essai-csrf`)).json();
-  const dir = d1.rows.find(r => r.name === 'essai-csrf');
+    const d1 = await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json();
+  const dir = d1.rows.find(r => r.name === NOM);
   if (!dir) return null;
     const d2 = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=100`)).json();
   const f = d2.rows.find(r => r.name === 'victime.txt');
@@ -198,7 +199,7 @@ for (const cas of CAS) {
     fs.existsSync(DOSSIER + '/victime.txt'),
     'le fichier a disparu — la page tierce a réussi à supprimer');
   // Preuve indépendante de la page : aucune ligne au journal pour ce chemin.
-  const nomme = journal().slice(avant).some(l => /essai-csrf\\victime\.txt$/.test(l));
+  const nomme = journal().slice(avant).some(l => l.includes(`${NOM}\\victime.txt`));
   verifier('le journal du serveur ne mentionne aucune suppression',
     !nomme, JSON.stringify(journal().slice(avant)));
   await page.close();

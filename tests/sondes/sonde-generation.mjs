@@ -24,7 +24,8 @@ import { dossier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
-const DOSSIER = dossier(VOL, 'perime');
+const NOM = 'perime';
+const DOSSIER = dossier(VOL, NOM);
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
 const rouges = [];
 
@@ -41,8 +42,8 @@ async function repos() {
 
 // Le nom ET la génération : c'est l'ensemble que le client détient.
 async function listing() {
-  const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=_diskmap_perime`)).json())
-    .rows.find(r => r.name === '_diskmap_perime');
+  const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json())
+    .rows.find(r => r.name === NOM);
   const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=200`)).json();
   return { ids: new Map(t.rows.filter(r => r.name.endsWith('.txt')).map(r => [r.name, r.id])), gen: t.gen };
 }

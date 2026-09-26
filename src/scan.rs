@@ -486,7 +486,11 @@ impl Snapshot {
         fs::rename(tmp, path)
     }
 
-    pub fn load(path: &Path, expected_serial: u32) -> std::io::Result<Snapshot> {
+    pub fn load(
+        path: &Path,
+        expected_serial: u32,
+        expected_root: &str,
+    ) -> std::io::Result<Snapshot> {
         const MAX_CACHE_BYTES: u64 = 1_073_741_824;
         const MAX_CACHE_ENTRIES: usize = 20_000_000;
         let len = fs::metadata(path)?.len();
@@ -520,6 +524,19 @@ impl Snapshot {
         }
         let root_len = r.u32()? as usize;
         let root = String::from_utf8_lossy(r.take(root_len)?).into_owned();
+        // Le numéro de série ne suffit pas à dire de QUEL volume il s'agit.
+        // Une lettre peut être réattribuée : `C:` défaillante, clé USB à la
+        // place — et beaucoup de clés bon marché partagent leur numéro de
+        // série. Le cache serait alors accepté, l'interface montrerait l'ancien
+        // arbre de `C:`, et les chemins affichés appartiendraient à un autre
+        // volume. On compare donc la racine, qui est ce que `dir_path`
+        // reconstruit en tête de chaque chemin.
+        if !root.eq_ignore_ascii_case(expected_root) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "cache d'une autre lettre de volume",
+            ));
+        }
         let finished_ms = r.i64()?;
         let elapsed_ms = r.u64()?;
         let unreadable_total = r.u64()?;
@@ -879,6 +896,47 @@ mod tests {
         assert_eq!(snapshot.count, vec![1, 1]);
         assert_eq!(snapshot.mtime, vec![30, 30]);
         assert_eq!(snapshot.dir_path(1), PathBuf::from("X:\\archive"));
+    }
+
+    #[test]
+    fn un_cache_d_autre_lettre_de_volume_est_refuse() {
+        // Le numéro de série passe, la lettre ne passe pas : c'est
+        // exactement le cas qui recombinait l'arbre d'un volume avec la lettre
+        // d'un autre. Voir le contrôle dans `load`.
+        let chemin = std::env::temp_dir().join(format!("diskmap-cache-{}.bin", std::process::id()));
+        let snapshot = Snapshot::new(
+            "X:\\".into(),
+            vec![DirRec {
+                id: 0,
+                parent: 0,
+                name: "X:\\".into(),
+                own_mtime: 10,
+            }],
+            vec![],
+            ScanStats {
+                elapsed_ms: 0,
+                unreadable: Vec::new(),
+                unreadable_total: 0,
+                unreadable_droits: 0,
+                skipped: 0,
+            },
+        );
+        snapshot.save(&chemin, 4242).expect("écriture du cache");
+
+        assert!(
+            Snapshot::load(&chemin, 4242, "X:\\").is_ok(),
+            "la bonne lettre doit passer"
+        );
+        assert!(
+            Snapshot::load(&chemin, 4242, "G:\\").is_err(),
+            "une autre lettre doit être refusée, même à bon numéro de série"
+        );
+        assert!(
+            Snapshot::load(&chemin, 9999, "X:\\").is_err(),
+            "le numéro de série reste vérifié"
+        );
+
+        let _ = std::fs::remove_file(&chemin);
     }
 
     #[test]

@@ -30,7 +30,9 @@ jobs:
 
       # La CI doit rester sûre même sur un runner auto-hébergé : les scénarios
       # qui créent ou suppriment des fichiers ne sont lancés que manuellement,
-      # sur un volume jetable explicitement configuré.
+      # sur un volume jetable explicitement configuré. Le job « sondes » plus bas
+      # les exécute quand même, mais sur un runner GitHub éphémère, qui est
+      # jeté après le job.
       - name: Sondes non destructives
         run: node tests/sondes/lancer.mjs --volume D --sans generation,reelle,lot,ui,csrf,erreurs
 
@@ -39,3 +41,37 @@ jobs:
         with:
           name: diskmap-windows
           path: target/release/diskmap.exe
+
+  # Les sondes qui CREENT et SUPPRIMENT, y compris celle qui rejoue l'incident
+  # du 26/09/2026. Elles sont écartées du job ci-dessus pour une seule raison :
+  # ce job peut tourner sur un runner auto-hébergé, où « volume jetable » n'est
+  # pas une garantie. Ici, `runs-on: windows-latest` est un runner ÉPHÉMÈRE — il
+  # n'existe plus après le job, et son disque D: est un scratch. C'est donc le
+  # seul endroit où ces sondes peuvent tourner en continu, et c'est le seul endroit
+  # où la régression qu'elles couvrent serait réellement gardée : sans ce job, le
+  # défaut d'identifiant-position et le filet de sécurité ne sont vérifiés que par
+  # une main, un jour, sur le poste de quelqu'un.
+  sondes:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Compiler
+        run: cargo build --release --offline
+
+      - name: Installer les sondes navigateur
+        working-directory: tests/sondes
+        run: |
+          npm ci
+          npx playwright install chromium
+
+      # Le filet est le sujet de ce job autant que les sondes : c'est lui qui doit
+      # empêcher qu'une sonde vise hors de sa racine, et la sortie est ROUGE si
+      # une autre sonde qu'`filet` a provoqué un incident. Voir tests/sondes/filet.mjs.
+      - name: Toutes les sondes, filet compris
+        env:
+          DISKMAP_SONDE_VOLUME: D
+          DISKMAP_SONDE_RACINE: 'D:\_diskmap_sondes'
+        run: node tests/sondes/lancer.mjs --volume D

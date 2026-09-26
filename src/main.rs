@@ -28,6 +28,14 @@ const DEFAULT_PORT: u16 = 8756;
 /// chacun. 4 Mio laissent donc passer plus de cent mille éléments — bien
 /// au-delà de ce que la table sait afficher.
 const CORPS_MAX: usize = 4 * 1024 * 1024;
+/// Nombre maximal d'éléments qu'une seule simulation peut porter.
+///
+/// Ce n'est pas une limite de comfort mais une borne de sécurité : chaque
+/// élément d'un `dry` devient un chemin figé que `execute` supprimera sans
+/// nouvelle question. Une sélection manuelle qui dépasserait ce seuil ne
+/// serait plus une sélection, et l'utilisateur ne peut pas la lire entièrement
+/// dans l'aperçu sans perdre le fil. On refuse donc, en nommant le remède.
+const ITEMS_MAX: usize = 5_000;
 /// Une interface locale n'a aucune raison d'envoyer des en-têtes volumineux.
 const ENTETE_LIGNE_MAX: usize = 8 * 1024;
 const ENTETES_MAX: usize = 32 * 1024;
@@ -269,7 +277,7 @@ fn main() {
     let mut drives = HashMap::new();
     for d in win32::drives() {
         let cache = cache_dir().join(format!("{}.bin", d.letter));
-        let (snap, status) = match Snapshot::load(&cache, d.serial) {
+        let (snap, status) = match Snapshot::load(&cache, d.serial, &format!("{}:\\", d.letter)) {
             Ok(s) => (Some(Arc::new(s)), Status::Ready),
             Err(_) => (None, Status::Empty),
         };
@@ -1256,6 +1264,21 @@ fn dry(
     let mut deletable = 0usize;
     let mut blocked = 0usize;
 
+    // On refuse AU PLUS TOT, et l'aperçu est alors complet ou absent : jamais
+    // « les 25 premiers » d'une liste que l'exécution supprimera en entier.
+    // Voir `ITEMS_MAX`.
+    if items.len() > ITEMS_MAX {
+        return Err((
+            "400 Bad Request",
+            format!(
+                "{} éléments demandés, {} au maximum : affine la sélection, \
+                 un lot plus large ne serait pas lisible à l'écran",
+                items.len(),
+                ITEMS_MAX
+            ),
+        ));
+    }
+
     // Ce qu'on retient pour l'exécution : le chemin résolu, figé ici. C'est la
     // seule liste que `execute` consultera.
     let mut montres: Vec<Montre> = Vec::new();
@@ -1319,6 +1342,11 @@ fn dry(
     let token = format!("{}-{:016x}", now_ms(), win32::alea_u64());
     {
         let mut p = app.pending.lock().unwrap();
+        // Un jeton périmé est retiré ICI aussi, pas seulement à l'exécution :
+        // une série d'aperçus jamais confirmés ferait sinon croître cette map
+        // sans borne, chacun retenant une liste entière de chemins.
+        let now = now_ms();
+        p.retain(|_, v| now - v.at_ms < 600_000);
         p.insert(
             token.clone(),
             PendingDel {

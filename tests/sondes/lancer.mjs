@@ -33,6 +33,14 @@
 //   node tests/sondes/lancer.mjs --url http://127.0.0.1:8756/   eprouver un serveur deja lance
 //
 // Options : --volume L, --binaire chemin, --nettoyer, --attendre secondes
+//
+// LE FILET
+// --------
+// Les sondes ne parlent JAMAIS directement au serveur : elles passent par le
+// proxy de `filet.mjs`, qui n transmet une suppression que si l'aperçu
+// correspondant ne nommait que des chemins sous la racine de travail. C'est le
+// filet qui a manqué le 26/09/2026 — il n'existait pas. Voir `filet.mjs` pour
+// pourquoi c'est un proxy et non une vérification dans chaque sonde.
 
 import { spawn } from 'child_process';
 import fs from 'fs';
@@ -40,6 +48,7 @@ import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { creerFilet } from './filet.mjs';
 import { URL_DEFAUT, VOLUME_DEFAUT, VOLUME_SANS_CORBEILLE, racine } from './config.mjs';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +66,14 @@ const DEPOT = path.resolve(ICI, '..', '..');
 // fichiers qu'elle a crees sous la racine de travail, et elle le verifie avant
 // d'agir.
 const SONDES = [
+  {
+    // EN PREMIER, et c'est important. C'est la seule sonde qui prouve que le
+    // filet est interposé, donc que les suivantes sont réellement encadrées. Après
+    // une sonde destructive, un filet défaillant aurait déjà fait son oeuvre.
+    nom: 'filet', fichier: 'sonde-filet.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
+    quoi: 'Le filet refuse une suppression hors racine — le scenario de l incident',
+  },
   {
     nom: 'host', fichier: 'sonde-host.mjs', args: (c) => [c.url], ci: true, detruit: 'rien',
     quoi: 'Le nom porte par Host est celui de la machine, sur toutes les routes ; rebinding joue dans un vrai navigateur',
@@ -224,6 +241,29 @@ async function analyser(url, lettre, limiteSecondes) {
   return null;
 }
 
+// ------------------------------------------------------------------ racines
+/**
+ * La racine de travail d'un volume.
+ *
+ * `racine()` refuse une racine posee sur un AUTRE volume que celui qu'on
+ * analyse — c'est la seule Facon de ne pas finir avec des fichiers crees sur
+ * C: et un instantane interroge sur V:, ce qui fait conclure « absent » sans
+ * explication. Le volume principal, lui, doit respecter la configuration : une
+ * racine posee et ignoree serait pire qu'une racine absente. Le volume
+ * secondaire, lui, n'a pas le droit de faire echouer le run : il retombe sur
+ * son dossier par defaut, et le dit.
+ */
+function racinePour(vol, principal) {
+  try {
+    return racine(vol);
+  } catch (e) {
+    if (principal) throw e;
+    const defaut = `${vol}:/_diskmap_sondes`;
+    console.log(`  note   : ${e.message.split('.')[0]}. Repli sur ${defaut}`);
+    return defaut;
+  }
+}
+
 // ------------------------------------------------------------------ nettoyage
 /**
  * Retire les dossiers de travail des sondes.
@@ -248,6 +288,9 @@ function nettoyer() {
 const resultats = [];
 let serveur = null;
 let url = opt.url;
+// Déclaré ici, et non dans le `try` : le `finally` doit pouvoir arrêter le
+// filet, et le verdict doit pouvoir le consulter.
+let filet = null;
 
 try {
   if (!url) {
@@ -274,6 +317,18 @@ try {
   if (!dv) { console.error(`Le volume ${volume}: n a pas pu etre analyse.`); process.exit(2); }
 
   console.log('');
+  // Le filet est DEMANDÉ avant toute sonde, et son URL est celle que les sondes
+  // reçoivent. Le chef d'orchestre, lui, garde la vraie adresse : c'est lui qui
+  // analyse, et il n'a pas à se faire filtrer.
+  const racines = [...new Set([
+    racinePour(volume, true),
+    racinePour(opt.volumeSansCorbeille, false),
+  ])];
+  const journalFilet = path.join(ICI, 'filet-suppressions.log');
+  filet = await creerFilet({ cible: url, racines, journal: journalFilet });
+  const urlProbes = filet.url;
+  console.log(`  filet   : ${racines.join(' | ')} — les sondes passent par ${urlProbes}`);
+
   for (const s of retenues) {
     const fichier = path.join(ICI, s.fichier);
     if (!fs.existsSync(fichier)) {
@@ -281,8 +336,13 @@ try {
       resultats.push({ nom: s.nom, code: 2 });
       continue;
     }
-    const args = s.args({ url, volume, volumeSansCorbeille: opt.volumeSansCorbeille });
-    const sortie = await new Promise((resoudre) => {
+    const args = s.args({ url: urlProbes, volume, volumeSansCorbeille: opt.volumeSansCorbeille });
+    // Le filet compte ses incidents. Ceux qu'une sonde PROVOQUE pour éprouver le
+    // filet ne sont pas des échecs — la sonde `filet` ne peut faire autrement,
+    // et ses propres vérifications la jugent. Ceux qu'une autre sonde provoque
+    // n'ont aucune explication : une sonde a alors visé hors de sa racine, et
+    // c'est exactement l'incident du 26/09/2026.
+    const incidentsAvant = filet.incidents.length;    const sortie = await new Promise((resoudre) => {
       const p = spawn(process.execPath, [fichier, ...args], { cwd: ICI, windowsHide: true });
       let tout = '';
       p.stdout.on('data', (d) => { tout += d.toString(); });
@@ -299,8 +359,16 @@ try {
       for (const l of lignes.slice(0, 12)) console.log(`           ${l.trim()}`);
     }
     resultats.push({ nom: s.nom, code: sortie.code, resume });
+    if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {
+      const nouveaux = filet.incidents.slice(incidentsAvant);
+      console.log(`           FILET  ${nouveaux.length} incident(s) pendant « ${s.nom} »`);
+      filet.tiers.push(...nouveaux);
+    }
   }
 } finally {
+  if (filet) {
+    await filet.arreter();
+  }
   if (serveur) {
     try {
       await fetch(`${url}api/quit`, { method: 'POST', headers: { 'X-Diskmap': '1', 'Content-Type': 'application/json' }, body: '{}' });
@@ -320,6 +388,24 @@ console.log('');
 console.log(`  ${verts}/${resultats.length} sondes vertes`);
 if (rouges.length) console.log(`  ROUGES : ${rouges.map((r) => r.nom).join(', ')}`);
 if (pasPu.length) console.log(`  PAS PU EPROUVER : ${pasPu.map((r) => r.nom).join(', ')}`);
+
+// Le filet a la parole. Un incident rend la run ROUGE même si toutes les sondes
+// sont vertes : une sonde a vu passer une suppression qu'elle n'aurait jamais
+// dû déclencher, et son « vert » ne veut alors plus rien dire. C'est le principe
+// « fermé par défaut » : on ne peut pas contourner le filet en sobrescrivant.
+// Le filet a la parole. Un incident survenu durant une sonde QUI N'EST PAS
+// `filet` rend la run ROUGE même si toutes les sondes sont vertes : une sonde a
+// vu passer une suppression qu'elle n'aurait jamais dû déclencher, et son
+// « vert » ne veut alors plus rien dire. C'est le principe « fermé par défaut » :
+// on ne peut pas contourner le filet en sobercrivant.
+if (filet && filet.tiers.length) {
+  console.log(`  FILET ROUGE : ${filet.tiers.length} incident(s) hors sonde d'epreuve`);
+  for (const t of filet.tiers.slice(0, 6)) console.log(`    - ${t}`);
+  process.exit(1);
+}
+if (filet) {
+  console.log(`  filet   : ${filet.refus} execution(s) refusee(s), ${filet.incidents.length} incident(s) — tous produits par la sonde d'epreuve du filet`);
+}
 
 if (rouges.length) process.exit(1);
 if (pasPu.length) process.exit(2);
