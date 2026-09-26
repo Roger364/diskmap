@@ -242,6 +242,7 @@
   <div class="spacer"></div>
   <input class="search" id="q" placeholder="Rechercher partout (ex. node_modules)…" />
   <button class="btn" id="go">Chercher</button>
+  <button class="btn" id="stop" title="Arrêter le serveur proprement — l'analyse en cours est annulée et son cache reste intact">Arrêter</button>
 </header>
 
 <main>
@@ -330,11 +331,46 @@
   </div>
 </div>
 
+<!-- Arrêt pendant une analyse : on ne dit pas « vraiment ? » mais ce qui sera
+     perdu, chiffré. Le serveur a refusé une première fois et a fourni ces
+     nombres ; cette boîte ne fait que les montrer et demander l'accord. -->
+<div id="smodal" class="modal-bg hidden">
+  <div class="modal">
+    <h3>Arrêter le serveur <span>— analyse en cours</span></h3>
+    <div class="body" id="sbody"></div>
+    <div class="foot">
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn" id="scancel">Continuer l'analyse</button>
+      <button class="btn danger" id="sdo">Arrêter maintenant</button>
+    </div>
+  </div>
+</div>
+
+<!-- Écran terminal. Il n'y a rien à fermer : le serveur ne répond plus, donc
+     aucun bouton ne pourrait faire quoi que ce soit. -->
+<div id="stopped" class="modal-bg hidden">
+  <div class="modal" style="max-width:440px">
+    <h3>Serveur arrêté</h3>
+    <div class="body">
+      <p style="margin:0 0 10px">Arrêt propre. Le parcours en cours a été annulé, et son cache
+      <b>n'a pas été écrasé</b> : la prochaine analyse repartira de données complètes, pas d'une
+      vue tronquée prise pour une mesure.</p>
+      <p style="margin:0;color:var(--muted);font-size:12.5px">Cette page ne peut plus rien afficher.
+      Relance <b>diskmap</b> depuis le terminal pour revenir ici.</p>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 let state = { drives: [], scanning: null };
 let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set() };
 let pendingDry = null;
+// Le serveur s'arrête à la demande de cette page. Une fois posé, plus rien ne
+// doit partir : chaque minuteur deviendrait une requête vers un port fermé, et
+// les erreurs réseau qui en résulteraient masqueraient l'écran d'arrêt.
+let arrete = false;
+let veilleTimer = null;
 
 // ---------- formatage ----------
 const nf = new Intl.NumberFormat('fr-FR');
@@ -367,11 +403,19 @@ function ageClass(s) {
 // ---------- API ----------
 async function api(u, opt) {
   const r = await fetch(u, opt);
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    // Le code est conservé sur l'erreur : sans lui, distinguer « analyse en
+    // cours » (409, on peut insister) d'un vrai refus obligerait à deviner le
+    // texte du message, qui est en français et destiné à l'utilisateur.
+    const err = new Error(await r.text());
+    err.status = r.status;
+    throw err;
+  }
   return r.json();
 }
 
 async function refreshState() {
+  if (arrete) return;
   state = await api('/api/state');
   renderDrives();
   renderEleve();
@@ -515,6 +559,7 @@ let pollTimer = null;
 function poll() {
   clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
+    if (arrete) { clearInterval(pollTimer); return; }
     await refreshState();
     if (!state.scanning) {
       clearInterval(pollTimer);
@@ -856,6 +901,59 @@ async function showUnreadable(letter) {
   });
 }
 $('#uclose').onclick = () => $('#umodal').classList.add('hidden');
+
+// ---------- arrêt du serveur ----------
+//
+// Deux temps, parce que les deux situations n'ont rien à voir. Sans analyse en
+// cours, il n'y a rien à perdre : un clic suffit. Avec une analyse, le serveur
+// refuse et rend les compteurs du parcours ; on les montre avant de couper.
+// Demander « vraiment ? » sans dire ce qui serait perdu serait une question vide.
+async function stopServer(force) {
+  const bouton = $('#stop');
+  bouton.disabled = true;
+  try {
+    await api('/api/quit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: !!force }),
+    });
+  } catch (e) {
+    bouton.disabled = false;
+    if (!force && e.status === 409) {
+      $('#sbody').innerHTML =
+        `<p style="margin:0 0 8px">${escapeHtml(String(e.message || e))}.</p>` +
+        `<p style="margin:0;color:var(--muted);font-size:12.5px">Arrêter maintenant abandonne ce ` +
+        `parcours. Le cache du volume <b>n'est pas</b> touché — il gardera la version complète ` +
+        `précédente, ou restera vide. Rien de faux ne sera conservé.</p>`;
+      $('#smodal').classList.remove('hidden');
+      return;
+    }
+    // Le serveur est peut-être déjà parti (fermeture depuis le terminal, ou
+    // réseau) : dans ce cas il n'y a plus rien à arrêter, et l'écran d'arrêt
+    // reste la bonne chose à montrer.
+    if (e.status === undefined) {
+      serveurArrete();
+      return;
+    }
+    alert(`Arrêt refusé : ${e.message || e}`);
+    return;
+  }
+  serveurArrete();
+}
+
+function serveurArrete() {
+  arrete = true;
+  clearInterval(pollTimer);
+  clearInterval(veilleTimer);
+  $('#smodal').classList.add('hidden');
+  $('#umodal').classList.add('hidden');
+  $('#stopped').classList.remove('hidden');
+  document.title = 'diskmap — arrêté';
+}
+
+$('#stop').onclick = () => stopServer(false);
+$('#scancel').onclick = () => $('#smodal').classList.add('hidden');
+$('#sdo').onclick = () => { $('#smodal').classList.add('hidden'); stopServer(true); };
 
 async function openDelete() {
   const rows = selectedRows();
@@ -1231,7 +1329,9 @@ window.addEventListener('resize', () => { if (cur.view === 'map') renderMap(); }
     const first = state.drives[0];
     if (first) $('#count').textContent = `Clique sur « Analyser » pour ${first.letter}:`;
   }
-  setInterval(refreshState, 4000);
+  // Veille de fond : elle ne sert qu'à suivre un volume analysé depuis une autre
+  // fenêtre. Nommée, pour pouvoir l'éteindre à l'arrêt.
+  veilleTimer = setInterval(() => { if (!arrete) refreshState(); }, 4000);
 })();
 </script>
 </body>

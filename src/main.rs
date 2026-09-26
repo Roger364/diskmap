@@ -13,8 +13,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::SystemTime;
-use std::sync::atomic::Ordering;
+use std::time::{Duration, SystemTime};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -61,6 +61,10 @@ struct App {
     /// Fixé au démarrage : le niveau de privilège d'un processus ne change pas
     /// en cours de route, et l'interface s'en sert à chaque rendu.
     eleve: bool,
+    /// Un arrêt a été demandé. Sert de garde contre un second `/api/quit` pendant
+    /// que le premier s'exécute, et empêche l'interface de relancer une analyse
+    /// pendant l'arrêt.
+    stopping: AtomicBool,
 }
 
 #[derive(serde::Serialize)]
@@ -239,6 +243,7 @@ fn main() {
         pending: Mutex::new(HashMap::new()),
         cache_dir: cache_dir(),
         eleve: win32::est_eleve(),
+        stopping: AtomicBool::new(false),
     });
 
     // Les volumes sans cache sont mis en file : ils seront analysés les uns après
@@ -284,7 +289,7 @@ fn main() {
     }
     let url = format!("http://127.0.0.1:{real_port}/");
     println!("Espace disque : {url}");
-    println!("Ctrl+C pour arrêter.");
+    println!("Arrêt : le bouton dans l'interface, ou Ctrl+C ici.");
     if open_browser {
         open_in_browser(&url);
     }
@@ -307,6 +312,15 @@ fn main() {
 /// Démarre le volume suivant de la file si aucun scan n'est en cours.
 fn pump(app: &Arc<App>) {
     let mut busy = app.scanning.lock().unwrap();
+    // Le contrôle est ICI, sous le verrou, et non chez l'appelant : `pump` dépile
+    // un volume puis remplace sa progression par une neuve (`cancel: false`). Si un
+    // arrêt s'intercalait entre les deux, il annulerait l'ancienne progression et
+    // `pump` en installerait aussitôt une réactive — un parcours démarrerait
+    // pendant l'arrêt, et la sortie du processus le couperait en pleine écriture.
+    // Sous le verrou, aucun arrêt ne peut s'intercaler : il prend ce même verrou.
+    if app.stopping.load(Ordering::Relaxed) {
+        return;
+    }
     if busy.is_some() {
         return;
     }
@@ -339,7 +353,29 @@ fn pump(app: &Arc<App>) {
                 .map(|s| s.prog.clone())
                 .unwrap_or_else(|| Arc::new(Progress::new()))
         };
+        let prog2 = prog.clone();
         let snap = scan::scan(&verbatim, display, prog);
+        // Un parcours interrompu rend un instantané PARTIEL. Le sauver écraserait
+        // un cache complet par une vue tronquée, que le prochain démarrage
+        // prendrait pour argent comptant : un total faux présenté comme une
+        // mesure, exactement ce que le compteur d'illisibles sert à éviter. On
+        // ne garde donc rien — ni cache, ni état « analysé ».
+        if prog2.cancel.load(Ordering::Relaxed) {
+            eprintln!("{letter}: parcours interrompu — cache inchangé, volume non marqué comme analysé");
+            {
+                let mut d = app2.drives.lock().unwrap();
+                if let Some(ds) = d.get_mut(&letter) {
+                    ds.status = Status::Empty;
+                }
+            }
+            *app2.scanning.lock().unwrap() = None;
+            // On enchaîne sur le volume suivant, sauf si c'est un arrêt complet :
+            // relancer un parcours pendant l'arrêt serait absurde.
+            if !app2.stopping.load(Ordering::Relaxed) {
+                pump(&app2);
+            }
+            return;
+        }
         let cache = app2.cache_dir.join(format!("{letter}.bin"));
         if let Err(e) = snap.save(&cache) {
             eprintln!("cache {letter}: {e}");
@@ -519,6 +555,11 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8]) -> Result
         ("GET", "/api/state") => Ok(Resp::Json(serde_json::to_string(&state_json(app)).unwrap())),
 
         ("POST", p) if p.starts_with("/api/scan/") => {
+            // Pendant l'arrêt, accepter une analyse n'aurait aucun sens : le
+            // processus sort dans quelques centaines de millisecondes.
+            if app.stopping.load(Ordering::Relaxed) {
+                return Err(("409 Conflict", "arrêt en cours".into()));
+            }
             let letter = p.rsplit('/').next().unwrap_or("").chars().next();
             let letter = letter.ok_or(("400 Bad Request", "lettre manquante".into()))?
                 .to_ascii_uppercase();
@@ -537,6 +578,8 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8]) -> Result
         ("GET", "/api/unreadable") => unreadable(app, q),
 
         ("POST", "/api/reveal") => reveal(app, body),
+
+        ("POST", "/api/quit") => quit(app, body),
 
         ("POST", "/api/delete") => delete(app, body),
 
@@ -1067,6 +1110,100 @@ fn reveal(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
     }
     // Guillemets : sans eux, une virgule dans le chemin couperait l'argument.
     let _ = Command::new("explorer").arg(format!("/select,\"{}\"", req.path)).spawn();
+    Ok(Resp::Json("{\"ok\":true}".to_string()))
+}
+
+#[derive(serde::Deserialize)]
+struct QuitReq {
+    #[serde(default)]
+    force: bool,
+}
+
+/// Arrête le serveur proprement.
+///
+/// « Proprement » veut dire ici : on ne coupe pas un parcours en plein milieu de
+/// l'écriture de son cache. Un `exit()` sur un thread qui écrit un instantané
+/// laisserait un fichier tronqué, que le prochain démarrage tenterait de lire.
+/// On demande donc l'annulation, puis on attend que le parcours ait rendu la main.
+///
+/// La sortie du processus est différée dans un thread : `handle` écrit la réponse
+/// HTTP *après* le retour de cette fonction. Sortir ici couperait la connexion, et
+/// le navigateur afficherait une erreur réseau là où il n'y a qu'un arrêt normal.
+fn quit(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
+    let req: QuitReq = if body.is_empty() {
+        QuitReq { force: false }
+    } else {
+        serde_json::from_slice(body)
+            .map_err(|e| ("400 Bad Request", format!("corps illisible : {e}")))?
+    };
+
+    // Premier appel sans `force` alors qu'une analyse tourne : on ne refuse pas
+    // sèchement, on rend de quoi demander confirmation — ce qui serait perdu,
+    // chiffré, plutôt qu'un « vraiment ? » qui ne dit rien.
+    if let Some(letter) = *app.scanning.lock().unwrap() {
+        if !req.force {
+            let (dirs, files) = {
+                let d = app.drives.lock().unwrap();
+                d.get(&letter)
+                    .map(|s| {
+                        (
+                            s.prog.dirs.load(Ordering::Relaxed),
+                            s.prog.files.load(Ordering::Relaxed),
+                        )
+                    })
+                    .unwrap_or((0, 0))
+            };
+            return Err((
+                "409 Conflict",
+                format!("{letter}: analyse en cours ({dirs} dossiers, {files} fichiers parcourus)"),
+            ));
+        }
+    }
+
+    // À partir d'ici l'arrêt est acquis. Le drapeau sert deux fois : il empêche
+    // un second `/api/quit` de refaire le travail, et `pump` s'en sert pour ne pas
+    // enchaîner sur le volume suivant.
+    app.stopping.store(true, Ordering::Relaxed);
+
+    // Barrière : on prend le verrou que `pump` tient pendant qu'il choisit un
+    // volume ET remplace sa progression. Sans elle, un `pump` déjà engagé
+    // installerait une progression neuve APRÈS la passe d'annulation ci-dessous,
+    // et le parcours ainsi lancé ne serait jamais annulé. Ordre de verrouillage
+    // respecté partout : `scanning` puis `queue` puis `drives`.
+    let busy = app.scanning.lock().unwrap();
+    // La file n'a rien à préserver : ces volumes n'ont pas commencé, il n'y a ni
+    // cache à écrire ni progression à perdre.
+    app.queue.lock().unwrap().clear();
+    // On demande l'annulation à TOUS les volumes, file comprise.
+    {
+        let d = app.drives.lock().unwrap();
+        for s in d.values() {
+            s.prog.cancel.store(true, Ordering::Relaxed);
+        }
+    }
+    drop(busy);
+
+    // On attend que le parcours rende la main. Le contrôle d'annulation est en
+    // tête de chaque dossier, donc l'attente se compte en millisecondes ; la borne
+    // est là pour un disque qui ne répond plus, qui ne doit pas rendre
+    // l'application impossible à fermer.
+    let limite = std::time::Instant::now() + Duration::from_secs(3);
+    while app.scanning.lock().unwrap().is_some() {
+        if std::time::Instant::now() > limite {
+            eprintln!("arrêt : le parcours n'a pas rendu la main en 3 s — on ferme quand même");
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    // Un parcours interrompu purge lui-même ce drapeau ; on le fait aussi au cas
+    // où la boucle ci-dessus a expiré, pour ne rien laisser marqué « en cours ».
+    *app.scanning.lock().unwrap() = None;
+
+    println!("Arrêt demandé depuis l'interface.");
+    thread::spawn(|| {
+        thread::sleep(Duration::from_millis(250));
+        std::process::exit(0);
+    });
     Ok(Resp::Json("{\"ok\":true}".to_string()))
 }
 
