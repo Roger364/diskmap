@@ -314,11 +314,31 @@ Deux gains que le correctif apporte par construction :
 Coût assumé : l'espace des identifiants est borné à 2³¹ par volume, ce qui est hors de
 portée de tout disque réel.
 
-### R9 — Noms Windows normalisables · **Négligeable**
+### R9 — Noms Windows normalisables · **Vérifié, sans défaut**
 
 Le scan en mode verbatim voit des noms qu'un chemin normal ne peut pas adresser (espace ou
-point final). L'aperçu afficherait `foo ` et l'effacement viserait `foo`. Le scan et
-l'effacement n'utilisent pas le même espace de noms.
+point final). Le risque annoncé : l'aperçu afficherait `foo ` et l'effacement viserait `foo`.
+
+**Vérifié sur un VHD jetable, le 26/09/2026 : ce défaut n'existe pas.** Créé par
+`CreateFileW` en forme `\\?\`, un fichier nommé `piege.txt ` (espace finale) :
+
+- `listdir` le voit sous son vrai nom, `'piege.txt '` ;
+- `os.path.exists` en forme **verbatim** renvoie `True`, en forme **normale** renvoie
+  `False` — les deux ne désignent pas le même chemin ;
+- l'instantané le liste correctement (`sel=2147483649`, `is_dir=false`), distinct de
+  `normal.txt` ;
+- l'aperçu affiche `V:\_r9\piege.txt ` **avec son espace**, et le déclare
+  `blocked=true`, `deletable=0`, motif « introuvable sur le disque ».
+
+Le refus vient de `delete_path` (`src/win32.rs:242`), qui interdit le préfixe `\\?\` —
+justement parce qu'il court-circuite la corbeille. Un nom qui n'est adressable qu'en
+verbatim est donc **visible mais jamais effaçable** : il ne peut pas viser un autre fichier,
+il ne peut rien viser du tout. La classe de bug est fermée par une règle déjà en place,
+sans code supplémentaire.
+
+Reste un détail d'affichage assumé : l'interface rend `piege.txt ` sans le rendre visible
+(espaces finales), ce qui peutcheonner un utilisateur qui cherche pourquoi le fichier est
+refusé. Le motif dit « introuvable sur le disque », ce qui est vrai mais pas pédagogique.
 
 ---
 
@@ -372,6 +392,11 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **9** | Filet global dans le harnais + sonde d'épreuve | `tests/sondes/filet.mjs`, `sonde-filet.mjs` | **fait** |
 | **10** | `racine()` refuse une racine posée sur un autre volume | `tests/sondes/config.mjs` | **fait** |
 | **11** | Aligner les noms de dossiers des cinq sondes sur `dossier()` | `tests/sondes/*.mjs` | **fait** |
+| **12** | Vérifier R9 sur un nom à espace finale (au lieu de le supposer) | `src/win32.rs`, `src/scan.rs` | **vérifié, sans défaut** |
+
+Aucune des neuf conclusions du rapport n'est restée ouverte après vérification. R9 était le
+dernier doute, et il est fermé : un nom non adressable en forme normale est visible dans
+l'index, refusé à l'aperçu, et ne peut viser aucun autre fichier.
 
 Vérification, sur un volume virtuel jetable `V:` monté pour l'occasion, après R5/R6/R7 :
 
