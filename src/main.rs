@@ -443,9 +443,12 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     let method = parts.next().unwrap_or("").to_string();
     let target = parts.next().unwrap_or("/").to_string();
     // En-têtes : on retient Content-Length, seul cas où un corps nous intéresse,
-    // plus X-Diskmap, qui distingue notre page d'une page tierce (voir `route`).
+    // plus X-Diskmap, qui distingue notre page d'une page tierce, et Host, qui
+    // nomme la machine visée (voir `hote_local` — c'est la défense contre un
+    // rebinding DNS).
     let mut content_len: usize = 0;
     let mut action = String::new();
+    let mut host = String::new();
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h)? == 0 {
@@ -459,6 +462,8 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
             content_len = v.trim().parse().unwrap_or(0);
         } else if let Some(v) = lower.strip_prefix("x-diskmap:") {
             action = v.trim().to_string();
+        } else if let Some(v) = lower.strip_prefix("host:") {
+            host = v.trim().to_string();
         }
     }
     let mut body = vec![0u8; content_len];
@@ -471,7 +476,7 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
         None => (target, HashMap::new()),
     };
 
-    let resp = route(app, &method, &path, &query, &body, &action);
+    let resp = route(app, &method, &path, &query, &body, &action, &host);
     let body: Vec<u8>;
     let (status, ctype) = match resp {
         Ok(Resp::Html(s)) => {
@@ -552,7 +557,82 @@ fn hex(c: u8) -> Option<u8> {
     }
 }
 
-fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8], action: &str) -> Result<Resp, (&'static str, String)> {
+/// Le nom demandé est-il celui de la machine locale ?
+///
+/// C'est la défense contre le **rebinding DNS**, et elle est indispensable. Le
+/// scénario : l'attaquant sert une page depuis son domaine, puis fait résoudre
+/// ce domaine vers 127.0.0.1. Le navigateur envoie alors ses requêtes à notre
+/// serveur **en les croyant de même origine**. Le contrôle d'`Origin` ne voit
+/// rien — il n'y a pas de requête croisée. Le préflight non plus. Et l'en-tête
+/// `X-Diskmap` est posable sans restriction, puisqu'une requête same-origin
+/// n'est jamais préflightée : la garde qui protège des POST « simples » d'une
+/// page tierce ne protège de rien ici.
+///
+/// Seul le nom porté par `Host` trahit l'attaque : le navigateur y met le nom
+/// d'origine, jamais l'adresse à laquelle il a effectivement abouti.
+///
+/// D'où trois conséquences de conception :
+/// - la vérification porte sur **toutes** les routes, lectures comprises. Les
+///   lectures sont ici aussi sensibles que les écritures : `/api/tree` livre
+///   l'inventaire complet du disque.
+/// - on compare le **nom**, pas le port : le port n'apporte rien (l'attaquant
+///   choisit son URL) et le figer casserait les sondes comme les scripts.
+/// - `already_running` interroge notre propre `/api/state` avec
+///   `Host: 127.0.0.1` **sans port** : le nom seul doit donc suffire.
+fn hote_local(host: &str) -> bool {
+    let h = host.trim();
+    // On isole le nom en retirant un éventuel « :port ». Un littéral IPv6 est
+    // entre crochets, donc ses deux-points internes ne se confondent pas avec
+    // le séparateur de port.
+    let nom = if let Some(reste) = h.strip_prefix('[') {
+        let Some((n, apres)) = reste.split_once(']') else {
+            return false;
+        };
+        if !apres.is_empty() {
+            let Some(p) = apres.strip_prefix(':') else {
+                return false;
+            };
+            if !port_ok(p) {
+                return false;
+            }
+        }
+        n
+    } else if let Some((n, p)) = h.split_once(':') {
+        if !port_ok(p) {
+            return false;
+        }
+        n
+    } else {
+        h
+    };
+    // « localhost. » désigne le même nom que « localhost » : le point final est
+    // la racine explicite, pas un nom différent.
+    let nom = nom.trim_end_matches('.');
+    nom.eq_ignore_ascii_case("127.0.0.1")
+        || nom.eq_ignore_ascii_case("localhost")
+        || nom == "::1"
+}
+
+/// Le port est-il bien un port ? Exiger des chiffres ferme la classe de leurres
+/// du type `127.0.0.1:8800@evil.test`, où tout ce qui suit le premier
+/// deux-points serait sinon pris pour un port — et le nom retenu, « 127.0.0.1 »,
+/// se ferait accepter.
+fn port_ok(p: &str) -> bool {
+    p.is_empty() || p.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8], action: &str, host: &str) -> Result<Resp, (&'static str, String)> {
+    // Le nom demandé doit être celui de cette machine. Ce contrôle passe AVANT
+    // tout le reste, et vaut pour les lectures autant que pour les écritures :
+    // voir `hote_local` pour ce qu'il couvre et pourquoi il est le seul à le
+    // pouvoir.
+    if !hote_local(host) {
+        return Err((
+            "403 Forbidden",
+            format!("en-tête Host refusé (« {host} ») : cette interface ne répond qu'à 127.0.0.1 ou localhost"),
+        ));
+    }
+
     // Toute route qui MODIFIE quelque chose exige un en-tête que seule notre
     // propre page sait poser. Ce n'est pas une formalité : un en-tête
     // personnalisé ne fait pas partie des en-têtes « simples », donc un
