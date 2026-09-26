@@ -195,6 +195,14 @@ pub struct Snapshot {
     pub skipped: u64,
 }
 
+struct ScanStats {
+    elapsed_ms: u64,
+    unreadable: Vec<Unreadable>,
+    unreadable_total: u64,
+    unreadable_droits: u64,
+    skipped: u64,
+}
+
 #[derive(serde::Serialize, Clone)]
 pub struct Row {
     pub id: u32,
@@ -228,16 +236,7 @@ fn ts(t: std::io::Result<SystemTime>) -> i64 {
 static GENERATION: AtomicU64 = AtomicU64::new(1);
 
 impl Snapshot {
-    fn new(
-        root: String,
-        mut dirs: Vec<DirRec>,
-        files: Vec<FileRec>,
-        elapsed_ms: u64,
-        unreadable: Vec<Unreadable>,
-        unreadable_total: u64,
-        unreadable_droits: u64,
-        skipped: u64,
-    ) -> Snapshot {
+    fn new(root: String, mut dirs: Vec<DirRec>, files: Vec<FileRec>, stats: ScanStats) -> Snapshot {
         // Les ids sont attribués atomiquement mais poussés depuis plusieurs threads :
         // l'ordre d'arrivée n'est pas l'ordre des ids. On re-trie pour garantir index == id.
         dirs.sort_unstable_by_key(|d| d.id);
@@ -314,28 +313,13 @@ impl Snapshot {
             next_dir,
             head_file,
             next_file,
-            elapsed_ms,
+            elapsed_ms: stats.elapsed_ms,
             finished_ms: now_ms(),
-            unreadable,
-            unreadable_total,
-            unreadable_droits,
-            skipped,
+            unreadable: stats.unreadable,
+            unreadable_total: stats.unreadable_total,
+            unreadable_droits: stats.unreadable_droits,
+            skipped: stats.skipped,
         }
-    }
-
-    /// Total des anomalies de parcours. Sert au diagnostic en ligne de commande.
-    ///
-    /// L'interface ne doit PAS s'en servir seule : additionner un sous-arbre
-    /// perdu et une entrée sautée n'a pas de sens, et c'est précisément la
-    /// confusion que la séparation des compteurs sert à éviter.
-    pub fn errors(&self) -> u64 {
-        self.unreadable_total + self.skipped
-    }
-
-    /// Vrai si la taille annoncée est un plancher plutôt qu'une mesure : au
-    /// moins un sous-arbre n'a pas été lu.
-    pub fn incomplet(&self) -> bool {
-        self.unreadable_total > 0
     }
 
     pub fn n_dirs(&self) -> usize {
@@ -450,11 +434,13 @@ impl Snapshot {
     // inventer une répartition. Le volume est donc réanalysé — 11,8 s sur C:
     // sur la machine de référence — ce qui est le prix d'un chiffre honnête.
 
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+    pub fn save(&self, path: &Path, volume_serial: u32) -> std::io::Result<()> {
         use std::io::Write;
-        let mut buf: Vec<u8> = Vec::with_capacity(64 + self.dirs.len() * 16 + self.files.len() * 24);
+        let mut buf: Vec<u8> =
+            Vec::with_capacity(64 + self.dirs.len() * 16 + self.files.len() * 24);
         buf.extend_from_slice(b"DSKM");
-        buf.extend_from_slice(&2u32.to_le_bytes());
+        buf.extend_from_slice(&3u32.to_le_bytes());
+        buf.extend_from_slice(&volume_serial.to_le_bytes());
         let root = self.root.as_bytes();
         buf.extend_from_slice(&(root.len() as u32).to_le_bytes());
         buf.extend_from_slice(root);
@@ -490,20 +476,47 @@ impl Snapshot {
         for u in &self.unreadable {
             buf.extend_from_slice(u.path.as_bytes());
         }
-        let mut f = fs::File::create(path)?;
+        // Le cache précédent reste intact jusqu'à ce que le nouveau soit entier
+        // et synchronisé. Une interruption ne doit pas produire un faux cache
+        // « prêt » au prochain lancement.
+        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+        let mut f = fs::File::create(&tmp)?;
         f.write_all(&buf)?;
-        Ok(())
+        f.sync_all()?;
+        fs::rename(tmp, path)
     }
 
-    pub fn load(path: &Path) -> std::io::Result<Snapshot> {
+    pub fn load(path: &Path, expected_serial: u32) -> std::io::Result<Snapshot> {
+        const MAX_CACHE_BYTES: u64 = 1_073_741_824;
+        const MAX_CACHE_ENTRIES: usize = 20_000_000;
+        let len = fs::metadata(path)?.len();
+        if len > MAX_CACHE_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "cache trop volumineux",
+            ));
+        }
         let bytes = fs::read(path)?;
         let mut r = Reader { b: &bytes, p: 0 };
         if r.take(4)? != b"DSKM" {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "magic"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "magic",
+            ));
         }
         let ver = r.u32()?;
-        if ver != 2 {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "version"));
+        if ver != 3 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "version",
+            ));
+        }
+        let serial = r.u32()?;
+        if serial != expected_serial {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "cache d'un autre volume",
+            ));
         }
         let root_len = r.u32()? as usize;
         let root = String::from_utf8_lossy(r.take(root_len)?).into_owned();
@@ -515,6 +528,32 @@ impl Snapshot {
         let n_dirs = r.u32()? as usize;
         let n_files = r.u32()? as usize;
         let n_unread = r.u32()? as usize;
+
+        let entry_count = n_dirs
+            .checked_add(n_files)
+            .and_then(|n| n.checked_add(n_unread))
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "compteurs invalides")
+            })?;
+        if entry_count > MAX_CACHE_ENTRIES || n_dirs == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "compteurs hors limites",
+            ));
+        }
+        let metadata_bytes = n_dirs
+            .checked_mul(16)
+            .and_then(|n| n.checked_add(n_files.checked_mul(24)?))
+            .and_then(|n| n.checked_add(n_unread.checked_mul(5)?))
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "tailles invalides")
+            })?;
+        if r.remaining() < metadata_bytes {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "métadonnées de cache tronquées",
+            ));
+        }
 
         let mut parents = Vec::with_capacity(n_dirs);
         let mut own = Vec::with_capacity(n_dirs);
@@ -540,9 +579,25 @@ impl Snapshot {
             udroits.push(r.byte()? != 0);
             ulen.push(r.u32()? as usize);
         }
+        let text_bytes = dlen
+            .iter()
+            .chain(flen.iter())
+            .chain(ulen.iter())
+            .try_fold(0usize, |total, len| total.checked_add(*len))
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "longueurs invalides")
+            })?;
+        if text_bytes != r.remaining() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "longueurs de cache incohérentes",
+            ));
+        }
         let mut dirs = Vec::with_capacity(n_dirs);
         for i in 0..n_dirs {
-            let name = String::from_utf8_lossy(r.take(dlen[i])?).into_owned().into_boxed_str();
+            let name = String::from_utf8_lossy(r.take(dlen[i])?)
+                .into_owned()
+                .into_boxed_str();
             dirs.push(DirRec {
                 id: i as u32,
                 parent: parents[i],
@@ -550,9 +605,12 @@ impl Snapshot {
                 own_mtime: own[i],
             });
         }
+
         let mut files = Vec::with_capacity(n_files);
         for i in 0..n_files {
-            let name = String::from_utf8_lossy(r.take(flen[i])?).into_owned().into_boxed_str();
+            let name = String::from_utf8_lossy(r.take(flen[i])?)
+                .into_owned()
+                .into_boxed_str();
             files.push(FileRec {
                 parent: fparent[i],
                 name,
@@ -562,19 +620,41 @@ impl Snapshot {
         }
         let mut unreadable = Vec::with_capacity(n_unread);
         for i in 0..n_unread {
-            let path = String::from_utf8_lossy(r.take(ulen[i])?).into_owned().into_boxed_str();
-            unreadable.push(Unreadable { path, droits: udroits[i] });
+            let path = String::from_utf8_lossy(r.take(ulen[i])?)
+                .into_owned()
+                .into_boxed_str();
+            unreadable.push(Unreadable {
+                path,
+                droits: udroits[i],
+            });
+        }
+
+        if dirs[0].parent != 0
+            || dirs
+                .iter()
+                .enumerate()
+                .skip(1)
+                .any(|(i, d)| d.parent as usize >= i)
+            || files.iter().any(|f| f.parent as usize >= n_dirs)
+            || r.remaining() != 0
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "cache incohérent",
+            ));
         }
 
         let mut s = Snapshot::new(
             root,
             dirs,
             files,
-            elapsed_ms,
-            unreadable,
-            unreadable_total,
-            unreadable_droits,
-            skipped,
+            ScanStats {
+                elapsed_ms,
+                unreadable,
+                unreadable_total,
+                unreadable_droits,
+                skipped,
+            },
         );
         s.finished_ms = finished_ms;
         Ok(s)
@@ -587,12 +667,20 @@ struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
+    fn remaining(&self) -> usize {
+        self.b.len().saturating_sub(self.p)
+    }
+
     fn take(&mut self, n: usize) -> std::io::Result<&'a [u8]> {
-        if self.p + n > self.b.len() {
-            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "fin de fichier"));
-        }
-        let s = &self.b[self.p..self.p + n];
-        self.p += n;
+        let end = self.p.checked_add(n).filter(|end| *end <= self.b.len());
+        let Some(end) = end else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "fin de fichier",
+            ));
+        };
+        let s = &self.b[self.p..end];
+        self.p = end;
         Ok(s)
     }
     fn u32(&mut self) -> std::io::Result<u32> {
@@ -642,11 +730,13 @@ pub fn scan(root_verbatim: &str, display_root: String, prog: Arc<Progress>) -> S
         display_root,
         dirs,
         files,
-        t0.elapsed().as_millis() as u64,
-        unreadable,
-        unreadable_total,
-        unreadable_droits,
-        skipped,
+        ScanStats {
+            elapsed_ms: t0.elapsed().as_millis() as u64,
+            unreadable,
+            unreadable_total,
+            unreadable_droits,
+            skipped,
+        },
     )
 }
 
@@ -685,7 +775,11 @@ fn walk(st: &Arc<ScanState>, scope: &rayon::Scope, id: u32, path: &Path, depth: 
         if meta.file_attributes() & REPARSE_POINT != 0 {
             continue;
         }
-        let name: Box<str> = entry.file_name().to_string_lossy().into_owned().into_boxed_str();
+        let name: Box<str> = entry
+            .file_name()
+            .to_string_lossy()
+            .into_owned()
+            .into_boxed_str();
 
         if meta.is_dir() {
             let nid = st.next_id.fetch_add(1, Ordering::Relaxed) as u32;
@@ -707,7 +801,9 @@ fn walk(st: &Arc<ScanState>, scope: &rayon::Scope, id: u32, path: &Path, depth: 
     }
 
     if !local_files.is_empty() {
-        st.prog.files.fetch_add(local_files.len() as u64, Ordering::Relaxed);
+        st.prog
+            .files
+            .fetch_add(local_files.len() as u64, Ordering::Relaxed);
         st.files.lock().unwrap().extend(local_files);
     }
     st.prog.dirs.fetch_add(1, Ordering::Relaxed);

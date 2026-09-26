@@ -35,7 +35,11 @@ extern "system" {
 // Le jeton du processus vit dans advapi32, pas dans kernel32.
 #[link(name = "advapi32")]
 extern "system" {
-    fn OpenProcessToken(process: *mut std::ffi::c_void, access: u32, token: *mut *mut std::ffi::c_void) -> i32;
+    fn OpenProcessToken(
+        process: *mut std::ffi::c_void,
+        access: u32,
+        token: *mut *mut std::ffi::c_void,
+    ) -> i32;
     fn GetTokenInformation(
         token: *mut std::ffi::c_void,
         class: u32,
@@ -71,7 +75,9 @@ pub fn est_eleve() -> bool {
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
             return false;
         }
-        let mut info = Elevation { token_is_elevated: 0 };
+        let mut info = Elevation {
+            token_is_elevated: 0,
+        };
         let mut ret: u32 = 0;
         let ok = GetTokenInformation(
             token,
@@ -86,17 +92,17 @@ pub fn est_eleve() -> bool {
 }
 
 // Types de lecteurs (WinBase.h)
-pub const DRIVE_UNKNOWN: u32 = 0;
-pub const DRIVE_NO_ROOT_DIR: u32 = 1;
 pub const DRIVE_REMOVABLE: u32 = 2;
 pub const DRIVE_FIXED: u32 = 3;
 pub const DRIVE_REMOTE: u32 = 4;
-pub const DRIVE_CDROM: u32 = 5;
 pub const DRIVE_RAMDISK: u32 = 6;
 
 fn to_wide(s: &str) -> Vec<u16> {
     use std::ffi::OsStr;
-    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 fn from_wide(ptr: *const u16, len: usize) -> String {
@@ -116,7 +122,9 @@ pub struct Drive {
     pub letter: char,
     pub label: String,
     pub fs: String,
-    pub kind: u32,
+    /// Identité stable du volume. Une lettre peut changer de support entre deux
+    /// lancements, elle ne doit donc jamais suffire à valider un cache.
+    pub serial: u32,
     pub total: u64,
     pub free: u64,
 }
@@ -139,12 +147,12 @@ pub fn drives() -> Vec<Drive> {
             _ => continue,
         }
         let (total, free) = space(&w).unwrap_or((0, 0));
-        let (label, fs) = volume_info(&w);
+        let (label, fs, serial) = volume_info(&w);
         out.push(Drive {
             letter,
             label,
             fs,
-            kind,
+            serial,
             total,
             free,
         });
@@ -401,7 +409,9 @@ impl Corbeille {
             // Certains sous-dossiers appartiennent à d'autres comptes et
             // renvoient EPERM : notre fichier est dans le nôtre, on saute les
             // autres — et surtout on ne les confond pas avec « vide ».
-            let Ok(entrees) = std::fs::read_dir(sid.path()) else { continue };
+            let Ok(entrees) = std::fs::read_dir(sid.path()) else {
+                continue;
+            };
             for f in entrees.flatten() {
                 let nom = f.file_name().to_string_lossy().into_owned();
                 if !nom.starts_with("$I") {
@@ -410,7 +420,9 @@ impl Corbeille {
                 if !fiche_recente(&f, plancher_ms) {
                     continue;
                 }
-                let Ok(b) = std::fs::read(f.path()) else { continue };
+                let Ok(b) = std::fs::read(f.path()) else {
+                    continue;
+                };
                 if let Some((chemin, quand)) = fiche_i(&b) {
                     fiches.push((chemin, quand));
                 }
@@ -444,7 +456,7 @@ fn space(w: &[u16]) -> Option<(u64, u64)> {
     }
 }
 
-fn volume_info(w: &[u16]) -> (String, String) {
+fn volume_info(w: &[u16]) -> (String, String, u32) {
     let mut name = [0u16; 64];
     let mut fs = [0u16; 32];
     let mut serial: u32 = 0;
@@ -463,7 +475,11 @@ fn volume_info(w: &[u16]) -> (String, String) {
         )
     };
     if ok == 0 {
-        return (String::new(), String::new());
+        return (String::new(), String::new(), 0);
     }
-    (from_wide(name.as_ptr(), name.len()), from_wide(fs.as_ptr(), fs.len()))
+    (
+        from_wide(name.as_ptr(), name.len()),
+        from_wide(fs.as_ptr(), fs.len()),
+        serial,
+    )
 }

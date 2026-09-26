@@ -13,10 +13,10 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, SystemTime};
 
 const UI: &str = include_str!("../ui/index.html");
 const DEFAULT_PORT: u16 = 8756;
@@ -37,8 +37,6 @@ enum Status {
     Scanning,
     #[serde(rename = "ready")]
     Ready,
-    #[serde(rename = "error")]
-    Error,
 }
 
 struct DriveState {
@@ -176,7 +174,9 @@ fn bench(letter: Option<char>) {
     };
     let verbatim = format!(r"\\?\{letter}:\");
     let display = format!(r"{letter}:\");
-    let threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+    let threads = thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(8);
     println!("coeurs logiques : {threads}");
 
     let t0 = std::time::Instant::now();
@@ -194,15 +194,25 @@ fn bench(letter: Option<char>) {
     if !snap.unreadable.is_empty() {
         let gardes = snap.unreadable.len() as u64;
         if gardes < snap.unreadable_total {
-            println!("  (liste plafonnée : {gardes} chemins sur {})", snap.unreadable_total);
+            println!(
+                "  (liste plafonnée : {gardes} chemins sur {})",
+                snap.unreadable_total
+            );
         }
         for u in &snap.unreadable {
-            println!("  [{}] {}", if u.droits { "droits" } else { "autre " }, u.path);
+            println!(
+                "  [{}] {}",
+                if u.droits { "droits" } else { "autre " },
+                u.path
+            );
         }
     }
     println!("parcours seul  : {} ms", snap.elapsed_ms);
     println!("total agregé   : {:?}", wall);
-    println!("taille racine  : {:.1} Go", snap.size[0] as f64 / 1073741824.0);
+    println!(
+        "taille racine  : {:.1} Go",
+        snap.size[0] as f64 / 1073741824.0
+    );
     println!(
         "débit          : {:.0} entrées/s",
         (snap.n_dirs() + snap.n_files()) as f64 / wall.as_secs_f64()
@@ -253,7 +263,7 @@ fn main() {
     let mut drives = HashMap::new();
     for d in win32::drives() {
         let cache = cache_dir().join(format!("{}.bin", d.letter));
-        let (snap, status) = match Snapshot::load(&cache) {
+        let (snap, status) = match Snapshot::load(&cache, d.serial) {
             Ok(s) => (Some(Arc::new(s)), Status::Ready),
             Err(_) => (None, Status::Empty),
         };
@@ -326,18 +336,13 @@ fn main() {
         open_in_browser(&url);
     }
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(s) => {
-                let app = app.clone();
-                thread::spawn(move || {
-                    if let Err(e) = handle(&app, s) {
-                        eprintln!("connexion : {e}");
-                    }
-                });
+    for s in listener.incoming().flatten() {
+        let app = app.clone();
+        thread::spawn(move || {
+            if let Err(e) = handle(&app, s) {
+                eprintln!("connexion : {e}");
             }
-            Err(_) => {}
-        }
+        });
     }
 }
 
@@ -393,7 +398,9 @@ fn pump(app: &Arc<App>) {
         // mesure, exactement ce que le compteur d'illisibles sert à éviter. On
         // ne garde donc rien — ni cache, ni état « analysé ».
         if prog2.cancel.load(Ordering::Relaxed) {
-            eprintln!("{letter}: parcours interrompu — cache inchangé, volume non marqué comme analysé");
+            eprintln!(
+                "{letter}: parcours interrompu — cache inchangé, volume non marqué comme analysé"
+            );
             {
                 let mut d = app2.drives.lock().unwrap();
                 if let Some(ds) = d.get_mut(&letter) {
@@ -409,7 +416,11 @@ fn pump(app: &Arc<App>) {
             return;
         }
         let cache = app2.cache_dir.join(format!("{letter}.bin"));
-        if let Err(e) = snap.save(&cache) {
+        let serial = {
+            let d = app2.drives.lock().unwrap();
+            d.get(&letter).map(|s| s.info.serial).unwrap_or(0)
+        };
+        if let Err(e) = snap.save(&cache, serial) {
             eprintln!("cache {letter}: {e}");
         }
         {
@@ -664,9 +675,7 @@ fn hote_local(host: &str) -> bool {
     // « localhost. » désigne le même nom que « localhost » : le point final est
     // la racine explicite, pas un nom différent.
     let nom = nom.trim_end_matches('.');
-    nom.eq_ignore_ascii_case("127.0.0.1")
-        || nom.eq_ignore_ascii_case("localhost")
-        || nom == "::1"
+    nom.eq_ignore_ascii_case("127.0.0.1") || nom.eq_ignore_ascii_case("localhost") || nom == "::1"
 }
 
 /// Le port est-il bien un port ? Exiger des chiffres ferme la classe de leurres
@@ -677,7 +686,15 @@ fn port_ok(p: &str) -> bool {
     p.is_empty() || p.bytes().all(|b| b.is_ascii_digit())
 }
 
-fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8], action: &str, host: &str) -> Result<Resp, (&'static str, String)> {
+fn route(
+    app: &Arc<App>,
+    method: &str,
+    path: &str,
+    q: &Q,
+    body: &[u8],
+    action: &str,
+    host: &str,
+) -> Result<Resp, (&'static str, String)> {
     // Le nom demandé doit être celui de cette machine. Ce contrôle passe AVANT
     // tout le reste, et vaut pour les lectures autant que pour les écritures :
     // voir `hote_local` pour ce qu'il couvre et pourquoi il est le seul à le
@@ -722,7 +739,8 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8], action: &
                 return Err(("409 Conflict", "arrêt en cours".into()));
             }
             let letter = p.rsplit('/').next().unwrap_or("").chars().next();
-            let letter = letter.ok_or(("400 Bad Request", "lettre manquante".into()))?
+            let letter = letter
+                .ok_or(("400 Bad Request", "lettre manquante".into()))?
                 .to_ascii_uppercase();
             {
                 let d = app.drives.lock().unwrap();
@@ -745,15 +763,20 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8], action: &
         ("POST", "/api/delete") => delete(app, body),
 
         ("POST", "/api/open") => {
-            let letter = q.get("drive").and_then(|s| s.chars().next())
+            let letter = q
+                .get("drive")
+                .and_then(|s| s.chars().next())
                 .ok_or(("400 Bad Request", "drive manquant".into()))?
                 .to_ascii_uppercase();
-            let id: u32 = q.get("id").and_then(|s| s.parse().ok())
+            let id: u32 = q
+                .get("id")
+                .and_then(|s| s.parse().ok())
                 .ok_or(("400 Bad Request", "id invalide".into()))?;
             let kind = q.get("kind").cloned().unwrap_or_else(|| "dir".into());
             let snap = {
                 let d = app.drives.lock().unwrap();
-                d.get(&letter).and_then(|s| s.snap.clone())
+                d.get(&letter)
+                    .and_then(|s| s.snap.clone())
                     .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
             };
             let p = if kind == "file" {
@@ -769,7 +792,11 @@ fn route(app: &Arc<App>, method: &str, path: &str, q: &Q, body: &[u8], action: &
             };
             let ps = p.to_string_lossy().into_owned();
             // /select, met en surbrillance le fichier dans l'explorateur.
-            let arg = if kind == "file" { format!("/select,{ps}") } else { ps };
+            let arg = if kind == "file" {
+                format!("/select,{ps}")
+            } else {
+                ps
+            };
             let _ = Command::new("explorer").arg(arg).spawn();
             Ok(Resp::Json("{\"ok\":true}".to_string()))
         }
@@ -832,18 +859,25 @@ struct TreeJson {
 }
 
 fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
-    let letter = q.get("drive").and_then(|s| s.chars().next())
+    let letter = q
+        .get("drive")
+        .and_then(|s| s.chars().next())
         .ok_or(("400 Bad Request", "drive manquant".into()))?
         .to_ascii_uppercase();
     let id: u32 = q.get("id").and_then(|s| s.parse().ok()).unwrap_or(0);
     let sort = q.get("sort").cloned().unwrap_or_else(|| "size".into());
     let order = q.get("order").cloned().unwrap_or_else(|| "desc".into());
-    let limit: usize = q.get("limit").and_then(|s| s.parse().ok()).unwrap_or(3000).min(50_000);
+    let limit: usize = q
+        .get("limit")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3000)
+        .min(50_000);
     let offset: usize = q.get("offset").and_then(|s| s.parse().ok()).unwrap_or(0);
 
     let snap = {
         let d = app.drives.lock().unwrap();
-        d.get(&letter).and_then(|s| s.snap.clone())
+        d.get(&letter)
+            .and_then(|s| s.snap.clone())
             .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
     };
     if (id as usize) >= snap.n_dirs() {
@@ -879,21 +913,50 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     match sort.as_str() {
         "name" => rows.sort_by(|a, b| {
             let k = a.name.to_lowercase().cmp(&b.name.to_lowercase());
-            if asc { k } else { k.reverse() }
+            if asc {
+                k
+            } else {
+                k.reverse()
+            }
         }),
-        "mtime" => rows.sort_by(|a, b| if asc { a.mtime.cmp(&b.mtime) } else { b.mtime.cmp(&a.mtime) }),
-        "count" => rows.sort_by(|a, b| if asc { a.count.cmp(&b.count) } else { b.count.cmp(&a.count) }),
-        _ => rows.sort_by(|a, b| if asc { a.size.cmp(&b.size) } else { b.size.cmp(&a.size) }),
+        "mtime" => rows.sort_by(|a, b| {
+            if asc {
+                a.mtime.cmp(&b.mtime)
+            } else {
+                b.mtime.cmp(&a.mtime)
+            }
+        }),
+        "count" => rows.sort_by(|a, b| {
+            if asc {
+                a.count.cmp(&b.count)
+            } else {
+                b.count.cmp(&a.count)
+            }
+        }),
+        _ => rows.sort_by(|a, b| {
+            if asc {
+                a.size.cmp(&b.size)
+            } else {
+                b.size.cmp(&a.size)
+            }
+        }),
     }
 
     let parent_size = snap.size[id as usize];
     let mut path: Vec<Crumb> = Vec::new();
     let mut cur = id as usize;
     loop {
-        path.push(Crumb { name: snap.dirs[cur].name.to_string(), id: cur as u32 });
-        if cur == 0 { break; }
+        path.push(Crumb {
+            name: snap.dirs[cur].name.to_string(),
+            id: cur as u32,
+        });
+        if cur == 0 {
+            break;
+        }
         let p = snap.dirs[cur].parent as usize;
-        if p >= cur { break; }
+        if p >= cur {
+            break;
+        }
         cur = p;
     }
     path.reverse();
@@ -1088,7 +1151,8 @@ fn delete(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
             let Some(gen_vue) = gen_vue else {
                 return Err((
                     "400 Bad Request",
-                    "génération de l’instantané absente : recharge la liste avant de supprimer".into(),
+                    "génération de l’instantané absente : recharge la liste avant de supprimer"
+                        .into(),
                 ));
             };
             if gen_vue != snap.gen {
@@ -1111,7 +1175,12 @@ fn delete(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
     }
 }
 
-fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) -> Result<Resp, (&'static str, String)> {
+fn dry(
+    app: &Arc<App>,
+    letter: char,
+    snap: &Snapshot,
+    items: Vec<DeleteItem>,
+) -> Result<Resp, (&'static str, String)> {
     let mut out: Vec<PreviewItem> = Vec::new();
     let mut total = 0u64;
     let mut deletable = 0usize;
@@ -1150,7 +1219,12 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
         } else {
             deletable += 1;
             total += size;
-            montres.push(Montre { path, is_dir: it.is_dir, size, count });
+            montres.push(Montre {
+                path,
+                is_dir: it.is_dir,
+                size,
+                count,
+            });
         }
         out.push(PreviewItem {
             path: ps,
@@ -1159,7 +1233,13 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
             is_dir: it.is_dir,
             exists,
             blocked: blocked_flag,
-            reason: reason.unwrap_or(if exists { "" } else { "introuvable sur le disque" }).to_string(),
+            reason: reason
+                .unwrap_or(if exists {
+                    ""
+                } else {
+                    "introuvable sur le disque"
+                })
+                .to_string(),
         });
     }
 
@@ -1169,7 +1249,14 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
     let token = format!("{}-{:016x}", now_ms(), win32::alea_u64());
     {
         let mut p = app.pending.lock().unwrap();
-        p.insert(token.clone(), PendingDel { drive: letter, items: montres, at_ms: now_ms() });
+        p.insert(
+            token.clone(),
+            PendingDel {
+                drive: letter,
+                items: montres,
+                at_ms: now_ms(),
+            },
+        );
     }
 
     Ok(Resp::Json(
@@ -1185,7 +1272,12 @@ fn dry(app: &Arc<App>, letter: char, snap: &Snapshot, items: Vec<DeleteItem>) ->
     ))
 }
 
-fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Result<Resp, (&'static str, String)> {
+fn execute(
+    app: &Arc<App>,
+    letter: char,
+    req: DeleteReq,
+    to_trash: bool,
+) -> Result<Resp, (&'static str, String)> {
     let token = req.token.clone().unwrap_or_default();
 
     // On valide tout avant de consommer le jeton : une demande refusée (mauvais
@@ -1203,7 +1295,12 @@ fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Resu
     if peek.drive != letter {
         return Err(("400 Bad Request", "jeton d'un autre volume".into()));
     }
-    if !to_trash && req.confirm.clone().unwrap_or_default() != "EFFACER" {
+    // "recycle" n'est qu'une intention : sans corbeille, Windows détruit. La
+    // confirmation dépend donc de l'effet prévisible, pas du libellé du bouton.
+    let recycle_available = win32::corbeille_disponible(letter);
+    if confirmation_required(to_trash, recycle_available)
+        && req.confirm.clone().unwrap_or_default() != "EFFACER"
+    {
         return Err(("400 Bad Request", "confirmation « EFFACER » absente".into()));
     }
 
@@ -1244,12 +1341,28 @@ fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Resu
         let reason = blocked_reason(&m.path);
         if let Some(r) = reason {
             failed += 1;
-            results.push(PreviewItem { path: ps, size, count, is_dir: m.is_dir, exists: true, blocked: true, reason: r.to_string() });
+            results.push(PreviewItem {
+                path: ps,
+                size,
+                count,
+                is_dir: m.is_dir,
+                exists: true,
+                blocked: true,
+                reason: r.to_string(),
+            });
             continue;
         }
         if !m.path.exists() {
             failed += 1;
-            results.push(PreviewItem { path: ps, size, count, is_dir: m.is_dir, exists: false, blocked: true, reason: "introuvable sur le disque".into() });
+            results.push(PreviewItem {
+                path: ps,
+                size,
+                count,
+                is_dir: m.is_dir,
+                exists: false,
+                blocked: true,
+                reason: "introuvable sur le disque".into(),
+            });
             continue;
         }
         match win32::delete_path(&ps, to_trash) {
@@ -1284,7 +1397,15 @@ fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Resu
                 // disparu — et c'est ainsi qu'une suppression réussie a pu
                 // passer pour un échec sans que rien ne le contredise.
                 let encore = m.path.exists();
-                results.push(PreviewItem { path: ps, size, count, is_dir: m.is_dir, exists: encore, blocked: true, reason: e });
+                results.push(PreviewItem {
+                    path: ps,
+                    size,
+                    count,
+                    is_dir: m.is_dir,
+                    exists: encore,
+                    blocked: true,
+                    reason: e,
+                });
             }
         }
     }
@@ -1299,7 +1420,11 @@ fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Resu
     // sur la foi de la demande enregistrait donc une destruction comme une
     // opération réversible, et l'utilisateur n'avait aucun moyen de le savoir.
     if !a_juger.is_empty() {
-        let corbeille = if to_trash { Some(win32::Corbeille::lire(letter, debut_ms)) } else { None };
+        let corbeille = if to_trash {
+            Some(win32::Corbeille::lire(letter, debut_ms))
+        } else {
+            None
+        };
         for (idx, ps, size, count) in &a_juger {
             let reversible = corbeille
                 .as_ref()
@@ -1307,8 +1432,7 @@ fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Resu
                 .unwrap_or(false);
             if to_trash && !reversible {
                 irreversible += 1;
-                results[*idx].reason =
-                    "DÉTRUIT : la corbeille de ce volume ne l’a pas pris".into();
+                results[*idx].reason = "DÉTRUIT : la corbeille de ce volume ne l’a pas pris".into();
             }
             journal_lines.push(format!(
                 "{}\t{}\t{}\t{}\t{}",
@@ -1341,14 +1465,43 @@ fn execute(app: &Arc<App>, letter: char, req: DeleteReq, to_trash: bool) -> Resu
     // différaient silencieusement tant qu'on ne vérifiait pas la corbeille.
     let reversible = to_trash && irreversible == 0;
     Ok(Resp::Json(
-        serde_json::to_string(&DeleteOutcome { done, failed, freed, to_trash: reversible, irreversible, results, rescan }).unwrap(),
+        serde_json::to_string(&DeleteOutcome {
+            done,
+            failed,
+            freed,
+            to_trash: reversible,
+            irreversible,
+            results,
+            rescan,
+        })
+        .unwrap(),
     ))
+}
+
+fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
+    !to_trash || !recycle_available
+}
+
+#[cfg(test)]
+mod tests {
+    use super::confirmation_required;
+
+    #[test]
+    fn requires_confirmation_when_recycling_would_destroy() {
+        assert!(confirmation_required(true, false));
+        assert!(confirmation_required(false, true));
+        assert!(!confirmation_required(true, true));
+    }
 }
 
 fn journal(app: &Arc<App>, lines: &[String]) {
     use std::io::Write;
     let p = app.cache_dir.join("suppressions.log");
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(p)
+    {
         for l in lines {
             let _ = writeln!(f, "{l}");
         }
@@ -1356,22 +1509,32 @@ fn journal(app: &Arc<App>, lines: &[String]) {
 }
 
 fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
-    let letter = q.get("drive").and_then(|s| s.chars().next())
+    let letter = q
+        .get("drive")
+        .and_then(|s| s.chars().next())
         .ok_or(("400 Bad Request", "drive manquant".into()))?
         .to_ascii_uppercase();
     let term = q.get("q").cloned().unwrap_or_default();
-    let limit: usize = q.get("limit").and_then(|s| s.parse().ok()).unwrap_or(500).min(20_000);
+    let limit: usize = q
+        .get("limit")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(500)
+        .min(20_000);
     let snap = {
         let d = app.drives.lock().unwrap();
-        d.get(&letter).and_then(|s| s.snap.clone())
+        d.get(&letter)
+            .and_then(|s| s.snap.clone())
             .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
     };
     let needle = term.to_lowercase();
     let mut rows = snap.search(&needle, limit);
-    rows.sort_by(|a, b| b.size.cmp(&a.size));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.size));
     let truncated = rows.len() >= limit;
     Ok(Resp::Json(
-        serde_json::to_string(&serde_json::json!({ "rows": rows, "truncated": truncated, "gen": snap.gen })).unwrap(),
+        serde_json::to_string(
+            &serde_json::json!({ "rows": rows, "truncated": truncated, "gen": snap.gen }),
+        )
+        .unwrap(),
     ))
 }
 
@@ -1405,11 +1568,16 @@ fn reveal(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
             .and_then(|s| s.snap.clone())
             .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
     };
-    if !snap.unreadable.iter().any(|u| &*u.path == req.path) {
-        return Err(("400 Bad Request", "chemin hors de la liste des illisibles".into()));
+    if !snap.unreadable.iter().any(|u| *u.path == req.path) {
+        return Err((
+            "400 Bad Request",
+            "chemin hors de la liste des illisibles".into(),
+        ));
     }
     // Guillemets : sans eux, une virgule dans le chemin couperait l'argument.
-    let _ = Command::new("explorer").arg(format!("/select,\"{}\"", req.path)).spawn();
+    let _ = Command::new("explorer")
+        .arg(format!("/select,\"{}\"", req.path))
+        .spawn();
     Ok(Resp::Json("{\"ok\":true}".to_string()))
 }
 
@@ -1520,18 +1688,24 @@ struct UnreadableJson {
 /// boucle pendant une analyse, et y charrier jusqu'à 500 chemins à chaque tour
 /// serait du gaspillage pour une information qu'on ne consulte qu'à la demande.
 fn unreadable(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
-    let letter = q.get("drive").and_then(|s| s.chars().next())
+    let letter = q
+        .get("drive")
+        .and_then(|s| s.chars().next())
         .ok_or(("400 Bad Request", "drive manquant".into()))?
         .to_ascii_uppercase();
     let snap = {
         let d = app.drives.lock().unwrap();
-        d.get(&letter).and_then(|s| s.snap.clone())
+        d.get(&letter)
+            .and_then(|s| s.snap.clone())
             .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
     };
     let items: Vec<UnreadableJson> = snap
         .unreadable
         .iter()
-        .map(|u| UnreadableJson { path: u.path.to_string(), droits: u.droits })
+        .map(|u| UnreadableJson {
+            path: u.path.to_string(),
+            droits: u.droits,
+        })
         .collect();
     let tronque = (items.len() as u64) < snap.unreadable_total;
     Ok(Resp::Json(

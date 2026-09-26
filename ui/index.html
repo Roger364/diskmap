@@ -1043,21 +1043,13 @@ function renderDeleteBody() {
     h += `<div><span class="p" style="color:var(--muted)">… et ${d.items.length - 25} autre(s)</span></div>`;
   }
   h += '</div>';
-  if (mode === 'permanent') {
+  if (mode === 'permanent' || !d.corbeille) {
     h += `<div class="warn" style="margin-top:12px">Suppression <b>définitive</b>, ` +
          `aucune récupération possible depuis la corbeille. Tape <b>EFFACER</b> pour confirmer.</div>` +
          `<input class="search" id="dconfirm" placeholder="EFFACER" style="width:150px;margin-top:9px" />`;
-  } else if (d.corbeille) {
+  } else {
     h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
          `Les éléments iront dans la corbeille : tu peux les restaurer depuis l'explorateur.</p>`;
-  } else {
-    // La promesse de réversibilité était écrite ici en dur — et fausse sur un
-    // volume sans corbeille. Mesuré sur E: le 26/09/2026 : le mode « corbeille »
-    // y DÉTRUIT les fichiers, sans que rien ne le dise. On le dit AVANT l'acte,
-    // pas seulement après.
-    h += `<div class="warn" style="margin-top:12px"><b>Ce volume n’a pas de corbeille.</b> ` +
-         `Ces éléments seront <b>définitivement détruits</b> : aucune restauration ` +
-         `ne sera possible.</div>`;
   }
   $('#dbody').innerHTML = h;
 }
@@ -1065,7 +1057,7 @@ function renderDeleteBody() {
 async function doDelete() {
   const mode = document.querySelector('input[name=dmode]:checked').value;
   let confirm;
-  if (mode === 'permanent') {
+  if (mode === 'permanent' || !pendingDry.corbeille) {
     confirm = ($('#dconfirm') && $('#dconfirm').value || '').trim();
     if (confirm !== 'EFFACER') {
       alert('Tape EFFACER en majuscules pour confirmer la suppression définitive.');

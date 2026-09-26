@@ -16,6 +16,21 @@ jobs:
       - name: Compiler
         run: cargo build --release
 
+      - name: Qualite Rust
+        run: |
+          cargo fmt -- --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+      - name: Installer les sondes navigateur
+        working-directory: tests/sondes
+        run: |
+          npm ci
+          npx playwright install chromium
+
+      - name: Sondes de regression
+        run: node tests/sondes/lancer.mjs --volume D --sans erreurs
+
       - name: Publier le binaire
         uses: actions/upload-artifact@v7
         with:
