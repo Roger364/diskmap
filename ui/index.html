@@ -1091,27 +1091,42 @@ function nomCorrect(i) {
 // Le bouton s'allume quand TOUT est saisi : chaque dossier a nommer, et
 // « EFFACER » quand l'effet prévu est la destruction. Les deux conditions
 // s'appliquent à la fois, sinon il resterait actif sur un lot qui détruit.
-// Le mot que le SERVEUR exige pour ce mode, tel qu'il l'a dit dans l'apercu.
+// Les mots que le SERVEUR exige pour ce mode, tels qu'il les a annonces.
 //
 // Le serveur repond pour les deux modes parce que la simulation se fait avant le
-// choix du mode. Deviner le mot ici mettrait le bouton et le refus de
-// l'execution en desaccord — et le desaccord, c'est le garde-fou qui disparait
-// sans bruit.
-function motAttendu(d, mode) {
-  if (!d) return null;
-  return mode === 'permanent' ? d.mot_permanent : d.mot_recycle;
+// choix du mode, et il repond par une LISTE parce que les regles s'additionnent :
+// un lot enorme ET definitif demande deux mots, pas le plus fort des deux.
+// Deviner ici mettrait le bouton et le refus de l'execution en desaccord — et le
+// desaccord, c'est le garde-fou qui disparait sans bruit.
+function motsAttendus(d, mode) {
+  if (!d) return [];
+  return mode === 'permanent' ? (d.mots_permanent || []) : (d.mots_recycle || []);
+}
+
+// La confirmation tapée satisfait-elle la liste ? La MÊME règle que le serveur,
+// au caractère près : casse, espaces, ordre. Les deux implémentations doivent
+// coïncider, sinon le bouton s'allume sur une saisie que le serveur refusera — et
+// l'utilisateur ne saura jamais lequel des deux a tort.
+//
+// La comparaison exacte n'est pas un caprice : c'est elle qui distingue un mot
+// recopié d'un mot lu. Elle vaut pour un mot comme pour une liste, et c'est ce
+// qu'imposait déjà la sonde pour « EFFACER », avant qu'il y ait une liste.
+function motsSaisis(d, mode) {
+  const attendus = motsAttendus(d, mode);
+  if (!attendus.length) return true;
+  const saisie = Array.from(document.querySelectorAll('#dbody .dconfirm'))
+    .map(i => i.value || '').join(' ');
+  return saisie === attendus.map(m => m.mot).join(' ');
 }
 
 function toutSaisi() {
   const d = pendingDry;
   if (!d || d.deletable === 0) return false;
-  // Le mot est celui que le SERVEUR exige, pas celui que l'interface croit
+  // Les mots sont ceux que le SERVEUR exige, pas ceux que l'interface croit
   // devoir demander. C'est la seule façon que le bouton et le refus de
   // l'exécution racontent la même chose.
-  const mot = motAttendu(d, document.querySelector('input[name=dmode]:checked').value);
-  if (mot) {
-    if ((($('#dconfirm') && $('#dconfirm').value) || '').trim() !== mot) return false;
-  }
+  const mode = document.querySelector('input[name=dmode]:checked').value;
+  if (motsAttendus(d, mode).length && !motsSaisis(d, mode)) return false;
   return Array.from(document.querySelectorAll('#dbody .nom-in')).every(nomCorrect);
 }
 
@@ -1187,21 +1202,26 @@ function renderDeleteBody() {
     }
     h += '</div>';
   }
-
-  // Le serveur DIT quel mot il exige (`mot_exige`), et pourquoi. L'interface ne
-  // le devine pas : deviner juste dispenserait d'un garde-fou, deviner faux en
-  // imposerait un que personne n'a demandé — et les deux sont invisibles.
-  const mot = motAttendu(pendingDry, mode);
-  if (mot) {
-    const why = (mode === 'permanent' || !d.corbeille)
-      ? `Suppression <b>définitive</b>, aucune récupération possible depuis la corbeille.`
-      : `Instance <b>élevée</b> : les protections de Windows ne s’appliquent plus, `
-        + `donc <b>tout est effaçable</b>, y compris ce que les droits du compte `
-        + `interdisaient. La corbeille ne vous protège plus, ici.`;
-    h += `<div class="warn" style="margin-top:12px">${why} `
-         + `Tape <b>${escapeHtml(mot)}</b> pour confirmer.</div>`
-         + `<input class="search" id="dconfirm" placeholder="${escapeHtml(mot)}" `
-         + `style="width:150px;margin-top:9px" />`;
+  // Le serveur DIT quels mots il exige, et POURQUOI. L'interface ne les devine
+  // pas : deviner juste dispenserait d'un garde-fou, deviner faux en imposerait
+  // un que personne n'a demandé — et les deux sont invisibles.
+  //
+  // Un champ par mot, chacun avec SON motif. Un seul champ pour deux motifs
+  // dirait qu'il n'y a qu'une raison, alors qu'il y en a deux indépendantes :
+  // l'utilisateur en taperait une, se ferait refuser, et recommencerait au
+  // hasard. La raison affichée est ce qui distingue une règle comprise d'une
+  // règle subie.
+  const mots = motsAttendus(pendingDry, mode);
+  if (mots.length) {
+    h += '<div class="pfields" style="margin-top:12px">';
+    for (const m of mots) {
+      h += `<label class="pfield">Pour supprimer ce lot — ${escapeHtml(m.raison)} — `
+           + `tape <b>${escapeHtml(m.mot)}</b> :`
+           + `<input class="search dconfirm" placeholder="${escapeHtml(m.mot)}" `
+           + `autocomplete="off" spellcheck="false" />`
+           + `<span class="p-aide"></span></label>`;
+    }
+    h += '</div>';
   } else {
     // « Les éléments iront dans la corbeille : tu peux les restaurer » était
     // une CROYANCE, et une seule : « dans la corbeille » veut dire « dans la
@@ -1236,19 +1256,19 @@ function renderDeleteBody() {
     if (memo[i.dataset.dossier] != null) i.value = memo[i.dataset.dossier];
     i.oninput = majBouton;
   });
-  const dc = $('#dconfirm');
-  if (dc) dc.oninput = majBouton;
+  document.querySelectorAll('#dbody .dconfirm').forEach(i => { i.oninput = majBouton; });
   majBouton();
 }
 
 async function doDelete() {
   const mode = document.querySelector('input[name=dmode]:checked').value;
   let confirm;
-  const mot = motAttendu(pendingDry, mode);
-  if (mot) {
-    confirm = ($('#dconfirm') && $('#dconfirm').value || '').trim();
-    if (confirm !== mot) {
-      alert(`Tape ${mot} en majuscules pour confirmer.`);
+  const mots = motsAttendus(pendingDry, mode);
+  if (mots.length) {
+    confirm = Array.from(document.querySelectorAll('#dbody .dconfirm'))
+      .map(i => i.value.trim()).filter(Boolean).join(' ');
+    if (!motsSaisis(pendingDry, mode)) {
+      alert('Tape ' + mots.map(m => m.mot).join(' et ') + ' pour confirmer.');
       return;
     }
   }

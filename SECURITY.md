@@ -315,6 +315,37 @@ Vérification : `sonde-mot-exige.mjs` confronte l'annonce du serveur à la règl
 mode par mode, et éprouve le refus avec un jeton inerte — un sélecteur hors bornes, que la
 résolution ne peut pas résoudre, donc sans rien supprimer.
 
+**Complété le 27/09/2026 — le palier de taille.** Un garde-fou qui tient pour la corbeille
+et l'instance élevée tenait pour 400 Go. Le 26/09, un geste unique a envoyé **74,2 Go** à
+la corbeille et détruit 79 fichiers définitifs — sans rien demander, pendant qu'une photo de
+2 Mo exigeait le nom de son dossier. Le seuil n'est donc pas une intuition : c'est l'échelle
+de ce qui s'est passé.
+
+`mots_exiges(taille, to_trash, corbeille, eleve)` rend une **liste**, pas un mot. Les règles
+s'additionnent — un lot de 600 Go en suppression définitive demande `SUPPRIMER TOUT` **et**
+`EFFACER`, parce que les deux motifs sont vrais indépendamment. Un mot unique qui choisirait
+« le plus fort » ferait perdre l'autre, et l'utilisateur ne saurait jamais lequel s'applique :
+il taperait le mauvais, se ferait refuser, et recommencerait au hasard. Chaque mot voyage
+avec sa raison, affichée dans son champ : un champ nu se tape par réflexe, et un mot tapé
+par réflexe ne protège de rien.
+
+Sous le palier, rien n'est demandé. Une règle qui se déclenche sur « ouvrir un dossier,
+effacer un cache » apprend ce geste, et un geste appris n'arrête plus rien.
+
+**Une faute corrigée en route.** La comparaison de la confirmation a d'abord été écrite en
+ignorant la casse et les espaces superflus. `sonde-suppression.mjs` l'a attrapée : elle
+imposait, pour `EFFACER` seul, que `effacer` et `EFFACER ` soient refusés. C'était un
+affaiblissement du garde-fou fait pour supporter un mot de plus — exactement le
+changement qui ne se voit pas dans une diff de fonctionnalité. La règle est revenue à
+l'égalité exacte, dans l'ordre, et le test la fixe des deux côtés.
+
+Vérification de bout en bout, dans un vrai navigateur, sur `C:\ComfyUI` (114,24 Go) : le
+champ `SUPPRIMER` apparaît avec son motif ; `supprimer`, `SUPPRIMER ` et `SUPPRIMER TOUT`
+laissent le bouton mort ; `SUPPRIMER` l'allume. Rien n'a été supprimé — vérifié au journal
+et sur disque. `sonde-palier.mjs` refait le trajet en lecture seule : elle fait des `dry` sur
+le plus gros dossier de la machine (`G:\ggames`, 344,2 Go) parce que le volume jetable fait
+511 Mio et ne peut pas atteindre le palier.
+
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
 `journal` (`src/main.rs:1599`) écrivait l'issue, la taille et le chemin **réellement traité**.

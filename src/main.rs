@@ -1207,9 +1207,9 @@ struct DeletePreview {
     /// profil. Voir `dossiers_a_nommer`.
     #[serde(rename = "aNommer")]
     a_nommer: Vec<String>,
-    /// Le mot `EFFACER` est-il exigé, et pour quel mode ?
+    /// Les mots à taper pour confirmer ce lot, et pour quel mode.
     ///
-    /// Le serveur ne demande JAMAIS `EFFACER` à la place de l'utilisateur : il
+    /// Le serveur ne demande JAMAIS un mot à la place de l'utilisateur : il
     /// exige ce qui MANQUE, et rien d'autre. Sans ce champ, l'interface ne peut
     /// que deviner — et deviner faux dans un sens dispense d'un garde-fou, dans
     /// l'autre en impose un que l'utilisateur n'a pas demandé.
@@ -1218,8 +1218,24 @@ struct DeletePreview {
     /// `dry` : elle se fait avant que l'utilisateur choisisse « corbeille » ou
     /// « définitif », et ce choix peut changer après coup. Répondre pour un seul
     /// mode laisserait l'interface deviner l'autre — donc se tromper, en silence.
-    mot_recycle: Option<String>,
-    mot_permanent: Option<String>,
+    ///
+    /// Une LISTE, et non un mot : les règles s'additionnent (voir
+    /// `mots_exiges`), et une liste s'affiche comme une liste. Un seul champ
+    /// qui choisirait le « plus fort » des mots ferait perdre les autres, et
+    /// l'utilisateur ne saurait plus lequel s'applique.
+    mots_recycle: Vec<MotExige>,
+    mots_permanent: Vec<MotExige>,
+}
+
+/// Un mot à taper, et la raison pour laquelle il est demandé.
+///
+/// La raison voyage avec le mot parce que l'utilisateur doit pouvoir savoir ce
+/// qu'il est en train de confirmer. Un champ nu, sans motif, se tape par
+/// réflexe — et un mot tapé par réflexe ne protège de rien.
+#[derive(serde::Serialize)]
+struct MotExige {
+    mot: String,
+    raison: String,
 }
 
 #[derive(serde::Serialize)]
@@ -1529,9 +1545,9 @@ fn dry(
     // corbeille réelle ne s'applique que si l'exécution a lieu, et là c'est trop
     // tard pour exiger un mot.
     let corbeille = win32::corbeille_disponible(letter);
-    let (mot_recycle, mot_permanent) = (
-        mot_exige(true, corbeille, app.eleve).map(str::to_string),
-        mot_exige(false, corbeille, app.eleve).map(str::to_string),
+    let (mots_recycle, mots_permanent) = (
+        mots_avec_raison(total, true, corbeille, app.eleve),
+        mots_avec_raison(total, false, corbeille, app.eleve),
     );
 
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
@@ -1570,8 +1586,8 @@ fn dry(
             corbeille_complet: etat.complet,
             corbeille_deborde: deborde,
             a_nommer,
-            mot_recycle,
-            mot_permanent,
+            mots_recycle,
+            mots_permanent,
         })
         .unwrap(),
     ))
@@ -1606,10 +1622,21 @@ fn execute(
     // demandé est alors celui de la suppression DÉFINITIVE — sans remplacer
     // les autres règles, qui s'ajoutent.
     let recycle_available = win32::corbeille_disponible(letter);
-    if mot_exige(to_trash, recycle_available, app.eleve).is_some()
-        && req.confirm.clone().unwrap_or_default() != "EFFACER"
-    {
-        return Err(("400 Bad Request", "confirmation « EFFACER » absente".into()));
+    let confirm = req.confirm.clone().unwrap_or_default();
+    let attendus = mots_exiges(
+        taille_du_lot(&peek.items),
+        to_trash,
+        recycle_available,
+        app.eleve,
+    );
+    if !confirmation_suffit(&confirm, &attendus) {
+        // Le motif nomme la saisie attendue, mot pour mot : un refus qui ne dit
+        // pas quoi taper laisse l'utilisateur deviner, et il devine mal — ou il
+        // tape n'importe quoi jusqu'à ce que ça passe.
+        return Err((
+            "400 Bad Request",
+            format!("confirmation attendue : « {} »", attendus.join(" ")),
+        ));
     }
 
     // Les dossiers personnels suivent la même règle que le mot « EFFACER » :
@@ -1878,6 +1905,16 @@ fn execute(
     ))
 }
 
+/// La taille d'un lot FIGÉ par l'aperçu, en octets.
+///
+/// L'exécution recalcule les mots exigés sur les chemins qu'elle va vraiment
+/// toucher — pas sur ce que le client a annoncé, et pas sur ce que l'aperçu avait
+/// calculé. Un client qui enverrait un lot énorme en espérant éviter le mot
+/// n'y parviendrait pas : c'est la seule façon que la règle tienne.
+fn taille_du_lot(items: &[Montre]) -> u64 {
+    items.iter().map(|m| m.size).sum()
+}
+
 fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
     !to_trash || !recycle_available
 }
@@ -1902,12 +1939,95 @@ fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
 /// ce qui manque. `Some("EFFACER")` signifie « tape EFFACER ». `None` signifie
 /// « rien à taper de plus » — et c'est distinct de `Some("")`, qui est la
 /// faute de l'interface : elle promettait une saisie qu'elle n'exigeait pas.
-fn mot_exige(to_trash: bool, corbeille: bool, eleve: bool) -> Option<&'static str> {
-    if confirmation_required(to_trash, corbeille) || eleve_change_le_geste(eleve) {
-        Some("EFFACER")
-    } else {
-        None
+/// Les paliers de taille, du plus bas au plus haut.
+///
+/// Le premier n'est pas une intuition : c'est l'échelle de ce qui s'est réellement
+/// passé. Le 26/09/2026, un geste unique a envoyé **74,2 Go** à la corbeille et
+/// détruit 79 fichiers définitifs. Avant cette règle, ce geste-là ne demandait rien,
+/// alors qu'une photo de 2 Mo demandait le nom de son dossier.
+///
+/// Le second palier n'est pas là pour « être plus strict » : 500 Go, c'est
+/// l'ordre de grandeur d'un disque de données entier. Au-delà, exiger le même mot
+/// qu'à 20 Go revient à ne plus rien exiger du tout — le mot est devenu une
+/// habitude, et une habitude n'est pas une protection.
+const PALIER_SUPPRIMER: u64 = 20 * 1_000_000_000;
+const PALIER_SUPPRIMER_TOUT: u64 = 500 * 1_000_000_000;
+
+/// Les mots que le serveur exige, pour un lot donné, dans l'ordre où il faut
+/// les taper.
+///
+/// Ils ne se remplacent pas : ils s'additionnent. Un lot de 600 Go en instance
+/// élevée et sans corbeille demande les trois, parce que chacune des trois
+/// raisons est vraie indépendamment des deux autres. C'est le point : un mot
+/// unique qui choisirait « le plus fort » ferait perdre les deux autres, et
+/// l'utilisateur ne saurait jamais lequel s'applique.
+fn mots_exiges(taille: u64, to_trash: bool, corbeille: bool, eleve: bool) -> Vec<&'static str> {
+    let mut mots: Vec<&'static str> = Vec::new();
+    if taille >= PALIER_SUPPRIMER_TOUT {
+        mots.push("SUPPRIMER TOUT");
+    } else if taille >= PALIER_SUPPRIMER {
+        mots.push("SUPPRIMER");
     }
+    if confirmation_required(to_trash, corbeille) || eleve_change_le_geste(eleve) {
+        mots.push("EFFACER");
+    }
+    mots
+}
+
+/// La confirmation tapée satisfait-elle TOUS les mots exigés ?
+///
+/// **Égalité exacte, dans l'ordre.** C'est la règle qu'imposait déjà
+/// `sonde-suppression.mjs` pour un mot seul — `effacer` en minuscules et
+/// `EFFACER ` suivi d'une espace étaient l'un et l'autre refusés — et elle n'est
+/// pas affaiblie ici pour hériter d'un mot de plus.
+///
+/// J'avais d'abord écrit cette comparaison en ignorant la casse et les espaces
+/// superflus. C'était une faute : la règle existe parce que taper exactement ce
+/// qui est écrit est un geste de plus, et c'est un geste qui compte. Un mot
+/// recopié sans être lu est précisément le mot que ce garde-fou doit attraper.
+/// Un mot à deux mots s'écrit `SUPPRIMER TOUT`, d'un seul tenant.
+fn confirmation_suffit(conf: &str, mots: &[&str]) -> bool {
+    // Aucun mot exigé : rien à vérifier. La comparaison ci-dessous dirait sinon
+    // « non » à une confirmation parasite, et l'exécution serait refusée pour un
+    // lot qui n'a rien demandé — un garde-fou qui bloque quand il n'a rien à
+    // garder. Le champ est donc ignoré dès qu'il est vide.
+    mots.is_empty() || conf == mots.join(" ")
+}
+
+/// Les mots exigés, chacun avec la raison pour laquelle il est demandé.
+///
+/// Le motif n'est pas décoratif : c'est lui qui distingue une règle qu'on
+/// comprend d'une règle qu'on subit. « 74 Go partent » se lit ; « tapez un mot »
+/// se contourne au bout de la deuxième fois.
+fn mots_avec_raison(taille: u64, to_trash: bool, corbeille: bool, eleve: bool) -> Vec<MotExige> {
+    let mut out = Vec::new();
+    if taille >= PALIER_SUPPRIMER_TOUT {
+        out.push(MotExige {
+            mot: "SUPPRIMER TOUT".into(),
+            raison: "ce lot dépasse un demi-teraoctet".into(),
+        });
+    } else if taille >= PALIER_SUPPRIMER {
+        out.push(MotExige {
+            mot: "SUPPRIMER".into(),
+            raison: "ce lot dépasse vingt gigaoctets".into(),
+        });
+    }
+    if confirmation_required(to_trash, corbeille) {
+        out.push(MotExige {
+            mot: "EFFACER".into(),
+            raison: if to_trash {
+                "ce volume n'a pas de corbeille".into()
+            } else {
+                "suppression définitive".into()
+            },
+        });
+    } else if eleve_change_le_geste(eleve) {
+        out.push(MotExige {
+            mot: "EFFACER".into(),
+            raison: "les droits du compte ne s'appliquent plus en instance élevée".into(),
+        });
+    }
+    out
 }
 
 /// Une instance ÉLEVÉE change-t-elle ce que vaut une suppression ?
@@ -1932,7 +2052,10 @@ fn eleve_change_le_geste(eleve: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{confirmation_required, dossiers_a_nommer, mot_exige, LigneJournal};
+    use super::{
+        confirmation_required, confirmation_suffit, dossiers_a_nommer, mots_exiges, LigneJournal,
+        PALIER_SUPPRIMER, PALIER_SUPPRIMER_TOUT,
+    };
     use std::path::Path;
 
     #[test]
@@ -2056,39 +2179,116 @@ mod tests {
         .ligne(1700000000000)
     }
 
-    /// Le mot exigé ne DISPENSE jamais d'une autre règle, il s'y ajoute.
+    /// Sous le palier, rien n'est demandé — et c'est ce qui compte.
     ///
-    /// C'est le point de la règle. Une instance élevée n'est pas un mode de
-    /// suppression : c'est un contexte où TOUT devient effaçable, y compris ce
-    /// que les droits du compte interdisaient. Le mot de la corbeille ne suffit
-    /// donc plus — et l'inverse est vrai aussi, le mot de l'élevée ne dispense
-    /// pas du nommage des dossiers personnels.
+    /// Le cas ordinaire est le cas fréquent : ouvrir un dossier, effacer un
+    /// cache, valider. Une règle qui se déclenche sur ce geste apprend le geste, et un
+    /// geste appris n'arrête plus rien. La règle ne sert qu'à
+    /// l'exception, donc elle ne doit pasdhaîner sur l'exception.
     #[test]
-    fn une_instance_elevee_ajoute_le_mot_au_lieu_de_le_remplacer() {
-        // corbeille disponible, instance normale : rien à taper.
-        assert_eq!(mot_exige(true, true, false), None);
-        // même lot, instance élevée : le mot apparaît.
-        assert_eq!(mot_exige(true, true, true), Some("EFFACER"));
-        // sans corbeille, le mot était déjà là, l'élevée ne change rien.
-        assert_eq!(mot_exige(true, false, false), Some("EFFACER"));
-        assert_eq!(mot_exige(true, false, true), Some("EFFACER"));
-        // suppression définitive : le mot est exigé dans les deux cas.
-        assert_eq!(mot_exige(false, true, false), Some("EFFACER"));
-        assert_eq!(mot_exige(false, true, true), Some("EFFACER"));
+    fn sous_le_palier_rien_nest_exige() {
+        let petit = PALIER_SUPPRIMER - 1;
+        assert!(mots_exiges(petit, true, true, false).is_empty());
+        assert!(mots_exiges(0, true, true, false).is_empty());
     }
 
-    /// `confirmation_required` reste la règle du mode SEUL, sans l'élevée.
+    /// Le palier est une MESURE, pas une intuition.
     ///
-    /// Elle est conservée telle quelle parce qu'elle a une autre utilisateur :
-    /// `mot_exige` l'appelle, et c'est elle qui décide qu'une « corbeille »
-    /// sans corbeille est une destruction. Si l'élevée y entrait, la règle
-    /// perdrait sa raison d'être : « pas de corbeille » est un fait mesuré,
-    /// « instance élevée » un contexte.
+    /// Le 26/09/2026, un geste unique a envoyé 74,2 Go à la corbeille et détruit
+    /// 79 fichiers définitifs. Avant cette règle, ce lot ne demandait rien, alors
+    /// qu'une photo de 2 Mo demandait le nom de son dossier. Le test fixe cette
+    /// bascule : si quelqu'un relève le palier, ce test échoue, et la raison est
+    /// visible.
     #[test]
-    fn la_confirmation_de_base_ignore_l_instance_elevee() {
-        assert!(!confirmation_required(true, true));
-        assert!(confirmation_required(true, false));
-        assert!(confirmation_required(false, true));
+    fn le_palier_tient_la_vraie_echelle_de_lincident() {
+        let go = 1_000_000_000u64;
+        assert!(mots_exiges(74 * go + 200_000_000, true, true, false).contains(&"SUPPRIMER"));
+        assert!(mots_exiges(19 * go + 999_999_999, true, true, false).is_empty());
+    }
+
+    /// Au-delà du demi-teraoctet, exiger le même mot qu'à 20 Go ne protège plus
+    /// de rien : le mot serait devenu une habitude.
+    #[test]
+    fn le_second_palier_demande_plus_que_le_premier() {
+        assert_eq!(
+            mots_exiges(PALIER_SUPPRIMER, true, true, false),
+            vec!["SUPPRIMER"]
+        );
+        assert_eq!(
+            mots_exiges(PALIER_SUPPRIMER_TOUT, true, true, false),
+            vec!["SUPPRIMER TOUT"]
+        );
+    }
+
+    /// Les règles s'additionnent : un lot énorme ET définitif demande les DEUX
+    /// mots, pas le plus fort des deux.
+    ///
+    /// C'est le cœur de la règle. Un mot unique qui choisirait « le plus fort »
+    /// ferait perdre l'autre, et l'utilisateur ne saurait jamais lequel
+    /// s'applique — donc il taperait le mauvais, et le serveur refuserait, et il
+    /// finirait par taper les deux sans comprendre.
+    #[test]
+    fn les_mots_s_additionnent_ils_ne_se_remplacent_pas() {
+        let go = 1_000_000_000u64;
+        assert_eq!(
+            mots_exiges(600 * go, false, true, false),
+            vec!["SUPPRIMER TOUT", "EFFACER"]
+        );
+        // sans corbeille, le mot de corbeille devient lui-même définitif.
+        assert_eq!(
+            mots_exiges(30 * go, true, false, false),
+            vec!["SUPPRIMER", "EFFACER"]
+        );
+        // instance élevée : le mot s'ajoute sans rien retirer.
+        assert_eq!(
+            mots_exiges(30 * go, true, true, true),
+            vec!["SUPPRIMER", "EFFACER"]
+        );
+        // rien de tout ça : pas de corbeille, instance normale, petit lot.
+        assert_eq!(mots_exiges(30 * go, true, true, false), vec!["SUPPRIMER"]);
+    }
+
+    /// La confirmation doit contenir TOUS les mots, dans l'ordre, EXACTEMENT.
+    ///
+    /// Le test le plus important est le dernier : `EFFACER ` avec une espace
+    /// final doit être refusé. C'est la règle que `sonde-suppression.mjs`
+    /// imposait déjà pour un mot seul, et elle tient pour une liste comme pour
+    /// un mot. Une confirmation acceptée « à peu près » n'est plus une
+    /// confirmation : c'est une lecture d'intention, et l'intention se devine.
+    #[test]
+    fn la_confirmation_exige_tous_les_mots_exactement() {
+        let mots = ["SUPPRIMER", "EFFACER"];
+        assert!(confirmation_suffit("SUPPRIMER EFFACER", &mots));
+        // dans le désordre : refusé, l'ordre des motifs est l'ordre des mots.
+        assert!(!confirmation_suffit("EFFACER SUPPRIMER", &mots));
+        // casse et espaces : ce que la sonde imposait déjà, et qui tient.
+        assert!(!confirmation_suffit("supprimer effacer", &mots));
+        assert!(!confirmation_suffit("SUPPRIMER EFFACER ", &mots));
+        assert!(!confirmation_suffit(" SUPPRIMER EFFACER", &mots));
+        // un seul des deux ne suffit pas — c'est tout l'intérêt de cumuler.
+        assert!(!confirmation_suffit("SUPPRIMER", &mots));
+        assert!(!confirmation_suffit("EFFACER", &mots));
+        assert!(!confirmation_suffit("", &mots));
+    }
+
+    /// Un mot à deux mots ne se valide pas par un seul de ses morceaux.
+    ///
+    /// `SUPPRIMER TOUT` ne doit pas être satisfait par `SUPPRIMER` : sinon le
+    /// palier le plus élevé se contenterait du mot du palier inférieur, et
+    /// l'escalade n'escaladerait rien.
+    #[test]
+    fn un_mot_a_deux_mots_ne_se_valide_pas_avec_un_seul() {
+        assert!(confirmation_suffit("SUPPRIMER TOUT", &["SUPPRIMER TOUT"]));
+        assert!(!confirmation_suffit("SUPPRIMER", &["SUPPRIMER TOUT"]));
+        assert!(!confirmation_suffit("TOUT", &["SUPPRIMER TOUT"]));
+    }
+
+    /// Aucun mot exigé, aucune saisie : la règle du dessous est aussi
+    /// importante que celle du dessus.
+    #[test]
+    fn sans_mot_exige_la_saisie_est_indifférente() {
+        assert!(confirmation_suffit("", &[]));
+        assert!(confirmation_suffit("n'importe quoi", &[]));
     }
 
     #[test]

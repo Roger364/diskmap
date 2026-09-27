@@ -113,6 +113,15 @@ const SONDES = [
     quoi: 'Le mot exige est celui du contexte, mode par mode',
   },
   {
+    // Lecture seule : des `dry` sur de vrais dossiers deja presents. Le volume
+    // jetable fait 511 Mio et le premier palier est a 20 Go — sans cette sonde,
+    // la regle ne serait verifiee qu'a l'echelle d'un test unitaire, jamais sur
+    // un vrai dossier de 344 Go. Elle ne supprime rien, donc elle peut lire un
+    // disque de donnees sans risque.
+    nom: 'palier', fichier: 'sonde-palier.mjs', args: (c) => [c.url, c.volume], ci: true,
+    quoi: 'Un lot de 344 Go exige un mot, un lot minuscule n en exige aucun',
+  },
+  {
     nom: 'lot', fichier: 'sonde-suppression-lot.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Le cout d un lot, et un temoin en mode definitif',
@@ -434,7 +443,7 @@ function racinesDuFilet(volume, retenues) {
 function nettoyer() {
   const base = racine(opt.volume);
   const connus = ['csrf', 'ui', 'perime', 'reversibilite', 'sans-corbeille', 'plafond',
-    'mot-exige', 'lot-cout', 'lot-coherence', 'suppression-reelle'];
+    'mot-exige', 'palier', 'lot-cout', 'lot-coherence', 'suppression-reelle'];
   let n = 0;
   for (const nom of connus) {
     const cible = `${base}/${nom}`;

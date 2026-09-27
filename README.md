@@ -79,6 +79,14 @@ Defaults and guards:
   same word as permanent deletion, **added to** whatever the lot already
   required, not in place of it. And when nothing is at stake, no word is asked
   for: a rule that fires too often is a rule you stop reading.
+- **A big enough lot has to be spelled out.** Under 20 GB, one click is the
+  whole ceremony. Over it, you type `SUPPRIMER`; over 500 GB, `SUPPRIMER TOUT`.
+  The thresholds are not a guess — the incident of 26/09/2026 moved **74.2 GB**
+  in a single gesture, and before this rule that gesture asked for nothing while
+  a 2 MB photo asked for its folder's name. The words **add up** rather than
+  replace each other: a 600 GB permanent deletion asks for both, and each field
+  says which rule it stands for. A rule that fires on every ordinary deletion
+  stops being read, so below the threshold nothing is asked at all.
 - **A folder whose loss is not trivial has to be named.** Two families, one
   rule. The personal ones — `Desktop`, `Documents`, `Pictures`, `Music`,
   `Videos`, `Downloads`, `Bureau`, `Images`, `Téléchargements` and their

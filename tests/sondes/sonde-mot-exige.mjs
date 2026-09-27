@@ -38,6 +38,10 @@ const post = (c, corps) => fetch(BASE + c, {
   method: 'POST', headers: H, body: JSON.stringify(corps),
 }).then(async r => ({ status: r.status, j: await r.json().catch(() => null) }));
 
+// Les mots annonces pour un mode donne. La liste remplace le mot unique depuis
+// que les regles s'additionnent : un lot enorme ET definitif en annonce deux.
+const mots = (ap, mode) => (mode === 'permanent' ? ap.mots_permanent : ap.mots_recycle) || [];
+
 const etat = await (await fetch(`${BASE}/api/state`)).json();
 const ELEVE = etat.eleve === true;
 const CORBEILLE = aCorbeille(VOL);
@@ -76,28 +80,36 @@ const j = await annonce();
 if (!j) {
   verifier('l’aperçu répond', false, 'aucun JSON');
 } else {
-  verifier('l’aperçu répond pour les DEUX modes',
-    'mot_recycle' in j && 'mot_permanent' in j,
-    Object.keys(j).filter(k => k.startsWith('mot_')).join(', ') || 'aucun champ mot_');
+  verifier('l’aperçu répond pour les DEUX modes, par LISTE',
+    Array.isArray(j.mots_recycle) && Array.isArray(j.mots_permanent),
+    JSON.stringify(Object.keys(j).filter(k => k.startsWith('mots_'))));
 
   // Le mode définitif détruit : le mot y est toujours exigé, quelle que soit
   // l'instance. C'est le fondement, pas une option.
+  const perm = mots(j, 'permanent').map(m => m.mot);
   verifier('le mode définitif exige toujours le mot',
-    j.mot_permanent === 'EFFACER', `mot_permanent=${JSON.stringify(j.mot_permanent)}`);
+    perm.join(' ') === 'EFFACER', `mots_permanent=${JSON.stringify(perm)}`);
 
   // Le mode corbeille : le mot dépend du contexte, et de rien d'autre.
-  const attendu = (!CORBEILLE || ELEVE) ? 'EFFACER' : null;
+  const attendu = (!CORBEILLE || ELEVE) ? ['EFFACER'] : [];
+  const rec = mots(j, 'recycle').map(m => m.mot);
   verifier('le mode corbeille exige le mot selon le contexte, et lui seul',
-    j.mot_recycle === attendu,
-    `mot_recycle=${JSON.stringify(j.mot_recycle)}, attendu ${JSON.stringify(attendu)} `
+    JSON.stringify(rec) === JSON.stringify(attendu),
+    `mots_recycle=${JSON.stringify(rec)}, attendu ${JSON.stringify(attendu)} `
     + `(corbeille=${CORBEILLE}, élevée=${ELEVE})`);
+
+  // Un mot exigé porte toujours son motif : un champ nu se tape par réflexe.
+  verifier('chaque mot exigé porte le motif qui le justifie',
+    mots(j, 'permanent').concat(mots(j, 'recycle'))
+      .every(m => typeof m.raison === 'string' && m.raison.length > 0),
+    JSON.stringify(mots(j, 'permanent')));
 
   // Le mot ne doit jamais être exigé là où il ne l'est pas : une règle qui
   // s'applique trop devient une règle qu'on contourne.
   if (CORBEILLE && !ELEVE) {
     verifier('et il n’est PAS exigé quand tout va bien — sinon on s’y habitue',
-      j.mot_recycle === null && j.mot_permanent === 'EFFACER',
-      `recycle=${JSON.stringify(j.mot_recycle)} permanent=${JSON.stringify(j.mot_permanent)}`);
+      rec.length === 0 && perm.join(' ') === 'EFFACER',
+      `recycle=${JSON.stringify(rec)} permanent=${JSON.stringify(perm)}`);
   }
 }
 
@@ -118,11 +130,11 @@ if (inertie.j && inertie.j.token) {
   const avecMot = await post('/api/delete', {
     drive: VOL, mode: 'recycle', token: rejet.j.token, confirm: 'EFFACER',
   });
-  if (j && j.mot_recycle) {
+  if (j && mots(j, 'recycle').length) {
     verifier('sans le mot, l’exécution est refusée',
       sansMot.status === 400, `HTTP ${sansMot.status}`);
     verifier('avec le mot, l’exécution passe le contrôle du mot',
-      avecMot.status !== 400 || /EFFACER/.test(String(avecMot.j && avecMot.j.erreur)),
+      avecMot.status !== 400,
       `HTTP ${avecMot.status}`);
   } else {
     verifier('sans mot exigé, l’exécution passe — le contexte ne demande rien',
