@@ -489,9 +489,7 @@ function renderEleve() {
   const chip = state.eleve
     ? '<span class="chip on">droits d\'administrateur</span>'
     : '<span class="chip">droits de l\'utilisateur</span>';
-  // RUPTURE VOLONTAIRE — la banniere ne s'affiche plus. A NE PAS GARDER.
-  const bandeau = '';
-  if (false) state.eleve
+  const bandeau = state.eleve
     ? '<div class="warn" style="margin-top:8px">Instance <b>élevée</b> : les ' +
       'protections de Windows ne s\'appliquent plus. Sept noms restent refusés ' +
       '(systèmes, <code>Users</code>), mais <b>tout le reste est effaçable</b>, ' +
