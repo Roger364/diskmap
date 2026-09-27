@@ -16,10 +16,16 @@
 // reste sans qu'on le voie.
 //
 // Usage : node sonde-erreurs.mjs http://127.0.0.1:8800/
-// Note : le point 4 ouvre UNE fenêtre de l'explorateur, sur un chemin réel.
+// Note : le point 4 ouvre pour de vrai une fenêtre de l'explorateur — c'est le
+// seul moyen de prouver que la route ACCEPTE un chemin de la liste. Elle est
+// neutralisée par un guetteur (`fenetres.mjs`) lancé AVANT l'appel : minimisée à
+// sa naissance, referme aussitot, et jamais une fenêtre que l'utilisateur avait
+// ouverte avant. Le 27/09/2026, sans ce guetteur, cette preuve a laissé 33
+// fenêtres « Bureau » sur l'écran de l'auteur de ces lignes.
 
 import { chromium } from './navigateur.mjs';
 import { URL_DEFAUT } from './config.mjs';
+import { surveillerFenetres, mesurer } from './fenetres.mjs';
 
 const URL = process.argv[2] || URL_DEFAUT;
 
@@ -40,6 +46,13 @@ function verifier(nom, condition, mesure) {
   verifs.push(ok);
   if (!ok) echecs.push(`${nom}\n      mesuré : ${mesure}`);
   console.log(`${ok ? 'ok   ' : 'ROUGE'} ${nom}${ok ? '' : `\n      mesuré : ${mesure}`}`);
+}
+
+/** Un fait releve, pas une verification : il ne compte ni en vert ni en rouge. */
+const notes = [];
+function noter(texte) {
+  notes.push(texte);
+  console.log(`      note : ${texte}`);
 }
 
 const browser = await chromium.launch();
@@ -197,6 +210,12 @@ if (api[cible].total > 0) {
   verifier('un chemin hors liste est refusé', statutRefus === 400,
     `statut ${statutRefus}, attendu 400 — la route ouvrirait n'importe quel chemin`);
 
+  // Le chemin de la liste est ACCEPTÉ — donc l'Explorateur s'ouvre pour de bon,
+  // comme pour un vrai clic. Le guetteur est lancé AVANT l'appel, jamais après :
+  // après, la fenêtre aurait déjà volé le focus, et c'est exactement ce qu'on
+  // veut éviter. Il ne ferme que les fenêtres nées sous ses yeux — celles de
+  // l'utilisateur ne sont pas dans son instantané et ne sont jamais touchées.
+  const guet = surveillerFenetres();
   const premier = api[cible].items[0].path;
   const statutOk = await page.evaluate(async p => {
     const r = await fetch('/api/reveal', {
@@ -205,8 +224,18 @@ if (api[cible].total > 0) {
     });
     return r.status;
   }, premier);
-  verifier('un chemin de la liste est accepté (ouvre une fenêtre)', statutOk === 200,
+  const rapport = await guet.arreter();
+  verifier('un chemin de la liste est accepté (et l’Explorateur s’ouvre)', statutOk === 200,
     `statut ${statutOk} pour « ${premier} »`);
+  // Le geste du serveur est correct même si le ramasse-miettes a échoué : les deux
+  // faits sont distincts, et confondre les deux ferait rater un vrai défaut.
+  if (!rapport.neutre) {
+    noter('NE PAS MESURABLE — le guetteur de fenêtres n’a rien pu dire : '
+      + rapport.raison);
+  } else {
+    verifier('la révélation ne laisse aucune fenêtre à l’écran', rapport.fermees === rapport.neutralisees,
+      mesurer(rapport));
+  }
 
   // ---------- 5. le conseil sur l'élévation ----------
   const corps = (await page.locator('#ubody').innerText()).replace(/\s+/g, ' ');
@@ -254,6 +283,9 @@ console.log(`\n${reussies}/${verifs.length} vérifications passent`);
 if (echecs.length) {
   console.log('\nÉchecs :');
   for (const e of echecs) console.log(`  - ${e}`);
-  process.exit(1);
 }
-process.exit(0);
+if (notes.length) {
+  console.log('\nNotes :');
+  for (const n of notes) console.log(`  - ${n}`);
+}
+process.exit(echecs.length ? 1 : 0);
