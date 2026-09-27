@@ -22,9 +22,19 @@ fn main() {
     // Sans cela, cargo rebuild à chaque compilation : le dépôt est surveillé en
     // entier et la date de construction changerait le binaire pour rien.
     println!("cargo:rerun-if-changed=build.rs");
-    // Le commit change quand HEAD bouge : c'est ce qui fait que « commit x »
-    // reste vrai après un `git commit`.
-    println!("cargo:rerun-if-changed=.git/HEAD");
+    // `.git/HEAD` ne bouge JAMAIS d'un commit à l'autre : il contient
+    // « ref: refs/heads/master » et pointe sur la même ligne depuis le début du
+    // dépôt. C'est le fichier de la REF qui est réécrit, à chaque commit comme
+    // à chaque `amend` — et c'est donc lui qu'il faut surveiller, sous peine de
+    // garder un binaire qui annonce un commit devenu introuvable.
+    //
+    // Réserve honnête : si les refs sont empaquetées (`git pack-refs`), ce
+    // fichier n'existe plus et la reconstruction ne se déclenche plus
+    // automatiquement. Le SHA affiché décrit alors la compilation précédente —
+    // ce qui reste vrai de la compilation, et faux de l'instant présent.
+    if std::path::Path::new(".git/refs/heads/master").exists() {
+        println!("cargo:rerun-if-changed=.git/refs/heads/master");
+    }
     println!("cargo:rerun-if-env-changed=DISKMAP_AGENT");
 
     // `git` peut être absent (une archive de crates.io n'a pas de `.git`) :
