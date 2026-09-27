@@ -161,6 +161,18 @@ const SONDES = [
     quoi: 'Quand la recherche ne peut pas tout montrer, elle dit « au moins N » au lieu de pretendre',
   },
   {
+    // Un dossier affiche doit rester LE dossier choisi, et sa disparition doit etre
+    // dite. Le 27/09, l interface epinglait le dossier courant par un NUMERO : apres
+    // une reanalyse, ce numero designait un autre dossier — le depot GitHub sur le
+    // runner — et l ecran suivait sans rien dire. Dans un outil qui supprime, un ecran
+    // qui change de cible sans le dire est une suppression qui vise autre chose.
+    // La sonde mesure aussi si les identifiants ont bouge sur CE volume : sans cela,
+    // un vert ne prouverait que le cas tranquille.
+    nom: 'identifiant', fichier: 'sonde-identifiant.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
+    quoi: 'Le dossier affiche survit a une reanalyse, et un dossier disparu est dit plutot que remplace',
+  },
+  {
     nom: 'ui', fichier: 'sonde-ui-suppression.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Le geste reel dans l interface, jusqu a l apercu — ce qu aucune sonde serveur ne voit',
