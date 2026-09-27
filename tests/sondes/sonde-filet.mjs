@@ -116,30 +116,69 @@ verifier('le refus nomme le filet', /filet/i.test(exec.texte), exec.texte.slice(
 verifier('le fichier témoin est TOUJOURS là', fs.existsSync(CIBLE),
   'le fichier a disparu : le filet n’a pas tenu');
 
-// --- 4. et un volume non surveillé, pareil --------------------------------
+// --- 4. et un volume non surveillé, qui n'est pas le même refus -------------
+//
+// Le filet refuse DEUX choses : un chemin hors racine (sections 2-3) et un
+// volume qu'il ne couvre pas. La seconde regle est celle qui compte quand la
+// racine de travail est posee sur un volume et qu'une sonde vise un autre :
+// c'est elle qui empeche le filet de couvrir un disque que personne n'a
+// designe. Elle meritait donc son propre epreuve.
+//
+// Il faut pour cela un jeton dont l'apercu est ENTIEREMENT sous la racine.
+// Reutiliser celui de la section 2 ne prouverait rien : le filet refuserait
+// pour le CHEMIN, et la regle du volume n'aurait pas ete exercee. D'ou un
+// fichier dedans, dont l'apercu est honnete.
 console.log('\n--- 4. un volume que le filet ne surveille pas ---');
-const jeton = dry.token;
-const aut = await post('/api/delete', { drive: VOL, mode: 'recycle', token: jeton, confirm: 'EFFACER' });
-verifier('le filet refuse (403)', aut.status === 403, `HTTP ${aut.status} — ${aut.texte.slice(0, 120)}`);
-verifier('le fichier témoin est TOUJOURS là', fs.existsSync(CIBLE), 'le fichier a disparu');
+// Portees par la section 6, qui rejoue ce meme jeton sur le volume couvert.
+let DEDANS = null, PAVE = null, t2 = null, pave = null;
+DEDANS = dossier(VOL, 'filet');
+PAVE = path.join(DEDANS, 'pave.txt');
+fs.mkdirSync(DEDANS, { recursive: true });
+fs.writeFileSync(PAVE, 'dans la racine\n');
+await post(`/api/scan/${VOL}`, {});
+await repos();
+const s2 = await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${path.basename(DEDANS)}`)).json();
+const d2 = s2.rows.find(r => r.name === path.basename(DEDANS));
+t2 = d2 ? await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${d2.id}&limit=50`)).json() : { rows: [], gen: 0 };
+pave = t2.rows.find(r => r.name === 'pave.txt');
+if (!pave) {
+  console.log('PAS PU EPROUVER : le pavé n’est pas dans l’instantané.');
+} else {
+  const d2r = JSON.parse((await post('/api/delete', {
+    drive: VOL, items: [pave.sel], mode: 'dry', gen: t2.gen,
+  })).texte);
+  verifier('l’aperçu de ce jeton est bien sous la racine — sans quoi la règle du volume ne s’éprouverait pas',
+    d2r.items[0].path.replace(/\//g, '\\').toUpperCase() === PAVE.toUpperCase()
+      && d2r.items[0].blocked === false,
+    `« ${d2r.items[0].path} », blocked=${d2r.items[0].blocked}`);
+
+  // Le volume à refuser est TIRE des racines que le filet déclare. Choisir une
+  // lettre au hasard serait supposer ce que le filet couvre — et supposer, sur
+  // une machine ou il couvre E:, le ferait échouer ou passer à tort.
+  const couvertes = new Set((marque.lettres || []).map((x) => String(x).toUpperCase()));
+  const libre = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].find((x) => !couvertes.has(x));
+  if (!libre) {
+    console.log(`PAS PU EPROUVER : le filet couvre ${[...couvertes].join(', ')} — il ne reste aucune lettre libre.`);
+  } else {
+    const aut = await post('/api/delete', { drive: libre, mode: 'recycle', token: d2r.token, confirm: 'EFFACER' });
+    verifier(`le filet refuse un volume non surveillé (${libre}:)`, aut.status === 403,
+      `HTTP ${aut.status} — ${aut.texte.slice(0, 120)}`);
+    verifier('le refus nomme le volume', new RegExp(libre, 'i').test(aut.texte), aut.texte.slice(0, 120));
+    verifier('le pavé est TOUJOURS là', fs.existsSync(PAVE), 'le pavé a disparu : le filet n’a pas tenu');
+  }
+}
 
 // --- 5. le jeton est-il resté inutilisable ? -------------------------------
 console.log('\n--- 5. le jeton reste-t-il inutilisable ? ---');
-const rejoue = await post('/api/delete', { drive: VOL, mode: 'recycle', token: jeton, confirm: 'EFFACER' });
+const rejoue = await post('/api/delete', { drive: VOL, mode: 'recycle', token: dry.token, confirm: 'EFFACER' });
 verifier('une seconde tentative est refusée elle aussi', rejoue.status === 403, `HTTP ${rejoue.status}`);
 verifier('le fichier témoin est TOUJOURS là', fs.existsSync(CIBLE), 'le fichier a disparu');
 
 // --- 6. dans la racine, en revanche, ça fonctionne ------------------------
 console.log('\n--- 6. un fichier DANS la racine passe, lui ---');
-const DEDANS = dossier(VOL, 'filet');
-fs.mkdirSync(DEDANS, { recursive: true });
-fs.writeFileSync(path.join(DEDANS, 'pave.txt'), 'dans la racine\n');
-await post(`/api/scan/${VOL}`, {});
-await repos();
-const s2 = await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${path.basename(DEDANS)}`)).json();
-const d2 = s2.rows.find(r => r.name === path.basename(DEDANS));
-const t2 = d2 ? await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${d2.id}&limit=50`)).json() : { rows: [], gen: 0 };
-const pave = t2.rows.find(r => r.name === 'pave.txt');
+// Le MEME jeton que la section 4, execute cette fois sur le volume que le
+// filet couvre. Entre les deux appels, une seule chose change : la lettre du
+// volume. C'est donc elle, et elle seule, qui decide.
 if (!pave) {
   console.log('PAS PU EPROUVER : le pavé n’est pas dans l’instantané.');
 } else {
@@ -148,7 +187,7 @@ if (!pave) {
   })).texte);
   const e2 = await post('/api/delete', { drive: VOL, mode: 'recycle', token: d2r.token, confirm: 'EFFACER' });
   verifier('le filet laisse passer ce qui est sous la racine', e2.status === 200, `HTTP ${e2.status} — ${e2.texte.slice(0, 120)}`);
-  verifier('le pavé a bien disparu', !fs.existsSync(path.join(DEDANS, 'pave.txt')), 'il est encore là');
+  verifier('le pavé a bien disparu', !fs.existsSync(PAVE), 'il est encore là');
 }
 
 // --- 7. le silence --------------------------------------------------------

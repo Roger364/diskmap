@@ -56,9 +56,18 @@ function normaliser(p) {
   return String(p).replace(/\//g, '\\').replace(/\\+$/, '');
 }
 
-/** La lettre de volume d'un chemin `X:\...`, en majuscules, ou ''. */
+/**
+ * La lettre de volume d'un chemin `X:\...`, en majuscules, ou ''.
+ *
+ * La barre oblique NE DOIT PAS etre exigee. `normaliser` retire les barres
+ * finales, et l'appelant construit justement `X:\` pour que la lettre soit
+ * lisible : exiger `\\` apres les deux-points revenait donc a annuler la garde
+ * elle-meme. Concretement, `lettre('A:\\')` renvoyait `''` — la regle de refus
+ * par volume ne s'est jamais declenchee, et le test qui l'eprouve (section 4 de
+ * `sonde-filet.mjs`) le prouve en tombant sur la reponse du serveur.
+ */
 function lettre(p) {
-  const m = normaliser(p).match(/^([A-Z]):\\/i);
+  const m = normaliser(p).match(/^([A-Z]):/i);
   return m ? m[1].toUpperCase() : '';
 }
 
@@ -223,7 +232,14 @@ export function creerFilet({ cible, racines, journal }) {
     // d'agir : jouée contre le serveur nu, elle supprimerait pour de vrai le
     // fichier de son scénario. Sans cette réponse, elle s'abstient.
     if (req.method === 'GET' && url.pathname === '/filet') {
-      const m = JSON.stringify({ filet: true, racines: racines.length, incidents: incidents.length });
+      // `lettres` : les volumes reellement couverts. Une sonde doit pouvoir
+      // nommer un volume NON couvert sans l'inventer — choisir une lettre au
+      // hasard, c'est transferer au test la connaissance du filet, et c'est
+      // precisement ce que le harnais s'interdit (cf. config.mjs).
+      const m = JSON.stringify({
+        filet: true, racines: racines.length, lettres: nomsRacines.map((r) => lettre(r)),
+        incidents: incidents.length,
+      });
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(m) });
       return res.end(m);
     }
@@ -270,7 +286,15 @@ export function creerFilet({ cible, racines, journal }) {
           // qui disparaitrait vraiment.
           const hors = items.filter((it) => !it.blocked && !sousRacine(it.path, racines));
           const jeton = apercu && apercu.token;
-          emis.set(jeton, { douteux: hors.length > 0, chemins: items.map((i) => i.path) });
+          // `effacables` : l'apercu contenait-il au moins un chemin que le
+          // SERVEUR ne bloque pas. C'est ce qui distingue une suppression
+          // reelle d'une garde eprouvee — et c'est la seule distinction qui
+          // compte, ici comme pour la regle des chemins ci-dessus. Sans elle,
+          // le filet refuse aussi ce qui ne peut rien disparaitre : la sonde
+          // `suppression`, qui eprouve `C:\Windows` et les chemins proteges,
+          // verrait le filet repondre 403 a sa place, et ne mesurerait plus rien.
+          const effacables = items.some((it) => !it.blocked);
+          emis.set(jeton, { douteux: hors.length > 0, effacables, chemins: items.map((i) => i.path) });
           if (hors.length) {
             // Consigné, pas bloqué : une sonde a le droit de regarder un
             // aperçu hors racine pour vérifier qu'il EST refusé. Ce qui compte,
@@ -301,10 +325,13 @@ export function creerFilet({ cible, racines, journal }) {
           erreur: "filet : l'apercu de ce jeton annoncait des chemins hors de la racine de travail. Execution refusee.",
         }));
       }
-      // Le volume demandé doit être l'un de ceux qu'on surveille. Ici seulement,
-      // car c'est ici seulement qu'une suppression va réellement avoir lieu.
+      // Le volume demande doit etre l'un de ceux qu'on surveille — mais
+      // seulement si quelque chose disparaitrait vraiment. Un apercu integralement
+      // `blocked` ne disparaitra pas : le serveur va le refuser, et une sonde a
+      // le DROIT de verifier qu'il le refuse. Intercepter ici reviendrait a
+      // repondre a sa place, et le doublon ne prouve plus rien.
       const l = lettre(`${demande.drive || ''}:\\`);
-      if (l && !racines.some((r) => lettre(r) === l)) {
+      if (verdict.effacables && l && !racines.some((r) => lettre(r) === l)) {
         noter(`execution sur un volume non surveille (${demande.drive}:)`);
         return refuser(res, 403, JSON.stringify({
           erreur: `filet : le volume ${demande.drive}: n'est pas surveille. Execution refusee.`,
