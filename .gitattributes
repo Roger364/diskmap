@@ -1,0 +1,21 @@
+# Un depot, une seule forme de fin de ligne : LF partout.
+#
+# Ce fichier existe parce qu'il y en avait deux, et qu'aucun des deux codes ne le
+# disait. Sur la machine de developpement, `core.autocrlf=true` et aucun
+# `.gitattributes` : chaque `git checkout` reappliquait CRLF a un fichier qui etait
+# en LF, sans un mot.
+#
+# Le 27/09/2026, un `git checkout` a rebascule `src/scan.rs` en CRLF, et
+# `cargo fmt` a rebascule `src/main.rs` en LF. Les deux etaient des accidents
+# silencieux, et tous deux ont coupe des ancres d'edition sans prevenir. Aucun
+# n'a casse le produit ; tous deux ont fait perdre du temps a chercher un defaut
+# qui etait dans l outil.
+#
+# `text=auto` : git reconnait seul les fichiers binaires et n'y touche pas. Il
+# n'y en a aucun dans ce depot aujourd'hui, mais la regle vaut le jour ou il y
+# en aura un.
+#
+# `eol=lf` : la copie de travail suit le depot. Le depot etant en LF partout,
+# cette ligne ne change aucun octel de contenu — elle supprime seulement la
+# classe entiere du defaut, plutot qu'un cas a la fois.
+* text=auto eol=lf
