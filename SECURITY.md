@@ -40,14 +40,18 @@ de lancer des sondes destructrices hors d'un volume qu'il sait jetable (§7/16).
 
 ---
 
-> **Le récit de l'incident est en annexe** : `docs/incident-2026-09-26.md`
-> (chronologie minute par minute, inventaire des pertes, et comment reproduire
-> le défaut d'origine). Ce document-ci est la politique : les causes, le modèle de
-> menace, les constats, et ce qui reste à traiter. L'essentiel de l'incident
-> tient en une ligne : le 26/09/2026, un identifiant d'instantané était une
-> *position* et non une identité, et une sonde destructive a résolu ses
-> identifiants contre un index réanalysé — 168 fichiers réels visés, 79 détruits
-> définitivement. C'est corrigé (`bb5c60e`) et éprouvé (`generation`).
+> **Le récit de l'incident est en annexe.** Deux journées ont produit un récit :
+> `docs/incident-2026-09-26.md` (chronologie minute par minute, inventaire des
+> pertes, et comment reproduire le défaut d'origine) et
+> `docs/incident-2026-09-27-sondes.md` (la journée où sept sondes sont tombées sur
+> un séparateur de chemin, où l'épreuve de rupture a prouvé que les sondes
+> mordaient, et où les corriger a trouvé un vrai défaut produit).
+> Ce document-ci est la politique : les causes, le modèle de menace, les constats,
+> et ce qui reste à traiter. L'essentiel de l'incident du 26/09 tient en une
+> ligne : un identifiant d'instantané était une *position* et non une identité, et
+> une sonde destructive a résolu ses identifiants contre un index réanalysé —
+> 168 fichiers réels visés, 79 détruits définitivement. C'est corrigé (`bb5c60e`)
+> et éprouvé (`generation`).
 
 ---
 
