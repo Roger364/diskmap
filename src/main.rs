@@ -254,6 +254,26 @@ fn main() {
 
     // `diskmap bench <LETTRE>` : mesure le parcours seul, sans serveur ni UI.
     // Sert à vérifier les performances sur une vraie machine plutôt qu'à les supposer.
+    // `diskmap --version` : la provenance seule, et on sort. Lisible sans
+    // demarrer de serveur, donc sans declencher le moindre scan — ce qui est
+    // le seul moyen de repondre a « de quel code vient ce binaire » sans
+    // toucher au disque.
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!(
+            "diskmap {} — {}",
+            env!("CARGO_PKG_VERSION"),
+            env!("DISKMAP_COMMIT")
+        );
+        println!("{}", env!("DISKMAP_PROVENANCE"));
+        if env!("DISKMAP_ARBRE_SALLE") == "true" {
+            println!(
+                "ATTENTION : binaire compile avec des modifications NON COMMITÉES — \
+                 il ne correspond a aucun commit."
+            );
+        }
+        return;
+    }
+
     if args.get(1).map(|s| s.as_str()) == Some("bench") {
         return bench(args.get(2).and_then(|s| s.chars().next()));
     }
@@ -352,6 +372,28 @@ fn main() {
     }
     let url = format!("http://127.0.0.1:{real_port}/");
     println!("Espace disque : {url}");
+
+    // La provenance est gravée à la compilation par `build.rs`. Elle est
+    // affichée AVANT l'adresse, et non dans un fichier : un binaire dont on ne
+    // peut pas dire d'où il sort se Contamine d'abord l'utilisateur.
+    //
+    // Le 26/09/2026, un binaire a effacé 168 fichiers réels et personne n'a pu
+    // dire de quel commit il sortait. L'arbre « sale » est le cas exact de ce
+    // jour-là : du bon code, jamais versionné. C'est le seul cas où cette
+    // provenance doit crier plutôt qu'informer.
+    println!(
+        "Version      : {} ({})",
+        env!("CARGO_PKG_VERSION"),
+        env!("DISKMAP_COMMIT")
+    );
+    println!("Provenance   : {}", env!("DISKMAP_PROVENANCE"));
+    if env!("DISKMAP_ARBRE_SALLE") == "true" {
+        println!(
+            "ATTENTION : ce binaire a été compilé avec des modifications NON \
+             COMITÉES. Sa provenance est incertaine : il ne correspond à aucun \
+             commit, et `git status` sur la machine qui l'a construit le dira."
+        );
+    }
     println!("Arrêt : le bouton dans l'interface, ou Ctrl+C ici.");
     if open_browser {
         open_in_browser(&url);

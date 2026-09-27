@@ -8,6 +8,11 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    # Le binaire grave son origine a la compilation : sans ce mot, la release
+    # publiee dirait « agent NON DECLARE » — un livrable qui ne sait pas qui l'a
+    # construit, ce qu'on a paye une fois.
+    env:
+      DISKMAP_AGENT: github-actions
     steps:
       - uses: actions/checkout@v7
 
@@ -73,6 +78,8 @@ jobs:
   # une main, un jour, sur le poste de quelqu'un.
   sondes:
     runs-on: windows-latest
+    env:
+      DISKMAP_AGENT: github-actions
     steps:
       - uses: actions/checkout@v7
 

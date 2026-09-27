@@ -175,6 +175,27 @@ else, the next free port is used and the address is printed.
 `diskmap bench <LETTER>` times the walk of a single volume with no server and no
 interface — useful to check performance on another machine instead of assuming it.
 
+### Which code is this binary
+
+```bat
+diskmap.exe --version
+```
+
+```
+diskmap 0.1.0 — 73aa8e20e550
+73aa8e20e550 · arbre propre · construit par opencode le 2026-09-27 01:48 UTC
+```
+
+The binary carries its own commit, the state of the working tree at build time
+and the agent that built it. A binary compiled with uncommitted changes says
+**`arbre SALLE`**, because that is exactly the case nobody could account for on
+26/09/2026: good code, never versioned, and no way to say which commit it came
+from. The same line is printed at startup, before the address.
+
+Set `DISKMAP_AGENT=<who>` when building to fill in the last field. Leaving it
+unset does not fail the build — it prints `agent NON DECLARE`, which is the
+point.
+
 ## Tests
 
 ```bat
