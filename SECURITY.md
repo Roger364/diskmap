@@ -27,6 +27,17 @@ l'état : `%LOCALAPPDATA%\diskmap\suppressions.log` (lecture seule).
 Verdict : les six causes sont corrigées, R1 à R4 aussi, et le filet du harnais empêche
 désormais qu'une sonde puisse viser hors de sa racine. Ce qui reste ouvert est listé en §7.
 
+**Ajout postérieur à l'audit.** Le filet comportait une seconde règle de refus —
+celle du volume — qui ne pouvait pas se déclencher : `lettre()` normalisait le
+chemin, ce qui supprimait la barre oblique finale, alors que la regex exigeait
+`\\` après les deux-points. `lettre('A:\\')` renvoyait `''`, la condition était
+toujours fausse, et la garde n'avait jamais rien refusé. Elle est réparée (§7/15)
+et désormais éprouvée. Par ailleurs, le filet se rabattait sur une racine
+*inventée* pour le volume secondaire : poser `DISKMAP_SONDE_RACINE` sur `V:` faisait
+apparaître `E:/_diskmap_sondes` parmi les racines autorisées, sur un volume réel
+de 55 Go que personne n'avait désigné (§7/14). Enfin, le harnais refuse désormais
+de lancer des sondes destructrices hors d'un volume qu'il sait jetable (§7/16).
+
 ---
 
 ## 2. Chronologie de l'incident
@@ -399,6 +410,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **11** | Aligner les noms de dossiers des cinq sondes sur `dossier()` | `tests/sondes/*.mjs` | **fait** |
 | **12** | Vérifier R9 sur un nom à espace finale (au lieu de le supposer) | `src/win32.rs`, `src/scan.rs` | **vérifié, sans défaut** |
 | **13** | Publication : anonymisation, CI verte sur GitHub | `SECURITY.md`, `.github/workflows/build.yml`, `tests/sondes/*.mjs` | **fait** — 11/11 vertes sur `windows-latest` |
+| **14** | Le filet ne se rabat plus sur une racine inventee : une sonde destructive sans racine fait echouer le run | `tests/sondes/lancer.mjs` | **fait** — refus avant tout demarrage |
+| **15** | La regle de refus PAR VOLUME du filet etait du code mort : `lettre('A:\\')` renvoyait `''`, la branche ne pouvait pas s executer | `tests/sondes/filet.mjs` | **fait** — 403 mesuré, et Covered par la sonde d'epreuve |
+| **16** | Le harnais refuse un volume de travail qui n'est pas jetable, mesure avant de demarrer quoi que ce soit | `tests/sondes/config.mjs`, `lancer.mjs` | **fait** — 18/18, test qui echoue si on retire l'appel |
 
 **Ce que les runs sur GitHub ont révélé — et qui ne concerne pas
 l'application.** Cinq échecs successifs, tous dans le harnais, tous masqués

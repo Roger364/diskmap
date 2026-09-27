@@ -172,6 +172,7 @@ interface — useful to check performance on another machine instead of assuming
 ```bat
 node tests\sondes\lancer.mjs --liste      the probe table, runs nothing
 node tests\sondes\lancer.mjs --volume V   everything, on a disposable volume
+cd tests\sondes && npm test               the disposable-volume rule, on its own
 ```
 
 The probes that create and delete test files may only run on a **disposable
@@ -180,6 +181,39 @@ volume `G:` and destroyed 65 real files permanently, sending 68 more to the
 Recycle Bin, scattered across the whole disk. The paths it aimed at were
 resolved against a rescanned index, so they designated other files than its own
 — see `SECURITY.md` and §3.6 of that report.
+
+### What makes a volume disposable
+
+The harness refuses to start, before opening a server or analysing anything,
+unless the working volume is one it can *measure* as disposable. A volume
+qualifies when Windows reports it as a **virtual disk** (`File Backed Virtual`) —
+a VHD is a file, and destroying it destroys that file, not data that lives
+beside it.
+
+The question the rule asks is deliberately not "does this volume look
+throwaway". It is **"what else dies if I destroy it?"**, and the obvious
+indicators answer it backwards. On the development machine, `D:` is 50 MB, is
+neither the boot nor the system volume, and is labelled "Reserved for system" —
+every heuristic approves it. It is in fact a partition of the disk that carries
+the 476 GB of `G:`. Size, `IsBoot` and `IsSystem` are anti-correlated with safety:
+`G:` also reports "neither boot nor system", and holds everything.
+
+A **physical** disk is therefore never accepted, even alone on its medium: a
+single-partition 4 TB drive can be somebody's only backup. And when the
+measurement itself fails — PowerShell unavailable, nothing read — the run is
+refused rather than assumed, because a case that was not measured is neither
+success nor failure, and here both readings are destructive.
+
+The one way through is `DISKMAP_SONDE_MACHINE_EPHEMERE=<why>`, which asserts that
+the **machine** is disposable rather than the volume. No measurement can
+establish that: a CI runner's `D:` is a physical disk like any other, and it is
+the runner that is thrown away. It is a value, not a flag, and it is reprinted
+inside a banner on every run it permits — a declaration nobody can see is a
+declaration nobody read.
+
+None of this touches the application. `diskmap` still deletes on whatever volume
+you point it at, with its own protections intact; the rule governs only where
+*tests* may delete, and a person using the interface never passes through it.
 
 `tests\sondes\creer-volume-test.ps1` creates a throwaway VHD for this. It needs
 administrator rights, which is the point: mounting a volume is already a
