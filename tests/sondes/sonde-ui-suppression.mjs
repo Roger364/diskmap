@@ -140,11 +140,24 @@ if (dossierTrouve) {
   // distingue pas « la navigation a eu lieu » de « le clic n'a rien fait ».
   const avant = await filAriane();
   await ligneDossier.locator('.nm').click();
+  // Le fil doit changer ET MENER AU DOSSIER DE LA SONDE. Les deux, pas l une ou
+  // l autre. Le 27/09, sur le runner, le clic a porte sur un dossier du runner
+  // lui-meme (`_runner_file_commands`) : le fil avait bien change, et toute la
+  // suite a cherche `photo.jpg` parmi les fichiers internes de GitHub Actions,
+  // puis a conclu que l interface ne listait rien. Un changement de fil prouve
+  // qu il y a eu navigation, pas qu on est ARRIVE.
+  let arrivee = false;
   try {
     await page.waitForFunction(
-      (avant) => document.querySelector('#crumbs')?.textContent !== avant,
-      avant, { timeout: 60000 });
-  } catch { /* rendu plus bas, avec le diagnostic */ }
+      ([avant, nom]) => {
+        const c = document.querySelector('#crumbs')?.textContent ?? '';
+        return c !== avant && c.includes(nom);
+      },
+      [avant, NOM], { timeout: 60000 });
+    arrivee = true;
+  } catch { /* rendu juste apres, avec le diagnostic */ }
+  verifier('la recherche mene AU DOSSIER DE LA SONDE, et pas a un autre',
+    arrivee, `${await contenuLignes()} · fil : ${await filAriane()}`);
 }
 
 const ligneFichier = page.locator('#rows tr')

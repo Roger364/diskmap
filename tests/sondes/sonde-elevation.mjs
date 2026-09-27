@@ -39,7 +39,7 @@
 import fs from 'fs';
 
 import { chromium } from './navigateur.mjs';
-import { dossier, racine, aCorbeille, estEleve, attendreFichier,
+import { dossier, aCorbeille, estEleve, attendreFichier,
   VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
@@ -96,23 +96,26 @@ verifier('le lot d’essai est dans l’instantané', indexe,
 // qu'aucune des deux pages ne s'en aperçoive. Le code de l'interface dit
 // exactement ce risque — « le désaccord, c'est le garde-fou qui disparaît sans
 // bruit » — et rien ne le mesurait.
-async function tree(id) {
-  const r = await fetch(`${BASE}/api/tree?drive=${VOL}&id=${id}&limit=400`);
+// Chercher le dossier PAR SON NOM, et non le descendre depuis la racine. Sur le
+// runner, la racine de D: tient plus de quatre cents entrees, et l arbre est
+// trie par TAILLE DECROISSANTE : le dossier de travail, de quelques octets, tombe
+// donc hors de la fenetre et n existe pas dans `rows`. C est ce qu il s est passe
+// au premier run : la mesure a dit « manque D:\_diskmap_sondes » sur un dossier
+// qui existait bel et bien. Une recherche par nom ne se trompe pas de fenetre.
+async function chercher(nom) {
+  const r = await fetch(`${BASE}/api/search?drive=${VOL}&q=${encodeURIComponent(nom)}`);
   const texte = await r.text();
   // Le serveur ne renvoie pas du JSON quand il refuse : il répond en texte. Un
   // corps illisible est un fait, pas une panne — il revient comme tel.
   try { return JSON.parse(texte); } catch { return { error: texte.trim(), rows: null }; }
 }
-async function descendre(segments) {
-  let t = await tree(0);
-  let dernier = null;
-  for (const nom of segments) {
-    const r = (t.rows || []).find((x) => x.name === nom);
-    if (!r) return { t: null, manque: nom, lu: segments.join('/') };
-    dernier = r;
-    t = await tree(r.id);
-  }
-  return { t, dernier, manque: null };
+async function trouverFichier(nomFichier) {
+  const dossier = (await chercher(NOM)).rows || [];
+  const lu = dossier.find((x) => x.name === NOM);
+  if (!lu) return { sel: null, lu: null, manque: NOM };
+  const t = await chercher(nomFichier);
+  const f = (t.rows || []).find((x) => x.name === nomFichier);
+  return { sel: f ? f.sel : null, lu: lu.sel, manque: f ? null : nomFichier, t };
 }
 
 // -------------------------------------------------------- 3. l'interface, pour de vrai
@@ -221,27 +224,23 @@ try {
       + `${annonceCorbeille ? 'annoncee' : 'ABSENTE'}`);
 
     // --- L ACCORD ENTRE L INTERFACE ET LE SERVEUR ---------------------------
-    // Le chemin est ABSOLUT, segment par segment, et non « le dossier de la
-    // sonde » : la racine de travail ne s appelle pas toujours
-    // `_diskmap_sondes`. Sur le runner elle vaut `D:/a/_temp`, et c est en
-    // remontant qu on descendrait alors dans le depot au lieu du dossier
-    // d essai — la faute que `sonde-ui-suppression.mjs` a deja commise.
-    const chemin = racine(VOL).split('/').filter(Boolean)
-      .filter((x) => !/^[A-Za-z]:$/.test(x)).concat(NOM);
-    const d = await descendre(chemin);
-    const fichier = (d.t && (d.t.rows || []).find((x) => x.name === 'cible.txt')) || null;
+    // Le dossier est cherché PAR SON NOM. Descendre depuis la racine eut
+    // échoué sur le runner : la racine tient plus de quatre cents entrées, et
+    // l arbre étant trié par taille décroissante, un dossier de quelques
+    // octets n entre pas dans la fenêtre. C est un fait mesuré, pas une idée.
+    const trouve = await trouverFichier('cible.txt');
     let serveur = null;
-    if (fichier) {
+    if (trouve.sel) {
       const r = await post('/api/delete', {
-        drive: VOL, items: [fichier.sel], mode: 'dry', gen: d.t.gen,
+        drive: VOL, items: [trouve.sel], mode: 'dry', gen: trouve.t.gen,
       });
       serveur = r.j;
     }
     const motsServeur = (serveur && (serveur.mots_recycle || []).map((m) => m.mot)) || null;
     verifier('un second avis a pu etre obtenu sur le meme lot',
       motsServeur !== null,
-      `fichier=${fichier ? 'trouve' : 'absent'}, lu=`
-      + `${JSON.stringify(d.lu || chemin.join('/'))}, manque=${d.manque || 'rien'}`);
+      `cible.txt=${trouve.sel ? 'trouve' : 'absent'}, dossier=${trouve.lu ? 'trouve' : 'absent'}, `
+      + `manque=${trouve.manque || 'rien'}`);
 
     if (motsServeur !== null) {
       verifier('l interface demande EXACTEMENT les mots que le serveur exige',
