@@ -109,6 +109,10 @@ const SONDES = [
     quoi: 'Le plafond de la corbeille est mesure, et son annonce se tient',
   },
   {
+    nom: 'mot', fichier: 'sonde-mot-exige.mjs', args: (c) => [c.url, c.volume], ci: true,
+    quoi: 'Le mot exige est celui du contexte, mode par mode',
+  },
+  {
     nom: 'lot', fichier: 'sonde-suppression-lot.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Le cout d un lot, et un temoin en mode definitif',
@@ -132,13 +136,29 @@ const SONDES = [
     quoi: 'Le bouton Arreter est present, et les boutons d illisibles sont discrets',
   },
   {
+    // LA MÊME sonde, sur le volume de travail. Son invariant — « ce que
+    // l'application annonce doit correspondre à l'état du disque » — tient sur
+    // un volume AVEC corbeille comme sur un volume sans : la seconde entrée ci
+    //-dessous n'en est qu'un cas particulier. La laisser hors de la CI, parce
+    // que son cas exFAT est difficile à monter, retirait l'invariant lui-même :
+    // la CI prouvait que la corbeille prend les fichiers, jamais que
+    // l'application dit VRAI ce qui s'est passé.
+    //
+    // Elle n'est donc decomposee en deux : l'invariant est en CI, la situation
+    // exFAT reste locale. Un vert qui ne couvre pas ce pour quoi la sonde existe
+    // est un test qui ne peut pas echouer.
     nom: 'reversibilite', fichier: 'sonde-reversibilite.mjs',
+    args: (c) => [c.url, c.volume], ci: true, detruit: 'les siennes',
+    quoi: 'Ce que l application annonce correspond a ce que le disque dit',
+  },
+  {
+    nom: 'sans-corbeille', fichier: 'sonde-reversibilite.mjs',
     args: (c) => [c.url, c.volumeSansCorbeille], ci: false, detruit: 'les siennes',
     // Elle agit sur un AUTRE volume que le volume principal. C'est ce qui
     // impose a `racinesDuFilet` de verifier qu'une racine existe pour elle —
     // sans quoi le filet couvrirait un volume que personne n'a designe.
     volumeSecondaire: true,
-    quoi: 'Sur un volume SANS corbeille, la promesse de reversibilite ne tient pas — et doit etre dite',
+    quoi: 'Sur un volume SANS corbeille, la promesse ne tient pas — et doit etre dite',
   },
 ];
 
@@ -413,7 +433,8 @@ function racinesDuFilet(volume, retenues) {
  */
 function nettoyer() {
   const base = racine(opt.volume);
-  const connus = ['csrf', 'ui', 'perime', 'reversibilite', 'lot-cout', 'lot-coherence', 'suppression-reelle'];
+  const connus = ['csrf', 'ui', 'perime', 'reversibilite', 'sans-corbeille', 'plafond',
+    'mot-exige', 'lot-cout', 'lot-coherence', 'suppression-reelle'];
   let n = 0;
   for (const nom of connus) {
     const cible = `${base}/${nom}`;

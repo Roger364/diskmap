@@ -69,8 +69,16 @@ Defaults and guards:
   confirm, and says what was actually measured: nothing is destroyed at the
   moment of deletion — measured on 27/09/2026, a 72 MB lot left the Bin at
   **1.66×** its cap with every file still in it — but Windows decides when to
-  purge, and it does not say so. When the cap cannot be read, the app says
+  purge, and it does not say so.  When the cap cannot be read, the app says
   nothing rather than falling back on a default it has not measured.
+- **Running elevated changes what a deletion means, so it changes what it
+  costs.** Windows stops enforcing ACLs when the token is elevated: the files
+  your account could not touch become deletable. A banner said so; a banner is
+  not a rule, and the app decided the `EFFACER` word itself. The server now
+  decides, and says which word it wants for which mode — elevated asks for the
+  same word as permanent deletion, **added to** whatever the lot already
+  required, not in place of it. And when nothing is at stake, no word is asked
+  for: a rule that fires too often is a rule you stop reading.
 - **A folder whose loss is not trivial has to be named.** Two families, one
   rule. The personal ones — `Desktop`, `Documents`, `Pictures`, `Music`,
   `Videos`, `Downloads`, `Bureau`, `Images`, `Téléchargements` and their

@@ -1091,12 +1091,26 @@ function nomCorrect(i) {
 // Le bouton s'allume quand TOUT est saisi : chaque dossier a nommer, et
 // « EFFACER » quand l'effet prévu est la destruction. Les deux conditions
 // s'appliquent à la fois, sinon il resterait actif sur un lot qui détruit.
+// Le mot que le SERVEUR exige pour ce mode, tel qu'il l'a dit dans l'apercu.
+//
+// Le serveur repond pour les deux modes parce que la simulation se fait avant le
+// choix du mode. Deviner le mot ici mettrait le bouton et le refus de
+// l'execution en desaccord — et le desaccord, c'est le garde-fou qui disparait
+// sans bruit.
+function motAttendu(d, mode) {
+  if (!d) return null;
+  return mode === 'permanent' ? d.mot_permanent : d.mot_recycle;
+}
+
 function toutSaisi() {
   const d = pendingDry;
   if (!d || d.deletable === 0) return false;
-  const mode = document.querySelector('input[name=dmode]:checked').value;
-  if (mode === 'permanent' || !d.corbeille) {
-    if ((($('#dconfirm') && $('#dconfirm').value) || '').trim() !== 'EFFACER') return false;
+  // Le mot est celui que le SERVEUR exige, pas celui que l'interface croit
+  // devoir demander. C'est la seule façon que le bouton et le refus de
+  // l'exécution racontent la même chose.
+  const mot = motAttendu(d, document.querySelector('input[name=dmode]:checked').value);
+  if (mot) {
+    if ((($('#dconfirm') && $('#dconfirm').value) || '').trim() !== mot) return false;
   }
   return Array.from(document.querySelectorAll('#dbody .nom-in')).every(nomCorrect);
 }
@@ -1174,10 +1188,20 @@ function renderDeleteBody() {
     h += '</div>';
   }
 
-  if (mode === 'permanent' || !d.corbeille) {
-    h += `<div class="warn" style="margin-top:12px">Suppression <b>définitive</b>, ` +
-         `aucune récupération possible depuis la corbeille. Tape <b>EFFACER</b> pour confirmer.</div>` +
-         `<input class="search" id="dconfirm" placeholder="EFFACER" style="width:150px;margin-top:9px" />`;
+  // Le serveur DIT quel mot il exige (`mot_exige`), et pourquoi. L'interface ne
+  // le devine pas : deviner juste dispenserait d'un garde-fou, deviner faux en
+  // imposerait un que personne n'a demandé — et les deux sont invisibles.
+  const mot = motAttendu(pendingDry, mode);
+  if (mot) {
+    const why = (mode === 'permanent' || !d.corbeille)
+      ? `Suppression <b>définitive</b>, aucune récupération possible depuis la corbeille.`
+      : `Instance <b>élevée</b> : les protections de Windows ne s’appliquent plus, `
+        + `donc <b>tout est effaçable</b>, y compris ce que les droits du compte `
+        + `interdisaient. La corbeille ne vous protège plus, ici.`;
+    h += `<div class="warn" style="margin-top:12px">${why} `
+         + `Tape <b>${escapeHtml(mot)}</b> pour confirmer.</div>`
+         + `<input class="search" id="dconfirm" placeholder="${escapeHtml(mot)}" `
+         + `style="width:150px;margin-top:9px" />`;
   } else {
     // « Les éléments iront dans la corbeille : tu peux les restaurer » était
     // une CROYANCE, et une seule : « dans la corbeille » veut dire « dans la
@@ -1220,10 +1244,11 @@ function renderDeleteBody() {
 async function doDelete() {
   const mode = document.querySelector('input[name=dmode]:checked').value;
   let confirm;
-  if (mode === 'permanent' || !pendingDry.corbeille) {
+  const mot = motAttendu(pendingDry, mode);
+  if (mot) {
     confirm = ($('#dconfirm') && $('#dconfirm').value || '').trim();
-    if (confirm !== 'EFFACER') {
-      alert('Tape EFFACER en majuscules pour confirmer la suppression définitive.');
+    if (confirm !== mot) {
+      alert(`Tape ${mot} en majuscules pour confirmer.`);
       return;
     }
   }
@@ -1245,6 +1270,10 @@ async function doDelete() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         drive: cur.drive, mode, token: pendingDry.token, confirm,
+        // Le mot est renvoyé tel quel : le serveur le compare, il ne le
+        // recalcule pas à partir de ce que l'interface croit. Un client qui
+        // dirait « EFFACER » quand le serveur n'en attendait pas serait refusé
+        // — ce qui est le but d'un mot de passe, et pas d'un formalisme.
         noms: Array.from(document.querySelectorAll('#dbody .nom-in'))
           .map(i => i.value.trim()),
       }),

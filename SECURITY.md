@@ -296,6 +296,25 @@ refuseraient*. Le second apparaît dans la modale de suppression, au moment de l
 c'est le seul endroit où l'utilisateur regarde une liste de chemins qui vont disparaître, et
 un avertissement lu au lancement six minutes plus tôt n'y est plus.
 
+**Complété le 27/09/2026 :** deux bandeaux n'étaient pas une règle. Un bandeau se ferme avec
+l'onglet, et rien n'obligeait à l'avoir vu ; surtout, l'interface choisissait le mot
+`EFFACER` elle-même, selon `mode === 'permanent' || !corbeille` — un calcul fait chez le
+client, que le serveur ne connaissait pas. Le serveur exige désormais le mot, et le
+**dit** : `DeletePreview` porte `mot_recycle` et `mot_permanent`, et l'interface lit ce champ
+au lieu de le refaire. Les deux modes sont répondus parce que la simulation se fait en mode
+`dry`, donc avant le choix du mode ; répondre pour un seul laisserait l'interface deviner
+l'autre.
+
+La règle est `mot_exige(to_trash, corbeille, eleve)` : le mot s'**ajoute** aux autres
+règles, il ne les remplace pas. Instance élevée ⇒ le mot de la suppression définitive, même
+en mode corbeille, parce que la corbeille ne protège plus de rien quand les ACL ne
+s'appliquent plus. Et le mot n'est pas exigé quand tout va bien : une règle qui s'applique
+trop devient une règle qu'on contourne, puis qu'on saisit machinalement.
+
+Vérification : `sonde-mot-exige.mjs` confronte l'annonce du serveur à la règle du projet
+mode par mode, et éprouve le refus avec un jeton inerte — un sélecteur hors bornes, que la
+résolution ne peut pas résoudre, donc sans rien supprimer.
+
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
 `journal` (`src/main.rs:1599`) écrivait l'issue, la taille et le chemin **réellement traité**.

@@ -1207,6 +1207,19 @@ struct DeletePreview {
     /// profil. Voir `dossiers_a_nommer`.
     #[serde(rename = "aNommer")]
     a_nommer: Vec<String>,
+    /// Le mot `EFFACER` est-il exigé, et pour quel mode ?
+    ///
+    /// Le serveur ne demande JAMAIS `EFFACER` à la place de l'utilisateur : il
+    /// exige ce qui MANQUE, et rien d'autre. Sans ce champ, l'interface ne peut
+    /// que deviner — et deviner faux dans un sens dispense d'un garde-fou, dans
+    /// l'autre en impose un que l'utilisateur n'a pas demandé.
+    ///
+    /// Les DEUX modes sont répondus parce que la simulation est toujours en mode
+    /// `dry` : elle se fait avant que l'utilisateur choisisse « corbeille » ou
+    /// « définitif », et ce choix peut changer après coup. Répondre pour un seul
+    /// mode laisserait l'interface deviner l'autre — donc se tromper, en silence.
+    mot_recycle: Option<String>,
+    mot_permanent: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1510,6 +1523,17 @@ fn dry(
     let etat = win32::etat_corbeille(letter);
     let deborde = etat.deborde(total);
 
+    // Le mot exigé est décidé ICI, dans la simulation, et figé avec elle : à
+    // l'exécution, la corbeille aura pu changer, et la décision serait déjà
+    // fausse. Il est calculé du MODE DEMANDÉ, comme le fera l'exécution — la
+    // corbeille réelle ne s'applique que si l'exécution a lieu, et là c'est trop
+    // tard pour exiger un mot.
+    let corbeille = win32::corbeille_disponible(letter);
+    let (mot_recycle, mot_permanent) = (
+        mot_exige(true, corbeille, app.eleve).map(str::to_string),
+        mot_exige(false, corbeille, app.eleve).map(str::to_string),
+    );
+
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
     // cacher quoi que ce soit, puisqu'il est écrit en clair juste à côté. C'est
     // l'aléa qui doit être imprévisible — et lui seul.
@@ -1546,6 +1570,8 @@ fn dry(
             corbeille_complet: etat.complet,
             corbeille_deborde: deborde,
             a_nommer,
+            mot_recycle,
+            mot_permanent,
         })
         .unwrap(),
     ))
@@ -1576,8 +1602,11 @@ fn execute(
     }
     // "recycle" n'est qu'une intention : sans corbeille, Windows détruit. La
     // confirmation dépend donc de l'effet prévisible, pas du libellé du bouton.
+    // Une instance ÉLEVÉE s'y ajoute : les ACL ne s'appliquent plus, et le mot
+    // demandé est alors celui de la suppression DÉFINITIVE — sans remplacer
+    // les autres règles, qui s'ajoutent.
     let recycle_available = win32::corbeille_disponible(letter);
-    if confirmation_required(to_trash, recycle_available)
+    if mot_exige(to_trash, recycle_available, app.eleve).is_some()
         && req.confirm.clone().unwrap_or_default() != "EFFACER"
     {
         return Err(("400 Bad Request", "confirmation « EFFACER » absente".into()));
@@ -1853,9 +1882,57 @@ fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
     !to_trash || !recycle_available
 }
 
+/// Une instance ÉLEVÉE change-t-elle ce que vaut une suppression ?
+///
+/// Windows ignore les ACL quand le jeton est élevé : les droits du compte
+/// deviennent inopérants, et les fichiers que l'utilisateur ne pourrait pas
+/// toucher le sont. L'interface le dit — un bandeau, en haut de page — mais un
+/// bandeau n'est pas une règle : il se ferme avec l'onglet, et rien n'oblige à
+/// l'avoir vu.
+///
+/// La règle retenue tient en une ligne, et elle cumule au lieu de remplacer :
+/// une instance élevée exige le MÊME mot que la suppression définitive, en plus
+/// de tout ce que le lot exige déjà. Rien n'est interdit — l'utilisateur peut
+/// Legitiment vouloir nettoyer un volume entier en administrateur — mais le
+/// geste devient un geste.
+///
+/// Le mot `EFFACER` est-il exigé, et pour quelle raison ?
+///
+/// Le serveur ne demande JAMAIS `EFFACER` à la place de l'utilisateur : il exige
+/// ce qui manque. `Some("EFFACER")` signifie « tape EFFACER ». `None` signifie
+/// « rien à taper de plus » — et c'est distinct de `Some("")`, qui est la
+/// faute de l'interface : elle promettait une saisie qu'elle n'exigeait pas.
+fn mot_exige(to_trash: bool, corbeille: bool, eleve: bool) -> Option<&'static str> {
+    if confirmation_required(to_trash, corbeille) || eleve_change_le_geste(eleve) {
+        Some("EFFACER")
+    } else {
+        None
+    }
+}
+
+/// Une instance ÉLEVÉE change-t-elle ce que vaut une suppression ?
+///
+/// Windows ignore les ACL quand le jeton est élevé : les droits du compte
+/// deviennent inopérants, et les fichiers que l'utilisateur ne pourrait pas
+/// toucher le sont. L'interface le dit — un bandeau, en haut de page — mais un
+/// bandeau n'est pas une règle : il se ferme avec l'onglet, et rien n'oblige à
+/// l'avoir vu.
+///
+/// La règle retenue tient en une ligne, et elle cumule au lieu de remplacer :
+/// une instance élevée exige le MÊME mot que la suppression définitive, en plus
+/// de tout ce que le lot exige déjà. Rien n'est interdit — on peut
+/// légitimement vouloir nettoyer un volume entier en administrateur — mais le
+/// geste devient un geste.
+///
+/// L'avertissement ne DISPENSE pas : l'utilisateur qui a lu le bandeau et veut
+/// passer outre tape le mot. C'est le but — pas un mur.
+fn eleve_change_le_geste(eleve: bool) -> bool {
+    eleve
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{confirmation_required, dossiers_a_nommer, LigneJournal};
+    use super::{confirmation_required, dossiers_a_nommer, mot_exige, LigneJournal};
     use std::path::Path;
 
     #[test]
@@ -1977,6 +2054,41 @@ mod tests {
             motif: String::new(),
         }
         .ligne(1700000000000)
+    }
+
+    /// Le mot exigé ne DISPENSE jamais d'une autre règle, il s'y ajoute.
+    ///
+    /// C'est le point de la règle. Une instance élevée n'est pas un mode de
+    /// suppression : c'est un contexte où TOUT devient effaçable, y compris ce
+    /// que les droits du compte interdisaient. Le mot de la corbeille ne suffit
+    /// donc plus — et l'inverse est vrai aussi, le mot de l'élevée ne dispense
+    /// pas du nommage des dossiers personnels.
+    #[test]
+    fn une_instance_elevee_ajoute_le_mot_au_lieu_de_le_remplacer() {
+        // corbeille disponible, instance normale : rien à taper.
+        assert_eq!(mot_exige(true, true, false), None);
+        // même lot, instance élevée : le mot apparaît.
+        assert_eq!(mot_exige(true, true, true), Some("EFFACER"));
+        // sans corbeille, le mot était déjà là, l'élevée ne change rien.
+        assert_eq!(mot_exige(true, false, false), Some("EFFACER"));
+        assert_eq!(mot_exige(true, false, true), Some("EFFACER"));
+        // suppression définitive : le mot est exigé dans les deux cas.
+        assert_eq!(mot_exige(false, true, false), Some("EFFACER"));
+        assert_eq!(mot_exige(false, true, true), Some("EFFACER"));
+    }
+
+    /// `confirmation_required` reste la règle du mode SEUL, sans l'élevée.
+    ///
+    /// Elle est conservée telle quelle parce qu'elle a une autre utilisateur :
+    /// `mot_exige` l'appelle, et c'est elle qui décide qu'une « corbeille »
+    /// sans corbeille est une destruction. Si l'élevée y entrait, la règle
+    /// perdrait sa raison d'être : « pas de corbeille » est un fait mesuré,
+    /// « instance élevée » un contexte.
+    #[test]
+    fn la_confirmation_de_base_ignore_l_instance_elevee() {
+        assert!(!confirmation_required(true, true));
+        assert!(confirmation_required(true, false));
+        assert!(confirmation_required(false, true));
     }
 
     #[test]
