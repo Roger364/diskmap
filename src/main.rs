@@ -2046,8 +2046,13 @@ fn mots_avec_raison(taille: u64, to_trash: bool, corbeille: bool, eleve: bool) -
 ///
 /// L'avertissement ne DISPENSE pas : l'utilisateur qui a lu le bandeau et veut
 /// passer outre tape le mot. C'est le but — pas un mur.
+// ================ ÉPREUVE DE RUPTURE VOLONTAIRE — À NE PAS GARDER ===========
+// La regle des mots exiges cesse de tenir compte de l elevation. C est une
+// RUPTURE, pas un correctif : elle sert a prouver que les tests la verifient
+// reellement, et qu ils ne sont pas verts par hasard.
 fn eleve_change_le_geste(eleve: bool) -> bool {
-    eleve
+    let _ = eleve;
+    false
 }
 
 #[cfg(test)]
