@@ -221,6 +221,81 @@ export function corbeille(vol) {
   return `${vol}:/$RECYCLE.BIN`;
 }
 
+/**
+ * Retrouver dans la corbeille les charges `$R` dont le CONTENU est exactement
+ * celui qu'on cherche.
+ *
+ * Une sonde qui met un fichier a la corbeille doit le reprendrederniere, sinon
+ * chaque execution laisse un residu de quelques octets dans le dossier du
+ * developpeur -- et un test qu'on hesite a relancer est un test qu'on ne
+ * relance pas. Or la corbeille renomme : le nom d'origine n'y est plus. On
+ * retrouve donc par le contenu, pas par le nom.
+ *
+ * La fonction compare la TAILLE d'abord : sur une corbeille de plusieurs
+ * milliers d'entrees, lire chaque fichier serait lent, et lire un repertoire
+ * serait une faute de tres.
+ */
+/** Les SID de corbeille qu'on peut lire, et ceux qu'on ne peut pas. */
+export function sidsDeCorbeille(corbeille) {
+  const lisibles = [], illisibles = [];
+  let entrees;
+  try { entrees = fs.readdirSync(corbeille); } catch (e) {
+    return { lisibles, illisibles, erreur: `${e.code} ${e.message}` };
+  }
+  for (const sid of entrees) {
+    try {
+      if (!fs.statSync(`${corbeille}/${sid}`).isDirectory()) continue;
+      fs.readdirSync(`${corbeille}/${sid}`);
+      lisibles.push(sid);
+    } catch (e) { illisibles.push(`${sid} (${e.code})`); }
+  }
+  return { lisibles, illisibles, erreur: null };
+}
+
+export function fouillerCorbeille(corbeille, contenu) {
+  const trouvees = [];
+  const taille = Buffer.byteLength(contenu, 'utf8');
+  let sids;
+  try { sids = fs.readdirSync(corbeille); } catch { return trouvees; }
+  for (const sid of sids) {
+    const dossier = `${corbeille}/${sid}`;
+    if (!fs.existsSync(dossier)) continue;
+    let noms;
+    try {
+      if (!fs.statSync(dossier).isDirectory()) continue;
+      noms = fs.readdirSync(dossier);
+    } catch { continue; }
+    for (const n of noms) {
+      if (!n.startsWith('$R')) continue;
+      const f = `${dossier}/${n}`;
+      let st;
+      try { st = fs.statSync(f); } catch { continue; }
+      if (!st.isFile() || st.size !== taille) continue;
+      try { if (fs.readFileSync(f, 'utf8') === contenu) trouvees.push(f); } catch { /* illisible */ }
+    }
+  }
+  return trouvees;
+}
+
+/** Retirer de la corbeille les charges `$R` trouvées ET leur fiche `$I`. */
+export function viderTrouves(corbeille, trouvees) {
+  let rendus = 0;
+  for (const f of trouvees) {
+    const dossier = f.slice(0, f.lastIndexOf('/'));
+    const nom = f.slice(f.lastIndexOf('/') + 1);
+    const suffixe = nom.replace(/^\$R/, '').replace(/\.[^.]*$/, '');
+    try { fs.unlinkSync(f); rendus++; } catch { /* deja parti */ }
+    try {
+      for (const n of fs.readdirSync(dossier)) {
+        if (n.startsWith('$I') && n.includes(suffixe)) {
+          try { fs.unlinkSync(`${dossier}/${n}`); } catch { /* fiche absente */ }
+        }
+      }
+    } catch { /* dossier parti */ }
+  }
+  return rendus;
+}
+
 /** Ce volume a-t-il une corbeille ? La question se pose AVANT d'agir. */
 export function aCorbeille(vol) {
   return fs.existsSync(corbeille(vol));

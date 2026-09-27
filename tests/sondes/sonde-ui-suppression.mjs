@@ -61,6 +61,10 @@ console.log(`--- ${VOL}: — corbeille ${A_CORBEILLE ? 'présente' : 'ABSENTE'} 
 // `attendreFichier` dans config.mjs.
 fs.mkdirSync(DOSSIER, { recursive: true });
 fs.writeFileSync(DOSSIER + '/cible.txt', `cible-${Date.now()}\n`);
+// Un second fichier, dans un dossier que la regle des dossiers personnels
+// reconnait : c'est ce qui permet d'eprouver le champ dans un vrai navigateur.
+fs.mkdirSync(DOSSIER + '/Documents', { recursive: true });
+fs.writeFileSync(DOSSIER + '/Documents/photo.jpg', `photo-${Date.now()}\n`);
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
 const indexe = await attendreFichier(BASE, VOL, 'cible.txt');
 verifier('le fichier d’essai est dans l’instantané', indexe,
@@ -201,6 +205,95 @@ if (titre !== null) {
   verifier('le fichier est toujours là — la vérification n’a rien effacé',
     fs.existsSync(DOSSIER + '/cible.txt'), 'le fichier a disparu');
 }
+// --- la regle des dossiers personnels, dans un vrai navigateur -------------
+//
+// La sonde serveur (`sonde-dossiers-personnels.mjs`) prouve que le serveur
+// refuse. Elle ne voit pas le BOUTON, qui est la moitie du geste : un
+// `disabled` oublie dans l'interface laisserait tous les tests verts et
+// l'utilisateur devant une modale qui ne finit pas.
+//
+// Elle s'arrete une fois le bouton allume. Elle ne clique pas dessus : la
+// suppression reelle n'est pas l'objet de cette verification, et la sonde
+// `reelle` s'en charge sur le meme volume.
+console.log('--- la regle des dossiers personnels, dans un vrai navigateur ---');
+await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
+const indexePerso = await attendreFichier(BASE, VOL, 'photo.jpg');
+verifier('le fichier sous « Documents » est dans l’instantané', indexePerso,
+  '« photo.jpg » n’apparaît pas dans l’index de ' + VOL);
+
+// `docsTrouve` est déclaré ICI et pas dans le `if` : une `let` déclarée dans
+// un bloc n'existe que dans ce bloc, et la vérification suivante — celle qui
+// dépend du clic — planterait sur une variable invisible. Le parcours entier
+// du fichier a été sorti de l'échec en cascades pour cette seule ligne.
+let docsTrouve = false;
+if (fichierTrouve) {
+  const ligneDocs = page.locator('#rows tr')
+    .filter({ has: page.getByText('Documents', { exact: true }) }).first();
+  try {
+    await ligneDocs.locator('.nm').waitFor({ state: 'visible', timeout: 30000 });
+    docsTrouve = true;
+  } catch { /* rendu plus bas */ }
+  verifier('le dossier « Documents » est listé à côté du fichier d’essai',
+    docsTrouve, await contenuLignes());
+  if (docsTrouve) await ligneDocs.locator('.nm').click();
+}
+
+const lignePerso = page.locator('#rows tr')
+  .filter({ has: page.getByText('photo.jpg', { exact: true }) }).first();
+let persoTrouve = false;
+if (docsTrouve) {
+  try {
+    await lignePerso.waitFor({ state: 'visible', timeout: 60000 });
+    persoTrouve = true;
+  } catch { /* idem */ }
+}
+verifier('le fichier du dossier personnel est listé', persoTrouve,
+  `${await contenuLignes()} · fil : ${await filAriane()}`);
+
+if (persoTrouve) {
+  await lignePerso.locator('.chk').check();
+  await page.locator('#delbtn').click();
+  let modale = false;
+  try {
+    await page.waitForSelector('#modal:not(.hidden)', { timeout: 60000 });
+    modale = true;
+  } catch { /* rendu plus bas */ }
+  verifier('la modale s’ouvre sur un lot de dossier personnel', modale,
+    'elle ne s’est pas ouverte');
+
+  if (modale) {
+    const champ = page.locator('#dbody .perso-in').first();
+    const nb = await page.locator('#dbody .perso-in').count();
+    verifier('elle affiche un champ par dossier personnel', nb === 1, `${nb} champ(s)`);
+    const attendu = await champ.getAttribute('data-perso').catch(() => null);
+    verifier('le champ porte le nom du dossier à saisir', attendu === 'Documents',
+      `data-perso = ${JSON.stringify(attendu)}`);
+
+    const corps = (await page.textContent('#dbody')).replace(/\s+/g, ' ');
+    verifier('le bandeau annonce le dossier personnel', /Dossier personnel/i.test(corps),
+      corps.slice(0, 200));
+
+    const desactive = () => page.locator('#ddo').isDisabled();
+    verifier('le bouton est inactif tant que rien n’est saisi', await desactive(),
+      'le bouton est actif sur une modale non confirmee');
+    await champ.fill('burns');
+    await page.waitForTimeout(150);
+    verifier('le bouton reste inactif sur le MAUVAIS nom', await desactive(),
+      'le bouton s’est active sur « burns » pour un dossier « Documents »');
+    const aide = (await page.locator('#dbody .p-aide').first().textContent().catch(() => '')) || '';
+    verifier('l’interface dit pourquoi le nom ne convient pas', aide.length > 0, 'aide vide');
+    await champ.fill('documents');
+    await page.waitForTimeout(150);
+    verifier('le bouton s’active sur le bon nom, casse indifférence',
+      !(await desactive()), 'le bouton reste inactif sur « documents »');
+
+    await page.click('#dcancel');
+    verifier('rien n’a été effacé : la vérification s’est arrêtée à l’allumage',
+      fs.existsSync(DOSSIER + '/Documents/photo.jpg'),
+      'le fichier a disparu sans que la sonde ait clique');
+  }
+}
+
 verifier('aucune erreur JavaScript dans l’interface', erreurs.length === 0,
   JSON.stringify(erreurs.slice(0, 3)));
 

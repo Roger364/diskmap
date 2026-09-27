@@ -21,7 +21,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { dossier, URL_DEFAUT, VOLUME_DEFAUT } from './config.mjs';
+import { corbeille, dossier, fouillerCorbeille, URL_DEFAUT, VOLUME_DEFAUT, viderTrouves } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -71,7 +71,10 @@ async function attendreFinParcours() {
 console.log('--- 0. la sonde crée un dossier personnel et un dossier neutre ---');
 fs.mkdirSync(PERSO, { recursive: true });
 fs.mkdirSync(NEUTRE, { recursive: true });
-fs.writeFileSync(F_PERSO, 'personnel\n');
+// Un sceau unique : la corbeille RENOMME, et c'est par le contenu qu'on
+// retrouve un fichier pour le reprendre. Voir `fouillerCorbeille`.
+const SCEAU = `personnel-${Date.now()}-${Math.random().toString(36).slice(2, 10)}\n`;
+fs.writeFileSync(F_PERSO, SCEAU);
 fs.writeFileSync(F_NEUTRE, 'neutre\n');
 verifier('le témoin « Documents » est créé', fs.existsSync(F_PERSO), F_PERSO);
 verifier('le témoin « burns » est créé', fs.existsSync(F_NEUTRE), F_NEUTRE);
@@ -96,9 +99,18 @@ const enfants = (await get(`/api/tree?drive=${VOL}&id=${racine.sel}`)).rows || [
 const parNom = (nom) => enfants.find((r) => r.name === nom);
 const selPerso = parNom('Documents');
 const selNeutre = parNom('burns');
+// Le FICHIER, et non le dossier. C'est le cas réel — c'est une photo qu'on
+// veut effacer — et cela garde le ménage possible : une mise à la corbeille
+// de DOSSIER produit une charge `$R` qui est un répertoire, que
+// `fouillerCorbeille` ne cherche pas, puisque cette fonction ne descend pas
+// dans les arbres.
+const enfantsPerso = (await get(`/api/tree?drive=${VOL}&id=${selPerso.sel}`)).rows || [];
+const selFichier = enfantsPerso.find((r) => !r.is_dir && r.name === 'photo-2019.jpg');
+verifier('le fichier du dossier « Documents » est indexé', !!selFichier,
+  JSON.stringify(enfantsPerso).slice(0, 200));
 verifier('le dossier « Documents » est indexé', !!selPerso, JSON.stringify(enfants).slice(0, 200));
 verifier('le dossier « burns » est indexé', !!selNeutre, JSON.stringify(enfants).slice(0, 200));
-if (!selPerso || !selNeutre) {
+if (!selPerso || !selNeutre || !selFichier) {
   console.log(`\n  ${echecs.length} échec(s)`);
   process.exit(1);
 }
@@ -106,7 +118,7 @@ if (!selPerso || !selNeutre) {
 // ---------------------------------------------------- 2. l'aperçu nomme le lot
 console.log('--- 1. l’aperçu annonce le dossier personnel ---');
 const apercuPerso = await post('/api/delete', {
-  drive: VOL, mode: 'dry', items: [selPerso.sel], gen,
+  drive: VOL, mode: 'dry', items: [selFichier.sel], gen,
 });
 verifier(
   'un lot dans « Documents » est signalé comme tel',
@@ -160,6 +172,19 @@ verifier('le jeton n’a pas été consommé par les refus', ok, 'un refus doit 
 console.log('--- 3. ce qui a réellement eu lieu ---');
 const efface = fs.existsSync(F_PERSO);
 verifier('le fichier visé par le dernier essai a bien disparu', !efface, F_PERSO);
+
+// Et surtout : la sonde ne laisse pas le fichier dans la corbeille. Elle en a
+// mis un, donc elle le reprend. Le pire n'est pas le fichier de quelques
+// octets : c'est que la corbeille rend le diagnostic des AUTRES faux. Mesurée :
+// la sonde `ui` cherchait `photo.jpg`, trouvait le `photo-2019.jpg` laissé ici,
+// et concluait que l'interface ne listait rien. Une sonde sale rend le
+// diagnostic des autres faux, sans jamais échouer elle-même.
+const trouves = fouillerCorbeille(corbeille(VOL), SCEAU);
+const rendus = viderTrouves(corbeille(VOL), trouves);
+verifier('la sonde a repris son fichier dans la corbeille', rendus === 1,
+  `${rendus} retrait(s) sur ${trouves.length} trouvé(s)`);
+verifier('aucun résidu dans la corbeille', fouillerCorbeille(corbeille(VOL), SCEAU).length === 0,
+  `${fouillerCorbeille(corbeille(VOL), SCEAU).length} résidu(s)`);
 verifier('le témoin neutre est intact', fs.existsSync(F_NEUTRE), F_NEUTRE);
 
 const journal = fs.readFileSync(journalPath(), 'utf8');

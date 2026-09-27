@@ -20,7 +20,8 @@
 //   (le serveur doit tourner sur le binaire à éprouver ; le test réanalyse G:)
 import fs from 'fs';
 
-import { dossier, corbeille, journal, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { dossier, corbeille, fouillerCorbeille, journal, sidsDeCorbeille,
+  VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -78,58 +79,16 @@ const effacer = (drive, items, mode, extra = {}) =>
 // On saute donc les illisibles, et on DIT combien on en a sauté — un compte qui
 // tait ce qu'il n'a pas vu se présente comme une mesure alors qu'il n'est qu'un
 // plancher.
-function sidsDeCorbeille() {
-  const lisibles = [], illisibles = [];
-  let entrees;
-  try {
-    entrees = fs.readdirSync(CORBEILLE);
-  } catch (e) {
-    return { lisibles, illisibles, erreur: `${e.code} ${e.message}` };
-  }
-  for (const sid of entrees) {
-    try {
-      if (!fs.statSync(`${CORBEILLE}/${sid}`).isDirectory()) continue;
-      fs.readdirSync(`${CORBEILLE}/${sid}`);
-      lisibles.push(sid);
-    } catch (e) {
-      illisibles.push(`${sid} (${e.code})`);
-    }
-  }
-  return { lisibles, illisibles, erreur: null };
-}
-
+// `compterR` est resté ici alors que `sidsDeCorbeille` et `fouillerCorbeille`
+// sont passées dans `config.mjs` : elle n'a qu'un seul utilisateur, et la
+// mutualiser pour une seule ligne serait du code partagé sans second lecteur.
 function compterR() {
-  const { lisibles } = sidsDeCorbeille();
   let n = 0;
-  for (const sid of lisibles) {
-    try { n += fs.readdirSync(`${CORBEILLE}/${sid}`).filter(x => x.startsWith('$R')).length; }
+  for (const sid of sidsDeCorbeille(CORBEILLE).lisibles) {
+    try { n += fs.readdirSync(`${CORBEILLE}/${sid}`).filter((x) => x.startsWith('$R')).length; }
     catch { /* illisible entre-temps : on ne le compte pas, il est signalé ailleurs */ }
   }
   return n;
-}
-
-// L'oracle qui compte vraiment : le fichier est-il dans la corbeille ?
-// Un décompte qui bouge ne prouve pas que C'EST NOTRE fichier ; le retrouver par
-// son contenu, si.
-// Le filtre par taille d'abord : un fichier recyclé garde sa taille, donc seuls
-// les $R de cette taille exacte sont candidats — on ne lit que ceux-là.
-function fouillerCorbeille(contenu) {
-  const taille = Buffer.byteLength(contenu, 'utf8');
-  const { lisibles } = sidsDeCorbeille();
-  const trouves = [];
-  for (const sid of lisibles) {
-    let noms;
-    try { noms = fs.readdirSync(`${CORBEILLE}/${sid}`); } catch { continue; }
-    for (const n of noms) {
-      if (!n.startsWith('$R')) continue;
-      const f = `${CORBEILLE}/${sid}/${n}`;
-      let st;
-      try { st = fs.statSync(f); } catch { continue; }
-      if (!st.isFile() || st.size !== taille) continue;
-      try { if (fs.readFileSync(f, 'utf8') === contenu) trouves.push(f); } catch { /* illisible */ }
-    }
-  }
-  return trouves;
 }
 
 // Renvoie l'identifiant ET la génération de l'instantané qui le porte.
@@ -170,7 +129,7 @@ console.log(`      sceau de cette exécution : ${SCEAU}`);
 verifier('a.txt créé', fs.readFileSync(A, 'utf8') === CONTENU_A, 'contenu inattendu');
 verifier('b.txt créé', fs.readFileSync(B, 'utf8') === CONTENU_B, 'contenu inattendu');
 
-const sids = sidsDeCorbeille();
+const sids = sidsDeCorbeille(CORBEILLE);
 if (sids.erreur) {
   noter(`corbeille de G: inaccessible (${sids.erreur}) — l'oracle de la corbeille ne vaut rien`);
 } else {
@@ -234,7 +193,7 @@ verifier('a.txt a disparu du disque', !fs.existsSync(A), 'toujours présent');
 verifier('b.txt n’a pas été touché', fs.existsSync(B), 'b.txt a disparu');
 
 // L'oracle principal : le fichier, retrouvé dans la corbeille par son contenu.
-const dansCorbeille = fouillerCorbeille(CONTENU_A);
+const dansCorbeille = fouillerCorbeille(CORBEILLE, CONTENU_A);
 verifier('a.txt est dans la corbeille du volume, retrouvé par son contenu',
   dansCorbeille.length === 1,
   `${dansCorbeille.length} fichier(s) au contenu attendu — ${JSON.stringify(dansCorbeille)}`);
@@ -247,7 +206,7 @@ verifier('le compte de $R lisibles a augmenté d’exactement 1',
 // Le marqueur de b.txt ne doit PAS être dans la corbeille : rien n'a été recyclé
 // par erreur au passage.
 verifier('b.txt n’a pas été recyclé au passage',
-  fouillerCorbeille(CONTENU_B).length === 0, 'le marqueur de b.txt est dans la corbeille');
+  fouillerCorbeille(CORBEILLE, CONTENU_B).length === 0, 'le marqueur de b.txt est dans la corbeille');
 
 // Le volume est réanalysé : les identifiants changent, il faut les reprendre.
 console.log('\n--- 4. le volume est réanalysé après une suppression ---');
@@ -289,7 +248,7 @@ verifier('le dossier d’essai est vide',
 // « définitif » veut dire : nulle part dans la corbeille. C'est ça qu'on vérifie —
 // pas seulement que le compte n'a pas bougé.
 verifier('le marqueur de b.txt n’est nulle part dans la corbeille',
-  fouillerCorbeille(CONTENU_B).length === 0, 'retrouvé dans la corbeille !');
+  fouillerCorbeille(CORBEILLE, CONTENU_B).length === 0, 'retrouvé dans la corbeille !');
 verifier('le compte de $R lisibles n’a pas bougé pour le définitif',
   compterR() === rApres, `${rApres} → ${compterR()}`);
 
@@ -351,7 +310,7 @@ verifier('le chemin prévu est bien celui que l’aperçu avait montré',
 // On retire la paire $R (le contenu) et $I (la fiche), qui partagent leur suffixe.
 console.log('\n--- 7. le test reprend ce qu’il a mis à la corbeille ---');
 let rendus = 0;
-for (const r of fouillerCorbeille(CONTENU_A)) {
+for (const r of fouillerCorbeille(CORBEILLE, CONTENU_A)) {
   const dossier = r.slice(0, r.lastIndexOf('/'));
   const nom = r.slice(r.lastIndexOf('/') + 1);          // $RND7AN9.txt
   const suffixe = nom.replace(/^\$R/, '').replace(/\.[^.]*$/, ''); // ND7AN9
@@ -367,7 +326,7 @@ for (const r of fouillerCorbeille(CONTENU_A)) {
     }
   }
 }
-verifier('le test n’a rien laissé dans la corbeille', fouillerCorbeille(CONTENU_A).length === 0,
+verifier('le test n’a rien laissé dans la corbeille', fouillerCorbeille(CORBEILLE, CONTENU_A).length === 0,
   'résidu présent');
 noter(`${rendus} fichier(s) d’essai retiré(s) de la corbeille`);
 
