@@ -113,3 +113,46 @@ jobs:
           DISKMAP_SONDE_RACINE: 'D:\_diskmap_sondes'
           DISKMAP_SONDE_MACHINE_EPHEMERE: runner-github-ephemere
         run: node tests/sondes/lancer.mjs --volume D --attendre 900
+
+  # Le binaire telechargeable ne doit jamais avoir ete eprouve par quelqu'un
+  # d'autre que celui qui le publie. Il est donc pris TEL QUEL dans l'artifact du
+  # job `windows` — celui qui a passe fmt, clippy, test et les sondes non
+  # destructives. Le recompiler ici republierait un autre binaire que celui qui
+  # a ete verifie : c'est exactement le defaut qui rendait le 26/09/2026
+  # inexpliquable, « un binaire perime que personne ne savait de quel commit il
+  # sortait ». Ici, le tag nomme le commit, et le binaire est celui du commit.
+  #
+  # `needs: windows` n'est pas decoratif : si la qualite ou les sondes echouent,
+  # aucune release n'est creee. Publier n'est pas une consequence du push, c'est
+  # une consequence du push QUI A PASSE.
+  release:
+    needs: windows
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recuperer le binaire eprouve
+        uses: actions/download-artifact@v8
+        with:
+          name: diskmap-windows
+          path: .
+
+      # Le titre porte le SHA court : une release qui dit « voici le binaire »
+      # sans dire de quel commit il sort ne resout pas le probleme qu'elle
+      # pretend resoudre.
+      - name: Publier la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v0.1.${{ github.run_number }}
+          SHA: ${{ github.sha }}
+        run: |
+          git log -1 --pretty=%s | Out-File -FilePath notes.md -Encoding utf8
+          "Commit : $env:SHA" | Out-File -FilePath notes.md -Encoding utf8 -Append
+          "" | Out-File -FilePath notes.md -Encoding utf8 -Append
+          "Binaire compile et eprouve par la CI de ce commit (fmt, clippy, test, sondes)." |
+            Out-File -FilePath notes.md -Encoding utf8 -Append
+          gh release create $env:TAG .\diskmap.exe --title "$env:TAG ($($env:SHA.Substring(0,7)))" --notes-file notes.md
+
