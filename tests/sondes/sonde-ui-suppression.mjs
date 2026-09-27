@@ -73,6 +73,15 @@ fs.writeFileSync(DOSSIER + '/cible.txt', `cible-${Date.now()}\n`);
 // reconnait : c'est ce qui permet d'eprouver le champ dans un vrai navigateur.
 fs.mkdirSync(DOSSIER + '/Documents', { recursive: true });
 fs.writeFileSync(DOSSIER + '/Documents/photo.jpg', `photo-${Date.now()}\n`);
+// Quatre fichiers de plus, DANS ce dossier, dont le nom et la taille ne se
+// rangent pas dans le meme ordre. C est le support du verdict de tri, et il
+// n existe que pour lui : sans plusieurs lignes dont l ordre peut changer, un
+// verdict « la liste est dans l ordre demande » est une verification qui ne
+// peut pas echouer. Elle passait au vert, serveur rendant l ordre inverse.
+// Un test qui ne peut pas rougir n est pas un test, c est un decor.
+for (const [nom, ko] of [['delta', 1], ['alpha', 2], ['charlie', 3], ['bravo', 4]]) {
+  fs.writeFileSync(DOSSIER + '/Documents/' + nom + '.txt', 'x'.repeat(ko * 100));
+}
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
 const indexe = await attendreFichier(BASE, VOL, 'cible.txt');
 verifier('le fichier d’essai est dans l’instantané', indexe,
@@ -312,11 +321,46 @@ if (fichierTrouve) {
   // message ne disait donc rien du défaut : il décrivait un écran que la sonde
   // n'était pas censée regarder.
   if (docsTrouve) {
-    // Même idiomat que plus haut dans ce fichier : on attend que le FIL
-    // change, pas qu’une durée s’écoule. `#crumbs` est DÉJÀ visible avant
-    // le clic — l’attendre serait satisfait dès le départ.
+    // Le clic doit etre MESURE a l instant ou il part.
+    //
+    // Le 27/09, cette sonde a attendu 60 s puis regarde l ecran. Ce qu elle a
+    // mesure etait donc l etat d apres : le journal de la CI a rapp
+    // le dossier temporaire du runner, hors de l arbre de la sonde, sans qu une
+    // seule ligne dise ou l interface se trouvait au moment du clic. Trois
+    // explications donnent ce journal la : le clic est parti sur un noeud
+    // detache, l interface etait deja ailleurs, elle y est allee ensuite.
+    // Aucune ne se deduit des deux autres.
+    //
+    // D ou les trois points de mesure : l etat AVANT (le fil, la ligne visee,
+    // sa place dans la liste, et ce que l interface croit etre le dossier
+    // courant), l etat juste APRES le clic, et l etat a la fin de l attente.
     const avant = await filAriane();
+    const vise = await page.evaluate(() => {
+      const trs = Array.from(document.querySelectorAll('#rows tr'));
+      const i = trs.findIndex((tr) => {
+        const nm = tr.querySelector('.nm');
+        return !!nm && nm.textContent === 'Documents';
+      });
+      if (i < 0) return null;
+      window.__vise = trs[i];
+      return {
+        place: `${i + 1}/${trs.length}`,
+        texte: trs[i].textContent.replace(/\s+/g, ' ').trim().slice(0, 90),
+        gestionnaire: !!trs[i].querySelector('.nm').onclick,
+        interface: { volume: cur.drive, dossier: cur.id, vue: cur.view,
+          generation: cur.gen, recherche: document.querySelector('#q').value },
+      };
+    });
     await ligneDocs.locator('.nm').click();
+    // Le point le plus utile : le noeud vise est-il ENCORE celui de l ecran
+    // quand le clic est parti. Sinon la mesure qui suit porte sur un ecran
+    // que le clic n a jamais touche, et dire « le clic n a pas navigue »
+    // serait faux.
+    const auClic = await page.evaluate(() => ({
+      memeNoeud: !!window.__vise && document.contains(window.__vise),
+      interface: { volume: cur.drive, dossier: cur.id, vue: cur.view,
+        generation: cur.gen },
+    }));
     try {
       await page.waitForFunction(
         (avant) => {
@@ -326,8 +370,13 @@ if (fichierTrouve) {
         avant, { timeout: 60000 });
       navigue = true;
     } catch { /* rendu plus bas */ }
+    const aLaFin = await page.evaluate(() => ({
+      interface: { volume: cur.drive, dossier: cur.id, vue: cur.view,
+        generation: cur.gen },
+    }));
     verifier('le clic sur « Documents » a bien navigué', navigue,
-      await etatEcran());
+      `avant ${JSON.stringify(vise)} · au clic ${JSON.stringify(auClic)}`
+      + ` · à la fin ${JSON.stringify(aLaFin)} · ${await etatEcran()}`);
   }
 }
 
@@ -419,6 +468,14 @@ if (persoTrouve) {
 // L'ORDRE des lignes avec leur taille, et l'ordre demandé : sans ces trois
 // choses, un échec ne dit pas si la liste est fausse, si le réglage n'a pas été
 // appliqué, ou si l'ordre demandé rendait la même liste qu'avant.
+// Les NOMS des lignes affichees, dans l ordre. Une liste, et non un nom : c est
+// l ENSEMBLE qui doit survivre a un re-rendu, et c est lui qui doit obeir au
+// tri demande.
+const nomsLignes = () => page.$$eval('#rows tr .nm',
+  (ns) => ns.map((n) => n.textContent));
+// La collation du serveur : comparaison d octets. Voir pourquoi pas
+// `localeCompare` au verdict du re-rendu.
+const comparerNoms = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const etatTri = async () => page.evaluate(() => ({
   ordre: cur.order, tri: cur.sort, vue: cur.view, q: document.querySelector('#q').value,
   lignes: Array.from(document.querySelectorAll('#rows tr')).map((tr) => {
@@ -448,6 +505,13 @@ if (fichierTrouve) {
   const avantCochees = await page.$$eval('#rows tr .chk',
     (c) => c.filter((x) => x.checked).length);
 
+  // Le support doit etre la, sinon le verdict qui suit ne mesure rien. Le dire
+  // est mieux que le decouvrir en rouge : une verification sans support est un
+  // succes qui ne prouve rien.
+  const supportLignes = await nomsLignes();
+  verifier('le dossier affiché a plusieurs lignes à ordonner', supportLignes.length >= 5,
+    `${supportLignes.length} ligne(s) : ${JSON.stringify(supportLignes)}`);
+  const avantNoms = await nomsLignes();
   await page.selectOption('#sort', 'name');
   await page.selectOption('#order', 'asc');
   let reRendu = false;
@@ -463,15 +527,39 @@ if (fichierTrouve) {
     reRendu, `avant=${JSON.stringify(avantNoeud)} · `
     + `${JSON.stringify(await etatTri())}`);
 
-  const apresNoeud = await page.evaluate(() => {
-    const tr = document.querySelector('#rows tr');
-    return tr ? tr.querySelector('.nm').textContent : null;
-  });
+  // Ce que le re-rendu doit garantir n est PAS que la premiere ligne garde son
+  // nom. Un tri par nom place forcement une autre entree en tete : c est le
+  // BUT du tri, et exiger l inverse, c est ecrire un test qui ne peut que
+  // rougir quand la fonction fait correctement son travail. Le 27/09, ce
+  // verdict a rouge sur le runner, et il avait raison de rouge : il exigeait
+  // l impossible.
+  //
+  // Les deux proprietes qui, elles, doivent tenir — et qui ne dependent d aucun
+  // contenu particulier, donc vraies sur n importe quel dossier :
+  //
+  //  1. la liste CONTIENT les memes lignes : le re-rendu n en perd aucune ;
+  //  2. la liste est dans l ordre DEMANDE : un reglage n est pas un decor.
+  //
+  // L ordre se compare avec la collation du serveur — comparaison d octets,
+  // celle qui departage aussi les tailles egales — et non avec
+  // `localeCompare`. Sous une locale, `Documents` se range APRES `cible.txt`,
+  // alors que le serveur les range dans l autre sens. Comparer avec une autre
+  // collation ne prouverait pas que le reglage demande est celui qui est
+  // applique : elle prouverait qu on ne compare pas la meme chose.
+  const nomsApres = await nomsLignes();
+  const memesLignes = avantNoms.length === nomsApres.length
+    && avantNoms.every((n) => nomsApres.includes(n));
+  verifier('le re-rendu ne perd aucune ligne', memesLignes,
+    `avant=${JSON.stringify(avantNoms.slice(0, 6))} · `
+    + `après=${JSON.stringify(nomsApres.slice(0, 6))}`);
+  const ordreAttendu = [...nomsApres].sort(comparerNoms);
+  verifier('et la liste est dans l’ordre demandé',
+    JSON.stringify(nomsApres) === JSON.stringify(ordreAttendu),
+    `demandé ${JSON.stringify(ordreAttendu.slice(0, 6))} · `
+    + `affiché ${JSON.stringify(nomsApres.slice(0, 6))} · `
+    + `${JSON.stringify(await etatTri())}`);
   const apresCochees = await page.$$eval('#rows tr .chk',
     (c) => c.filter((x) => x.checked).length);
-  verifier('le re-rendu ne perd pas la ligne affichée',
-    !!apresNoeud && apresNoeud === avantNoeud,
-    `avant=${JSON.stringify(avantNoeud)}, après=${JSON.stringify(apresNoeud)}`);
   // La sélection doit survivre : une signature calculée sans elle afficherait une
   // liste toute décochée, et l'utilisateur verrait sa sélection disparaître.
   verifier('le re-rendu ne perd pas la sélection',
