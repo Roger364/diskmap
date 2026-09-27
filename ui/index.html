@@ -650,6 +650,10 @@ async function load(keepSel) {
   const d = state.drives.find(x => x.letter === cur.drive);
   if (!d || d.status !== 'ready') {
     $('#rows').innerHTML = '';
+    // La signature suit la table : sans cette remise à zéro, le prochain
+    // `renderRows` verrait un contenu inchangé et ne repeindrait rien sur
+    // une table vide.
+    rowsSig = '';
     $('#count').textContent = '';
     $('#prog').classList.toggle('hidden', !(d && d.status === 'scanning'));
     if (d && d.status === 'scanning') {
@@ -699,8 +703,31 @@ function renderCrumbs() {
   c.appendChild(st);
 }
 
+// Même règle que `renderDrives`, appliquée aux LIGNES — et elle est ici plus grave,
+// parce qu'elle est PÉRIODIQUE. `poll()` appelle `load()` toutes les 700 ms tant
+// qu'une analyse court, et après chaque suppression quand le serveur relance un
+// parcours. Reconstruire toute la liste à chaque fois vidait `#rows` puis le
+// remplissait, et un clic tombant dans cette fenêtre partait sur un nœud détaché.
+//
+// Symptôme mesuré le 27/09/2026 sur le runner : un clic sur un nom de dossier ne
+// faisait rien, et la navigation suivante aboutissait dans un dossier du runner
+// (`D:\a\_actions`) — la ligne visée n'était plus celle qu'on avait identifiée.
+// Ce n'était pas la sonde qui cliquait à côté : `renderDrives` portait déjà ce
+// même commentaire, et `renderRows` avait été oublié.
+//
+// On ne reconstruit que si ce qui est AFFICHÉ change. Tri, ordre et sélection
+// entrent dans la signature : les omettre effacerait la case cochée ou le tri
+// choisi, ce qui serait pire que le défaut corrigé.
+let rowsSig = '';
 function renderRows() {
   const tb = $('#rows');
+  const sig = cur.rows
+    .map(r => `${selKey(r)}~${r.size}~${r.count}~${r.mtime || 0}`).join('|')
+    + '§' + [...cur.sel].sort().join(',')
+    + '§' + cur.sort + cur.order + cur.view
+    + '§' + (cur.truncated ? 't' : '') + '~' + (cur.parentSize || 0);
+  if (sig === rowsSig && tb.childElementCount) { updateSelBar(); return; }
+  rowsSig = sig;
   tb.innerHTML = '';
   const max = cur.rows.length ? cur.rows[0].size : 1;
   const frag = document.createDocumentFragment();
@@ -812,7 +839,11 @@ function escapeHtml(s) {
 // ---------- recherche globale ----------
 async function search() {
   const q = $('#q').value.trim();
-  if (!q) { cur.view = 'table'; await load(); return; }
+  // Quitter la recherche ne change pas de dossier, donc ne vide pas la
+  // sélection : `load()` sans `keepSel` la vidait, et l'utilisateur voyait sa
+  // sélection disparaître en effaçant la recherche. Mesuré le 27/09/2026 par la
+  // sonde d'interface : 1 case cochée avant, 0 après.
+  if (!q) { cur.view = 'table'; await load(true); return; }
   if (!cur.drive) return;
   const res = await api(`/api/search?drive=${cur.drive}&q=${encodeURIComponent(q)}&limit=800`);
   cur.rows = res.rows;

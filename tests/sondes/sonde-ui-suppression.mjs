@@ -404,6 +404,84 @@ if (persoTrouve) {
   }
 }
 
+// --- la liste se RE-REND quand elle doit, et SEULEMENT alors -------------------
+// `renderRows` ne reconstruit plus que si ce qui est affiché change. C'est le
+// correctif d'un clic perdu — la liste était vidée puis reconstruite toutes les
+// 700 ms, et un clic tombant dans cette fenêtre partait sur un nœud détaché.
+// Un correctif de ce genre a besoin de ses propres mesures, dans ce sens-là :
+// non pas « la liste a-t-elle changé » — cela dépend des données du dossier, et
+// deux entrées de même taille rendent le même ordre quel que soit le réglage —
+// mais « la liste se re-rend-elle quand elle doit, et la sélection survit-elle ».
+//
+// La reconstruction se prouve par l'IDENTITÉ DU NŒUD : après un changement de
+// réglage, `#rows tr` ne doit pas contenir les mêmes objets qu'avant. C'est
+// indépendante du contenu, donc vraie pour n'importe quel dossier.
+// L'ORDRE des lignes avec leur taille, et l'ordre demandé : sans ces trois
+// choses, un échec ne dit pas si la liste est fausse, si le réglage n'a pas été
+// appliqué, ou si l'ordre demandé rendait la même liste qu'avant.
+const etatTri = async () => page.evaluate(() => ({
+  ordre: cur.order, tri: cur.sort, vue: cur.view, q: document.querySelector('#q').value,
+  lignes: Array.from(document.querySelectorAll('#rows tr')).map((tr) => {
+    const nm = tr.querySelector('.nm');
+    const num = tr.querySelectorAll('td')[2];
+    return `${nm ? nm.textContent : '?'}=${num ? num.textContent.trim() : '?'}`;
+  }),
+}));
+if (fichierTrouve) {
+  // Le tri n'agit que hors recherche : le handler teste
+  // `if (!$('#q').value.trim())` avant de recharger. On revient donc à la vue
+  // dossier, et on le fait ICI, à la fin, pour ne pas déranger les sections
+  // qui précèdent et qui naviguent.
+  await page.fill('#q', '');
+  await page.press('#q', 'Enter');
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll('#rows tr .nm').length > 0,
+      null, { timeout: 30000 });
+  } catch { /* rendu plus bas, avec la mesure */ }
+
+  const avantNoeud = await page.evaluate(() => {
+    const tr = document.querySelector('#rows tr');
+    window.__avant = tr;
+    return tr ? tr.querySelector('.nm').textContent : null;
+  });
+  const avantCochees = await page.$$eval('#rows tr .chk',
+    (c) => c.filter((x) => x.checked).length);
+
+  await page.selectOption('#sort', 'name');
+  await page.selectOption('#order', 'asc');
+  let reRendu = false;
+  try {
+    await page.waitForFunction(
+      () => {
+        const tr = document.querySelector('#rows tr');
+        return !!tr && tr !== window.__avant;
+      }, null, { timeout: 30000 });
+    reRendu = true;
+  } catch { /* rendu plus bas */ }
+  verifier('changer de réglage REDESSINE la liste — un réglage n’est pas un décor',
+    reRendu, `avant=${JSON.stringify(avantNoeud)} · `
+    + `${JSON.stringify(await etatTri())}`);
+
+  const apresNoeud = await page.evaluate(() => {
+    const tr = document.querySelector('#rows tr');
+    return tr ? tr.querySelector('.nm').textContent : null;
+  });
+  const apresCochees = await page.$$eval('#rows tr .chk',
+    (c) => c.filter((x) => x.checked).length);
+  verifier('le re-rendu ne perd pas la ligne affichée',
+    !!apresNoeud && apresNoeud === avantNoeud,
+    `avant=${JSON.stringify(avantNoeud)}, après=${JSON.stringify(apresNoeud)}`);
+  // La sélection doit survivre : une signature calculée sans elle afficherait une
+  // liste toute décochée, et l'utilisateur verrait sa sélection disparaître.
+  verifier('le re-rendu ne perd pas la sélection',
+    avantCochees === apresCochees,
+    `${avantCochees} case(s) avant, ${apresCochees} après`);
+  verifier('et la liste garde le même nombre de lignes',
+    (await etatTri()).lignes.length > 0,
+    JSON.stringify((await etatTri()).lignes.slice(0, 4)));
+}
+
 verifier('aucune erreur JavaScript dans l’interface', erreurs.length === 0,
   JSON.stringify(erreurs.slice(0, 3)));
 
