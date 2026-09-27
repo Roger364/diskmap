@@ -90,9 +90,9 @@ const SONDES = [
     quoi: 'En-tete exige, chemins proteges refuses, jeton — le tout en simulation',
   },
   {
-    nom: 'personnels', fichier: 'sonde-dossiers-personnels.mjs', args: (c) => [c.url, c.volume], ci: true,
+    nom: 'aNommer', fichier: 'sonde-dossiers-a-nommer.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
-    quoi: 'Un lot qui touche un dossier personnel doit le nommer, et un dossier ordinaire ne declenche rien',
+    quoi: 'Un lot qui touche .git, .ssh ou un dossier personnel doit le nommer ; un .gitignore ne declenche rien',
   },
   {
     nom: 'generation', fichier: 'sonde-generation.mjs', args: (c) => [c.url, c.volume], ci: true,
@@ -481,6 +481,37 @@ try {
     process.exit(2);
   }
 
+/**
+ * Ce qui traîne sur les racines du filet : charges `$R` de la corbeille du
+ * volume de travail, et dossiers laissés sous la racine des sondes.
+ *
+ * `racines` contient la racine du volume secondaire : on ne compte que celle du
+ * volume ANALYSE, sinon un résidu de l'autre ferait crier un run parfaitement
+ * propre. Et on ne compte que ce qui est visible — un `$I` seul, sans sa charge
+ * `$R`, est une fiche orpheline, pas un risque de confusion de diagnostic.
+ */
+function lireResidus(racines, volume) {
+  const trouve = [];
+  const racine = racines.find((r) => new RegExp(`^${volume}:`, 'i').test(r));
+  if (!racine) return trouve;
+  for (const d of fs.readdirSync(racine, { withFileTypes: true })) {
+    if (d.isDirectory()) trouve.push(`${d.name}/ (sous ${racine})`);
+  }
+  const corbeille = `${volume}:/$RECYCLE.BIN`;
+  let charges = 0;
+  let sids = [];
+  try { sids = fs.readdirSync(corbeille); } catch { sids = []; }
+  for (const sid of sids) {
+    const d = `${corbeille}/${sid}`;
+    try {
+      if (!fs.statSync(d).isDirectory()) continue;
+      charges += fs.readdirSync(d).filter((f) => f.startsWith('$R')).length;
+    } catch { /* illisible : on ne compte pas, on ne le pretend pas */ }
+  }
+  if (charges) trouve.push(`${charges} charge(s) $R dans ${corbeille}`);
+  return trouve;
+}
+
   console.log('');
   // Le filet est DEMANDÉ avant toute sonde, et son URL est celle que les sondes
   // reçoivent. Le chef d'orchestre, lui, garde la vraie adresse : c'est lui qui
@@ -489,6 +520,26 @@ try {
   filet = await creerFilet({ cible: url, racines, journal: journalFilet });
   const urlProbes = filet.url;
   console.log(`  filet   : ${racines.join(' | ')} — les sondes passent par ${urlProbes}`);
+
+  // Le volume de travail est-il SALE ? Un résidu ne fait échouer aucune sonde,
+  // et c'est bien le problème : il rend le DIAGNOSTIC des autres faux. Mesuré le
+  // 27/09/2026 — la sonde `ui` cherchait `photo.jpg`, cliquait sur un
+  // `photo-2019.jpg` laissé dans la corbeille par une sonde précédente, entrait
+  // dans `$RECYCLE.BIN`, et concluait que l'interface ne listait rien. La sonde
+  // qui produisait le mensonge est, elle, restée verte.
+  //
+  // Un avertissement, jamais un refus : des résidus peuvent être légitimes, et
+  // un harnais qui refuse de tourner n'apprend rien. Il dit ce qu'il a vu et
+  // ce que ça peut fausser, et laisse décider.
+  const residus = lireResidus(racines, volume);
+  if (residus.length) {
+    console.log('');
+    console.log(`  ⚠ volume de travail sale : ${residus.join(', ')}`);
+    console.log('    Ces residus peuvent rendre le diagnostic FAUX d’une sonde, sans la');
+    console.log('    faire rougir : une ligne trouvee dans la corbeille ressemble a une');
+    console.log('    ligne du dossier recherche. Supprime-les avant de croire un resultat,');
+    console.log('    ou vide a la main la corbeille et le dossier de sondes de ce volume.');
+  }
 
   for (const s of retenues) {
     const fichier = path.join(ICI, s.fichier);

@@ -59,18 +59,24 @@ Defaults and guards:
   app reports what actually happened rather than what was asked for: an entry
   requested for the Recycle Bin but destroyed is counted, named, and logged as
   such. Permanent deletion is available but requires typing `EFFACER`.
-- **A personal folder has to be named.** If the lot touches `Desktop`,
-  `Documents`, `Pictures`, `Music`, `Videos`, `Downloads`, `Bureau`, `Images`,
-  `Téléchargements` and their localised names, the preview says so and asks you
-  to **type the name of each one** — one field per folder — before the button
-  comes alive. Open `Pictures`, select, delete: one field, type `Pictures`, done.
+- **A folder whose loss is not trivial has to be named.** Two families, one
+  rule. The personal ones — `Desktop`, `Documents`, `Pictures`, `Music`,
+  `Videos`, `Downloads`, `Bureau`, `Images`, `Téléchargements` and their
+  localised names. And the ones that hold keys and history: `AppData`, `.git`,
+  `.ssh`, `.gnupg`, `.aws`, `.kube`. A repository whose `.git` you delete loses
+  its history; a key pair you delete has to be reissued. Neither is recoverable
+  by restoring from the Recycle Bin. When the lot touches one, the preview says
+  so and asks you to **type the name of each one** — one field per folder —
+  before the button comes alive. Open `Pictures`, select, delete: one field, type `Pictures`, done.
   Select everything in a user profile: six fields, because that is the case where
   slowing down is the point. The rule is **not a setting**: there is no switch to
   turn it off, and the server recomputes the folders from the frozen preview
-  paths rather than trusting a list the client sends, so an empty `perso` buys
-  nothing. It matches on **names**, not on meaning: a work directory that happens
-  to be called `Documents` on a data disk is protected too. That is the price of
-  a rule that can be checked instead of guessed.
+  paths rather than trusting a list the client sends, so an empty `noms` buys
+  nothing. It matches whole path **segments**, not prefixes: `.gitignore` beside
+  a repository asks for nothing, because the comparison is exact. It matches
+  on **names**, not on meaning: a work directory that happens to be called
+  `Documents` on a data disk is protected too. That is the price of a rule that
+  can be checked instead of guessed.
 - **Protected paths are refused**: volume roots, `Windows`, `Program Files`,
   `ProgramData`, `System Volume Information`, `$Recycle.Bin`, `Recovery`, and
   whole user profiles.

@@ -61,7 +61,7 @@ console.log(`--- ${VOL}: — corbeille ${A_CORBEILLE ? 'présente' : 'ABSENTE'} 
 // `attendreFichier` dans config.mjs.
 fs.mkdirSync(DOSSIER, { recursive: true });
 fs.writeFileSync(DOSSIER + '/cible.txt', `cible-${Date.now()}\n`);
-// Un second fichier, dans un dossier que la regle des dossiers personnels
+// Un second fichier, dans un dossier que la regle des dossiers à nommer
 // reconnait : c'est ce qui permet d'eprouver le champ dans un vrai navigateur.
 fs.mkdirSync(DOSSIER + '/Documents', { recursive: true });
 fs.writeFileSync(DOSSIER + '/Documents/photo.jpg', `photo-${Date.now()}\n`);
@@ -205,7 +205,7 @@ if (titre !== null) {
   verifier('le fichier est toujours là — la vérification n’a rien effacé',
     fs.existsSync(DOSSIER + '/cible.txt'), 'le fichier a disparu');
 }
-// --- la regle des dossiers personnels, dans un vrai navigateur -------------
+// --- la regle des dossiers à nommer, dans un vrai navigateur -------------
 //
 // La sonde serveur (`sonde-dossiers-personnels.mjs`) prouve que le serveur
 // refuse. Elle ne voit pas le BOUTON, qui est la moitie du geste : un
@@ -215,7 +215,7 @@ if (titre !== null) {
 // Elle s'arrete une fois le bouton allume. Elle ne clique pas dessus : la
 // suppression reelle n'est pas l'objet de cette verification, et la sonde
 // `reelle` s'en charge sur le meme volume.
-console.log('--- la regle des dossiers personnels, dans un vrai navigateur ---');
+console.log('--- la regle des dossiers à nommer, dans un vrai navigateur ---');
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
 const indexePerso = await attendreFichier(BASE, VOL, 'photo.jpg');
 verifier('le fichier sous « Documents » est dans l’instantané', indexePerso,
@@ -262,15 +262,15 @@ if (persoTrouve) {
     'elle ne s’est pas ouverte');
 
   if (modale) {
-    const champ = page.locator('#dbody .perso-in').first();
-    const nb = await page.locator('#dbody .perso-in').count();
-    verifier('elle affiche un champ par dossier personnel', nb === 1, `${nb} champ(s)`);
-    const attendu = await champ.getAttribute('data-perso').catch(() => null);
+    const champ = page.locator('#dbody .nom-in').first();
+    const nb = await page.locator('#dbody .nom-in').count();
+    verifier('elle affiche un champ par dossier à nommer', nb === 1, `${nb} champ(s)`);
+    const attendu = await champ.getAttribute('data-dossier').catch(() => null);
     verifier('le champ porte le nom du dossier à saisir', attendu === 'Documents',
-      `data-perso = ${JSON.stringify(attendu)}`);
+      `data-dossier = ${JSON.stringify(attendu)}`);
 
     const corps = (await page.textContent('#dbody')).replace(/\s+/g, ' ');
-    verifier('le bandeau annonce le dossier personnel', /Dossier personnel/i.test(corps),
+    verifier('le bandeau annonce le dossier à nommer', /Dossier à nommer/i.test(corps),
       corps.slice(0, 200));
 
     const desactive = () => page.locator('#ddo').isDisabled();

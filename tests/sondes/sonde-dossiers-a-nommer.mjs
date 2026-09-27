@@ -17,7 +17,7 @@
 // `Documents` ne déclenche RIEN. Sans ce cas, une détection qui Returningrait
 // toujours quelque chose passerait cette sonde.
 //
-// Usage : node sonde-dossiers-personnels.mjs http://127.0.0.1:8990/ V
+// Usage : node sonde-dossiers-a-nommer.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 import path from 'path';
 
@@ -25,11 +25,15 @@ import { corbeille, dossier, fouillerCorbeille, URL_DEFAUT, VOLUME_DEFAUT, vider
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
-const NOM = 'dossiers-personnels';
+const NOM = 'dossiers-a-nommer';
 const DOSSIER = dossier(VOL, NOM);
 const PERSO = DOSSIER + '/Documents';
+const PROJET = DOSSIER + '/projet';
+const REPO = PROJET + '/.git';
 const NEUTRE = DOSSIER + '/burns';
 const F_PERSO = PERSO + '/photo-2019.jpg';
+const F_GIT = REPO + '/config';
+const F_FAUX = PROJET + '/.gitignore';
 const F_NEUTRE = NEUTRE + '/image.iso';
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
 
@@ -76,6 +80,13 @@ fs.mkdirSync(NEUTRE, { recursive: true });
 const SCEAU = `personnel-${Date.now()}-${Math.random().toString(36).slice(2, 10)}\n`;
 fs.writeFileSync(F_PERSO, SCEAU);
 fs.writeFileSync(F_NEUTRE, 'neutre\n');
+// Un depot, et un fichier qui commence par le meme nom. Le second est le
+// faux positif : la regle compare le segment ENTIER, pas un prefixe — un
+// fichier `.gitignore` n'a rien a voir avec un depot, et le confondre
+// ferait apparaitre un champ a remplir sur chaque projet.
+fs.mkdirSync(REPO, { recursive: true });
+fs.writeFileSync(F_GIT, 'gitconfig-ici\n');
+fs.writeFileSync(F_FAUX, 'faux-positif\n');
 verifier('le témoin « Documents » est créé', fs.existsSync(F_PERSO), F_PERSO);
 verifier('le témoin « burns » est créé', fs.existsSync(F_NEUTRE), F_NEUTRE);
 
@@ -116,19 +127,19 @@ if (!selPerso || !selNeutre || !selFichier) {
 }
 
 // ---------------------------------------------------- 2. l'aperçu nomme le lot
-console.log('--- 1. l’aperçu annonce le dossier personnel ---');
+console.log('--- 1. l’aperçu annonce le dossier a nommer ---');
 const apercuPerso = await post('/api/delete', {
   drive: VOL, mode: 'dry', items: [selFichier.sel], gen,
 });
 verifier(
   'un lot dans « Documents » est signalé comme tel',
-  JSON.stringify(apercuPerso.data?.personnels) === '["Documents"]',
-  `personnels = ${JSON.stringify(apercuPerso.data?.personnels)}`
+  JSON.stringify(apercuPerso.data?.aNommer) === '["Documents"]',
+  `aNommer = ${JSON.stringify(apercuPerso.data?.aNommer)}`
 );
 verifier(
   'l’aperçu ne signale qu’une fois, même si le dossier contient plusieurs fichiers',
-  Array.isArray(apercuPerso.data?.personnels) && apercuPerso.data.personnels.length === 1,
-  `personnels = ${JSON.stringify(apercuPerso.data?.personnels)}`
+  Array.isArray(apercuPerso.data?.aNommer) && apercuPerso.data.aNommer.length === 1,
+  `aNommer = ${JSON.stringify(apercuPerso.data?.aNommer)}`
 );
 
 const apercuNeutre = await post('/api/delete', {
@@ -136,9 +147,49 @@ const apercuNeutre = await post('/api/delete', {
 });
 verifier(
   'un lot dans un dossier ordinaire ne déclenche RIEN — la règle ne parle pas à tort',
-  Array.isArray(apercuNeutre.data?.personnels) && apercuNeutre.data.personnels.length === 0,
-  `personnels = ${JSON.stringify(apercuNeutre.data?.personnels)}`
+  Array.isArray(apercuNeutre.data?.aNommer) && apercuNeutre.data.aNommer.length === 0,
+  `aNommer = ${JSON.stringify(apercuNeutre.data?.aNommer)}`
 );
+
+// ---------------------------- 2bis. un depot, et un fichier qui le rappelle
+console.log('--- 1bis. .git est exige ; .gitignore ne l’est pas ---');
+const racineProjet = (await get(`/api/search?drive=${VOL}&q=projet`)).rows || [];
+const selProjet = racineProjet.find((r) => r.is_dir && r.name === 'projet');
+verifier('le dossier de test du dépôt est indexé', !!selProjet,
+  JSON.stringify(racineProjet).slice(0, 200));
+if (selProjet) {
+  const enfantsProjet = (await get(`/api/tree?drive=${VOL}&id=${selProjet.sel}`)).rows || [];
+  const selGit = enfantsProjet.find((r) => r.is_dir && r.name === '.git');
+  const selIgnore = enfantsProjet.find((r) => !r.is_dir && r.name === '.gitignore');
+  if (selGit) {
+    const dedans = (await get(`/api/tree?drive=${VOL}&id=${selGit.sel}`)).rows || [];
+    const fConfig = dedans.find((r) => !r.is_dir && r.name === 'config');
+    verifier('le fichier de configuration du dépôt est indexé', !!fConfig,
+      JSON.stringify( dedans).slice(0, 160));
+    if (fConfig) {
+      const a = await post('/api/delete', { drive: VOL, mode: 'dry', items: [fConfig.sel], gen });
+      verifier(
+        'un fichier sous `.git` doit nommer `.git`',
+        JSON.stringify(a.data?.aNommer) === '[".git"]',
+        `aNommer = ${JSON.stringify(a.data?.aNommer)}`
+      );
+      const r = await post('/api/delete', {
+        drive: VOL, mode: 'recycle', token: a.data.token,
+      });
+      const refus = r.texte;
+      verifier('et son exécution sans confirmation est refusée',
+        r.status === 400 || r.status === 409, `status ${r.status} — ${refus.slice(0, 140)}`);
+    }
+  }
+  if (selIgnore) {
+    const b = await post('/api/delete', { drive: VOL, mode: 'dry', items: [selIgnore.sel], gen });
+    verifier(
+      'un fichier nommé `.gitignore` ne déclenche RIEN',
+      Array.isArray(b.data?.aNommer) && b.data.aNommer.length === 0,
+      `aNommer = ${JSON.stringify(b.data?.aNommer)}`
+    );
+  }
+}
 
 // ------------------------------------------- 3. l'exécution, sans et avec le nom
 console.log('--- 2. l’exécution exige le nom, dossier par dossier ---');
@@ -151,7 +202,7 @@ verifier('le refus nomme le dossier à confirmer', /Documents/.test(refus), refu
 verifier('le refus explique quoi faire', /nomme|confirmer/i.test(refus), refus.slice(0, 160));
 
 const mauvaisNom = await post('/api/delete', {
-  drive: VOL, mode: 'recycle', token: apercuPerso.data.token, perso: ['burns'],
+  drive: VOL, mode: 'recycle', token: apercuPerso.data.token, noms: ['burns'],
 });
 const refus2 = mauvaisNom.texte;
 verifier('avec le MAUVAIS nom, l’exécution est refusée', mauvaisNom.status === 400, `status ${mauvaisNom.status} — ${refus2.slice(0, 160)}`);
@@ -162,7 +213,7 @@ const bonNom = await post('/api/delete', {
   drive: VOL,
   mode: 'recycle',
   token: apercuPerso.data.token,
-  perso: ['documents'],
+  noms: ['documents'],
 });
 const ok = bonNom.status === 200;
 verifier('avec le bon nom — sans tenir compte de la casse — l’exécution passe', ok, `status ${bonNom.status} — ${bonNom.texte.slice(0, 160)}`);

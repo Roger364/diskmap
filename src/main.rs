@@ -1156,7 +1156,7 @@ struct DeleteReq {
     /// alors se faire refuser par le serveur — ce qui est le but — sans que le
     /// protocole devienne illisible.
     #[serde(default)]
-    perso: Vec<String>,
+    noms: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1180,11 +1180,14 @@ struct DeletePreview {
     /// Le volume a-t-il une corbeille ? Faux ⇒ une suppression « corbeille »
     /// détruirait les fichiers. On le dit AVANT, pas seulement après.
     corbeille: bool,
-    /// Les dossiers personnels que ce lot touche : `["Images", "Documents"]`.
+    /// Les dossiers que ce lot touche et qui doivent etre nommes : `["Images",
+    /// ".git"]`. Le nom dit ce qu'il fait — ce ne sont pas seulement des
+    /// dossiers « personnels » : `.git` et `.ssh` y sont aussi.
     /// L'interface doit faire nommer CHACUN d'eux avant d'activer son bouton —
     /// un champ par dossier, donc six champs quand on a tout sélectionné d'un
-    /// profil. Voir `dossiers_personnels`.
-    personnels: Vec<String>,
+    /// profil. Voir `dossiers_a_nommer`.
+    #[serde(rename = "aNommer")]
+    a_nommer: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1264,7 +1267,7 @@ fn blocked_reason(path: &Path) -> Option<&'static str> {
 /// personne sur une installation anglaise. Elle porte sur des NOMS, pas sur
 /// des personnes : `C:\Users\<nom>` n'en fait volontairement pas partie — tout
 /// y serait personnel, et la règle viderait l'outil de son usage.
-const DOSSIERS_PERSONNELS: &[&str] = &[
+const DOSSIERS_A_NOMMER: &[&str] = &[
     // Français
     "BUREAU",
     "DOCUMENTS",
@@ -1281,6 +1284,17 @@ const DOSSIERS_PERSONNELS: &[&str] = &[
     "DOWNLOADS",
     "FAVOURITES",
     "SAVED GAMES",
+    // Configuration et clés. Ces dossiers ne sont pas « personnels » au sens
+    // Windows, mais leur perte est aussi sèche : pas de corbeille qui les
+    // restaure correctement, pas de sauvegarde qui les rendrait, et la seule
+    // façon de les retrouver est de les re-configurer à la main. Un dépôt dont
+    // on supprime `.git` perd son historique — s'il n'est pas ailleurs.
+    "APPDATA",
+    ".GIT",
+    ".SSH",
+    ".GNUPG",
+    ".AWS",
+    ".KUBE",
 ];
 
 /// Les dossiers personnels que ce chemin traverse, écrits comme ils le sont
@@ -1295,7 +1309,7 @@ const DOSSIERS_PERSONNELS: &[&str] = &[
 /// écrite sans accent ne détecterait rien. Une règle de sécurité qui ne
 /// détecte pas est une règle morte — de la même nature que celle que
 /// `tests/sondes/filet.mjs` portait avant d'être réparée.
-fn dossiers_personnels(path: &Path) -> Vec<String> {
+fn dossiers_a_nommer(path: &Path) -> Vec<String> {
     let mut vus: Vec<String> = Vec::new();
     for seg in path.to_string_lossy().split(['\\', '/']) {
         let seg = seg.trim();
@@ -1303,7 +1317,7 @@ fn dossiers_personnels(path: &Path) -> Vec<String> {
             continue;
         }
         let haut = seg.to_uppercase();
-        if !DOSSIERS_PERSONNELS.contains(&haut.as_str()) {
+        if !DOSSIERS_A_NOMMER.contains(&haut.as_str()) {
             continue;
         }
         if !vus.iter().any(|v| v.eq_ignore_ascii_case(seg)) {
@@ -1457,15 +1471,15 @@ fn dry(
     // faire défaut de le confirmer. C'est la seule liste que l'interface verra, et elle
     // est calculée ici, pas chez le client — sinon un client qui n'en veut pas
     // n'enverrait aucun.
-    let mut personnels: Vec<String> = Vec::new();
+    let mut a_nommer: Vec<String> = Vec::new();
     for m in &montres {
-        for d in dossiers_personnels(&m.path) {
-            if !personnels.iter().any(|p| p.eq_ignore_ascii_case(&d)) {
-                personnels.push(d);
+        for d in dossiers_a_nommer(&m.path) {
+            if !a_nommer.iter().any(|p| p.eq_ignore_ascii_case(&d)) {
+                a_nommer.push(d);
             }
         }
     }
-    personnels.sort_by_key(|d| d.to_uppercase());
+    a_nommer.sort_by_key(|d| d.to_uppercase());
 
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
     // cacher quoi que ce soit, puisqu'il est écrit en clair juste à côté. C'est
@@ -1497,7 +1511,7 @@ fn dry(
             deletable,
             blocked,
             corbeille: win32::corbeille_disponible(letter),
-            personnels,
+            a_nommer,
         })
         .unwrap(),
     ))
@@ -1542,14 +1556,14 @@ fn execute(
     // que la règle ne s'applique jamais.
     let mut attendus: Vec<String> = Vec::new();
     for m in &peek.items {
-        for d in dossiers_personnels(&m.path) {
+        for d in dossiers_a_nommer(&m.path) {
             if !attendus.iter().any(|p| p.eq_ignore_ascii_case(&d)) {
                 attendus.push(d);
             }
         }
     }
     for d in &attendus {
-        if !req.perso.iter().any(|s| s.trim().eq_ignore_ascii_case(d)) {
+        if !req.noms.iter().any(|s| s.trim().eq_ignore_ascii_case(d)) {
             return Err((
                 "400 Bad Request",
                 format!("dossier personnel « {d} » non confirmé : nomme-le pour confirmer la suppression"),
@@ -1806,7 +1820,7 @@ fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{confirmation_required, dossiers_personnels, LigneJournal};
+    use super::{confirmation_required, dossiers_a_nommer, LigneJournal};
     use std::path::Path;
 
     #[test]
@@ -1822,41 +1836,71 @@ mod tests {
     /// même nature que celle que `tests/sondes/filet.mjs` portait avant d'être
     /// réparée.
     #[test]
-    fn trouves_les_dossiers_personnels_en_francais() {
+    fn trouves_les_dossiers_a_nommer_en_francais() {
         assert_eq!(
-            dossiers_personnels(Path::new(r"C:\Users\lucas\Images\a.jpg")),
+            dossiers_a_nommer(Path::new(r"C:\Users\lucas\Images\a.jpg")),
             ["Images"]
         );
         assert_eq!(
-            dossiers_personnels(Path::new(r"C:\Users\lucas\Téléchargements\setup.exe")),
+            dossiers_a_nommer(Path::new(r"C:\Users\lucas\Téléchargements\setup.exe")),
             ["Téléchargements"]
         );
         assert_eq!(
-            dossiers_personnels(Path::new(r"C:\Users\lucas\Bureau\notes")),
+            dossiers_a_nommer(Path::new(r"C:\Users\lucas\Bureau\notes")),
             ["Bureau"]
         );
     }
 
     #[test]
-    fn trouves_les_dossiers_personnels_en_anglais() {
+    fn trouves_les_dossiers_a_nommer_en_anglais() {
         assert_eq!(
-            dossiers_personnels(Path::new(r"C:\Users\sam\Pictures\x.png")),
+            dossiers_a_nommer(Path::new(r"C:\Users\sam\Pictures\x.png")),
             ["Pictures"]
         );
         assert_eq!(
-            dossiers_personnels(Path::new(r"C:\Users\sam\Desktop\y.txt")),
+            dossiers_a_nommer(Path::new(r"C:\Users\sam\Desktop\y.txt")),
             ["Desktop"]
         );
     }
 
-    /// Un dossier de travail nommé `Documents` sur un disque de données serait
+    /// La seconde famille : clés et historiques. Un dépôt dont on supprime `.git`
+    /// perd son histoire, une clé qu'on supprime se ré-édite. La corbeille ne
+    /// rend ni l'un ni l'autre.
+    #[test]
+    fn trouves_les_dossiers_de_configuration() {
+        assert_eq!(
+            dossiers_a_nommer(Path::new(r"G:\workspaces\projet\.git\config")),
+            [".git"]
+        );
+        assert_eq!(
+            dossiers_a_nommer(Path::new(r"C:\Users\lucas\.ssh\id_rsa")),
+            [".ssh"]
+        );
+        assert_eq!(
+            dossiers_a_nommer(Path::new(r"C:\Users\lucas\AppData\Roaming\x")),
+            ["AppData"]
+        );
+    }
+
+    /// Le faux positif le plus probable de cette famille : `.gitignore`, qui
+    /// commence comme `.git` et n'a rien à voir avec un dépôt. Sans ce test, une
+    /// comparaison par préfixe ferait apparaître un champ à remplir sur chaque
+    /// projet du disque.
+    #[test]
+    fn un_nom_qui_commence_par_un_nom_de_dossier_ne_compte_pas() {
+        assert!(dossiers_a_nommer(Path::new(r"G:\workspaces\projet\.gitignore")).is_empty());
+        assert!(dossiers_a_nommer(Path::new(r"C:\x\images-rendus\a.png")).is_empty());
+        assert!(dossiers_a_nommer(Path::new(r"C:\x\AppDatas\b.txt")).is_empty());
+    }
+
+    /// Un dossier de travail nommé `Documents` sur un disque de données serait    /// Un dossier de travail nommé `Documents` sur un disque de données serait
     /// un faux positif... et on ne devine pas les intentions : la règle porte
     /// sur des noms, elle ne peut pas savoir. Ce test dit au moins que le cas
     /// est connu, et qu'un simple préfixe ne suffit pas à la déclencher.
     #[test]
     fn un_prefixe_ne_compte_pas() {
-        assert!(dossiers_personnels(Path::new(r"D:\projets\images-utils\x.rs")).is_empty());
-        assert!(dossiers_personnels(Path::new(r"D:\burns\a.iso")).is_empty());
+        assert!(dossiers_a_nommer(Path::new(r"D:\projets\images-utils\x.rs")).is_empty());
+        assert!(dossiers_a_nommer(Path::new(r"D:\burns\a.iso")).is_empty());
     }
 
     /// Le dossier personnel est nommé UNE fois, même quand dix fichiers y
@@ -1864,7 +1908,7 @@ mod tests {
     /// de fois ». Ni la casse ni les variantes de chemin ne doivent créer un
     /// second champ à remplir.
     #[test]
-    fn chaque_dossier_n_est_nomme_qu_une_fois() {
+    fn chaque_dossier_a_nommer_n_est_nomme_qu_une_fois() {
         let mut v: Vec<String> = Vec::new();
         for p in [
             r"C:\Users\lucas\Images\a.jpg",
@@ -1872,7 +1916,7 @@ mod tests {
             r"C:\Users\lucas\Documents\c.pdf",
             r"c:\users\LUCAS\images\d.jpg",
         ] {
-            for d in dossiers_personnels(Path::new(p)) {
+            for d in dossiers_a_nommer(Path::new(p)) {
                 if !v.iter().any(|x: &String| x.eq_ignore_ascii_case(&d)) {
                     v.push(d);
                 }
