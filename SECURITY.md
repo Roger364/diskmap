@@ -4,8 +4,12 @@
 **27/09/2026**, chacun désigné par le **symbole** qu'il annonce et non par un décalage —
 c'est ainsi qu'on a trouvé que trois d'entre eux pointaient vers la mauvaise fonction, et
 qu'un décrivait un défaut déjà corrigé dans le code. Une référence de ligne est une
-affirmation : elle se vérifie comme une. Le contrôle est à refaire à chaque commit qui
-déplace du code, et il n'est pas encore automatisé.
+affirmation : elle se vérifie comme une. Le contrôle est automatisé par
+`tests/sondes/verifier-references.mjs`, joint à `npm test` : il vérifie que chaque ligne
+cité existe, qu'elle n'est pas vide, et qu'elle contient bien le symbole que la
+documentation annonce. Une référence **nouvelle** échoue tant qu'elle n'a pas été relue
+et déclarée dans le tableau du contrôle — une référence non vérifiée ne passe pas en
+douce.
 
 **Date de l'audit :** 26/09/2026, 19:00–20:30
 **Périmètre :** `src/main.rs` (serveur HTTP + suppression), `src/win32.rs` (SHFileOperationW),

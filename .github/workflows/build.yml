@@ -43,6 +43,16 @@ jobs:
         working-directory: tests/sondes
         run: npm test
 
+      # Chaque `fichier:ligne` de SECURITY.md et de README.md doit designer le
+      # code qu il annonce. Le 27/09, quatre references sur vingt et une
+      # pointaient vers la mauvaise fonction, et une decrivait un defaut deja
+      # corrige dans le code : aucune n avait ete relue depuis l audit, parce
+      # qu une reference de ligne a l air d une chose stable. Elle ne l est pas.
+      # Ce controle lit des fichiers, n ecrit rien, et ne demande aucun volume.
+      - name: Les references de la documentation
+        working-directory: tests/sondes
+        run: node verifier-references.mjs
+
       # La CI doit rester sûre même sur un runner auto-hébergé : les scénarios
       # qui créent ou suppriment des fichiers ne sont lancés que manuellement,
       # sur un volume jetable explicitement configuré. Le job « sondes » plus bas
@@ -103,6 +113,16 @@ jobs:
       - name: Regle du volume jetable
         working-directory: tests/sondes
         run: npm test
+
+      # Chaque `fichier:ligne` de SECURITY.md et de README.md doit designer le
+      # code qu il annonce. Le 27/09, quatre references sur vingt et une
+      # pointaient vers la mauvaise fonction, et une decrivait un defaut deja
+      # corrige dans le code : aucune n avait ete relue depuis l audit, parce
+      # qu une reference de ligne a l air d une chose stable. Elle ne l est pas.
+      # Ce controle lit des fichiers, n ecrit rien, et ne demande aucun volume.
+      - name: Les references de la documentation
+        working-directory: tests/sondes
+        run: node verifier-references.mjs
 
       # Le filet est le sujet de ce job autant que les sondes : c'est lui qui doit
       # empêcher qu'une sonde vise hors de sa racine, et la sortie est ROUGE si
