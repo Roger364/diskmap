@@ -213,6 +213,29 @@ const SONDES = [
 ];
 
 // ------------------------------------------------------------------ arguments
+/**
+ * Le fichier de `cibles` le plus recent que `reference`, ou `null`.
+ *
+ * Sert au refus de demarrer sur un binaire perime. La comparaison se fait sur
+ * la DATE, et non sur le contenu : ce qu on veut detecter, c est une source
+ * modifiee apres la derniere compilation. Une source de date egale est acceptee
+ * — `cargo build` ecrit le binaire apres avoir lu les sources, et une seconde
+ * d ecart n a aucun sens.
+ */
+function plusRecentQue(reference, cibles) {
+  const t = fs.statSync(reference).mtimeMs;
+  let pire = null;
+  for (const c of cibles) {
+    if (!fs.existsSync(c)) continue;
+    const m = fs.statSync(c).mtimeMs;
+    if (m > t && (!pire || m > pire.mtimeMs)) {
+      pire = { fichier: path.relative(DEPOT, c), mtimeMs: m };
+    }
+  }
+  return pire;
+}
+
+// ------------------------------------------------------------------ arguments
 function lireArguments(argv) {
   const o = {
     url: null, volume: VOLUME_DEFAUT, volumeSansCorbeille: VOLUME_SANS_CORBEILLE,
@@ -558,6 +581,33 @@ try {
       // rayon`). Il ne doit pas être conseillé ici : le lecteur peut très bien
       // partir d'une copie fraîche du dépôt.
       console.error('Construis-le :  cargo build --release');
+      process.exit(2);
+    }
+    // Un binaire plus ancien qu une source ne prouve RIEN. Le 27/09, cinq
+    // sondes ont rouge sur une `SyntaxError` alors que le code etait correct :
+    // l interface servie vient du binaire, qui embarque `ui/index.html` a la
+    // compilation, et la derniere modification de l interface n avait pas ete
+    // recompilee. Le symptome designait entierement le produit, et il n etait
+    // pas dedans. Pire : un controle de syntaxe passe sur le fichier extrait du
+    // depot, lui, alors que le navigateur lisait l ancien — deux fichiers de
+    // meme nom et de contenu different, et rien ne le disait.
+    //
+    // En CI le risque n existe pas : `cargo build` y precede toujours les
+    // sondes. En local, ou l application se teste a la main, si. Le harnais
+    // refuse donc de partir, et nomme le fichier en cause — un refus qui ne dit
+    // pas quoi corriger est un refus qu on contourne.
+    const perime = plusRecentQue(binaire, [
+      path.join(DEPOT, 'Cargo.toml'),
+      path.join(DEPOT, 'Cargo.lock'),
+      path.join(DEPOT, 'ui', 'index.html'),
+      ...fs.readdirSync(path.join(DEPOT, 'src')).map((f) => path.join(DEPOT, 'src', f)),
+    ]);
+    if (perime) {
+      console.error(`Le binaire eprouve est plus ancien que ${perime.fichier}.`);
+      console.error('  Les sondes y mesureraient l interface d AVANT votre');
+      console.error('  modification. Ce n est pas un echec de produit, et le');
+      console.error('  laisser tourner reviendrait a mesurer la mauvaise version.');
+      console.error('  Construis-le :  cargo build --release');
       process.exit(2);
     }
     const port = (await portLibre(8801)) || 8801;
