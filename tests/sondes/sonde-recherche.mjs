@@ -39,7 +39,7 @@
 // Usage : node sonde-recherche.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { dossier, racine, URL_DEFAUT, attendreAnalyse } from './config.mjs';
+import { dossier, racine, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || 'V').toUpperCase();
@@ -71,11 +71,17 @@ const post = (c, corps) => fetch(BASE + c, {
   method: 'POST', headers: H, body: JSON.stringify(corps || {}),
 }).then(async (r) => ({ status: r.status, j: await r.json().catch(() => null) }));
 
-const chercher = (q, limit) => {
-  const u = limit === undefined
-    ? `${BASE}/api/search?drive=${VOL}&q=${encodeURIComponent(q)}`
-    : `${BASE}/api/search?drive=${VOL}&q=${encodeURIComponent(q)}&limit=${limit}`;
-  return fetch(u).then(async (r) => ({
+// `sort` et `order` sont des PARAMETRES, pas du texte de recherche. Les avoir
+// concatenes dans `q` etait le premier defaut de cette sonde : `chercher()`
+// encode ce qu il recoit, donc « w9k&sort=name » partait en un seul terme,
+// la recherche ne trouvait rien, et la lecture de `rows[0]` plantait sur un
+// `undefined`. Une URL ne se construit pas en collant des morceaux dans un
+// parametre deja encode.
+const chercher = (q, limit, extra = {}) => {
+  const qs = new URLSearchParams({ drive: VOL, q });
+  if (limit !== undefined) qs.set('limit', String(limit));
+  for (const [cle, valeur] of Object.entries(extra)) qs.set(cle, String(valeur));
+  return fetch(`${BASE}/api/search?${qs}`).then(async (r) => ({
     status: r.status, j: await r.json().catch(() => null),
   }));
 };
@@ -104,10 +110,29 @@ console.log(`--- ${VOL} : ${CHEMINS.length} entree(s) sous ${racine(VOL)}/recher
 console.log(`    3 dossiers + 3 fichiers, tous nommes « ${JETON} », poids ${FICHIERS.map((s) => `${s}=${POIDS[s]}`).join(' ')}`);
 console.log('');
 
-// Elles n'entrent dans l'instantane qu'apres une analyse : sans ca, la sonde
-// mesurerait un volume ou elle n'a pas mis les pieds.
+// Elles n'entrent dans l'instantane qu'apres une analyse. On attend le
+// CHANGEMENT DE GENERATION, pas la fin d'une analyse : juste apres
+// `POST /api/scan`, l'analyse n'est pas encore lancee, donc `scanning` est
+// encore faux, donc une attente sur `scanning` passe aussitot et l'on mesure
+// l'instantane du run precedent. Mesure : l'ancienne version passait 24/24
+// seule et tombait a 18/24 par le harnais, sur l'ecart
+// [w9k_c, w9k_b, w9k_b.txt, ...] contre [w9k_c, w9k_c.txt, w9k_b, ...] — un
+// ordre par nom, parce que les dossiers de l'ancien arbre etaient vides et
+// donc tous a zero. Le produit triait juste ; la sonde mesurait le volume
+// d'avant.
+const generationAvant = (await chercher(JETON, 1)).j && (await chercher(JETON, 1)).j.gen;
 await post(`/api/scan/${VOL}`);
-await attendreAnalyse(BASE, VOL);
+let generationApres = generationAvant;
+for (let i = 0; i < 200 && generationApres === generationAvant; i++) {
+  await new Promise((r) => setTimeout(r, 200));
+  const r = await chercher(JETON, 1);
+  generationApres = r.j ? r.j.gen : generationAvant;
+}
+verifier('l instantane observe est celui qui contient les fichiers de la sonde',
+  generationApres !== generationAvant,
+  `generation ${generationAvant} -> ${generationApres} : l analyse n a pas change `
+  + 'd instantane, et la sonde mesurerait le volume du run precedent');
+noter(`generation : ${generationAvant} -> ${generationApres}`);
 
 // ------------------------------------------------------------------ le contrat
 const ATTENDU = DOSSIERS.length + FICHIERS.length;
@@ -142,70 +167,112 @@ verifier('une recherche sans resultat ne renvoie rien et ne se trompe pas',
 
 // ------------------------------------------------------------------ ce qui est coupe
 console.log('');
-console.log(`--- 2. ce que la borne coupe, et ce que le serveur en dit ---`);
+console.log('--- 2. la borne, et ce que le serveur en dit ---');
 
-// Exactement le nombre de correspondances. RIEN n'est coupe, et c'est le cas
-// que la formule ne sait pas distinguer d'une vraie troncature.
-const exact = await chercher(JETON, ATTENDU);
-const rangeesExact = exact.j && Array.isArray(exact.j.rows) ? exact.j.rows : [];
-noter(`borne = ${ATTENDU} pour ${ATTENDU} correspondance(s) : ${rangeesExact.length} rendue(s). `
-  + `« truncated » annonce : ${exact.j && exact.j.truncated}. `
-  + `Rien n'a ete coupe : un serveur qui ne tronque rien mais le dit est un `
-  + `serveur qui ment, et l'interface le repete a l'utilisateur.`);
-noter(`borne par defaut de l'interface (800) sur le meme jeton : ` +
-  `${(await chercher(JETON, 800)).j.rows.length} ligne(s).`);
+// Le drapeau doit etre un FAIT, jamais une supposition. On le met face a des
+// bornes de part et d'autre du total : juste egale (rien n'est coupe), juste
+// inferieure (coupe), juste superieure (rien n'est coupe).
+for (const borne of [ATTENDU, ATTENDU + 4, ATTENDU - 1, 1]) {
+  const r = await chercher(JETON, borne);
+  const n = (r.j && r.j.rows ? r.j.rows.length : 0);
+  const total = r.j ? r.j.total : null;
+  const attendu = total !== null && borne < total;
+  verifier(`a la borne ${borne}, « truncated » dit vrai (total ${total}, rendu ${n})`,
+    r.j && r.j.truncated === attendu && n === Math.min(borne, total),
+    `truncated=${r.j && r.j.truncated}, attendu ${attendu}, rendu ${n}`);
+}
 
-// La borne egale au nombre de DOSSIERS. Si les dossiers remplissent la borne,
-// que devient un fichier qui correspond ? C'est la question du jour.
+const large2 = await chercher(JETON, 50);
+verifier('« total » est le compte reel, pas le compte rendu',
+  large2.j && large2.j.total === ATTENDU,
+  `total=${large2.j && large2.j.total}, attendu ${ATTENDU}`);
+verifier('une borne au-dessus du total ne dit pas « tronqué »',
+  large2.j && large2.j.truncated === false,
+  `truncated=${large2.j && large2.j.truncated}`);
+
+// Le cas de 2026 : des dossiers qui remplissent la borne ne doivent pas
+// interdire aux fichiers d'etre vus. On le mesure par le CONTENU rendu, pas
+// en comptant des dossiers.
 const tousDossiers = await chercher(JETON, DOSSIERS.length);
-const lignesDd = tousDossiers.j && Array.isArray(tousDossiers.j.rows) ? tousDossiers.j.rows : [];
+const lignesDd = tousDossiers.j && tousDossiers.j.rows ? tousDossiers.j.rows : [];
 const nbDossiers = lignesDd.filter((r) => r.is_dir).length;
 const nbFichiers = lignesDd.filter((r) => !r.is_dir).length;
-noter(`borne = ${DOSSIERS.length} (le nombre de DOSSIERS) : ${lignesDd.length} ligne(s), `
-  + `dont ${nbDossiers} dossier(s) et ${nbFichiers} fichier(s). `
-  + `${FICHIERS.length} fichier(s) portent le jeton et sont lisibles sur le disque.`
-  + (nbFichiers === 0
-    ? ' AUCUN n est rendu : les fichiers ne sont pas « hors borne », ils ne sont pas cherches.'
-    : ` ${nbFichiers} sur ${FICHIERS.length} sont rendus.`));
+verifier(`des dossiers qui remplissent la borne n empechent pas les fichiers d etre vus`,
+  nbFichiers > 0,
+  `${nbDossiers} dossier(s) et ${nbFichiers} fichier(s) rendus a la borne `
+  + `${DOSSIERS.length}, alors que ${FICHIERS.length} fichiers portent le jeton`);
 
-// La meme question, une borne de plus : un seul fichier doit apparaitre.
-const plusUn = await chercher(JETON, DOSSIERS.length + 1);
-const lignesPlusUn = plusUn.j && Array.isArray(plusUn.j.rows) ? plusUn.j.rows : [];
-noter(`borne = ${DOSSIERS.length + 1} : ${lignesPlusUn.filter((r) => !r.is_dir).length} fichier(s) rendu(s).`);
-
-// ------------------------------------------------------------------ l'ordre
+// ------------------------------------------------------------------ l'egalite
 console.log('');
-console.log(`--- 3. l'ordre des lignes rendues ---`);
+console.log('--- 3. ce qui est rendu est ce qui a ete choisi ---');
 
-const tailles = rangees.map((r) => r.size);
-const decroissant = tailles.every((t, i) => i === 0 || tailles[i - 1] >= t);
-noter(`borne large : tailles rendues = [${tailles.join(', ')}]. `
-  + `Decroissant : ${decroissant}. `
-  + (decroissant
-    ? 'La selection et l affichage utilisent le meme critere, sur cette arbre.'
-    : 'L affichage n est PAS dans l ordre des tailles : la liste ne se lit pas comme elle se presente.'));
-
-// Le point qui compte vraiment : sur QUEL critere les lignes ont ete CHOISIES,
-// pas dans quel ordre elles sont presentees. A la borne large, les deux
-// coincident par hasard — tout est rendu. A la borne egale au nombre de
-// dossiers, NON : les fichiers n'ont pas ete vus, donc ils ne peuvent pas
-// avoir ete ecartes pour etre petits. Ce qui les a ecarte, c'est qu'ils sont
-// des fichiers.
-const nomFichiersVisibles = lignesDd.filter((r) => !r.is_dir).map(nomDe);
-noter(`a la borne ${DOSSIERS.length}, les lignes rendues se nomment : `
-  + `${lignesDd.map((r) => `${nomDe(r)}${r.is_dir ? '/' : ''}(${r.size})`).join(', ')}.`);
-noter(`le critere de SELECTION n est donc pas la taille : a cette borne, les `
-  + `dossiers ont ete pris parce que ce sont des dossiers, et les fichiers `
-  + `ecartes parce que le parcours s est arrete avant eux. L affichage, lui, `
-  + `montre des tailles decroissantes — la liste a l air d avoir ete choisie `
-  + `par taille, et n a pas ete choisie ainsi.`);
-if (nomFichiersVisibles.length) {
-  noter(`fichier(s) effectivement rendus : ${nomFichiersVisibles.join(', ')}.`);
-} else {
-  noter(`aucun fichier rendu a la borne ${DOSSIERS.length}, alors que `
-    + `${FICHIERS.length} portent le jeton. Un fichier de 15 000 octets et un `
-    + `dossier de 150 octets se disputent la meme place, et c'est le dossier qui gagne.`);
+// LE verdict. On demande une borne large — la liste complete, deja triee par
+// le serveur — puis on rejoue le meme tri en local. Ce que le serveur rend
+// pour une borne N doit etre le prefixe de cette liste.
+//
+// C'est ce qui manquait, et ce que l'interface laisse croire : avant,
+// `Reverse(size)` portait sur le jeu deja coupe dans l'ordre de l'index, donc
+// les 800 premieres vues etaient presentees comme les 800 plus grosses.
+const triLocal = (r) => (a, b) => (b.size - a.size) || a.name.localeCompare(b.name);
+for (const borne of [1, 2, 3, 4, 5, 6]) {
+  const r = await chercher(JETON, borne);
+  const rendu = r.j && r.j.rows ? r.j.rows.map(nomDe) : [];
+  const attendu = rangees.slice().sort(triLocal()).slice(0, borne).map(nomDe);
+  verifier(`borne ${borne} : le rendu est le debut de la liste entiere triee`,
+    rendu.join('|') === attendu.join('|'),
+    `rendu [${rendu.join(', ')}], attendu [${attendu.join(', ')}]`);
 }
+
+// L'egalite se tranche par nom, dans les deux sens. C'est ce qui rend la liste
+// reproductible, et ce qui permet a une sonde de mesurer un changement de tri
+// sans dependre du contenu du dossier.
+// L'egalite se tranche par nom CROISSANT, dans les deux sens.
+//
+// Les deux listes entieres ne sont PAS l'une l'inverse de l'autre, et ne
+// doivent pas l'etre : c'est exactement le defaut corrige. Ce qu on exige est
+// plus precis et plus utile — dans chaque groupe de taille egale, les noms
+// apparaissent dans le meme ordre, croissant, quel que soit le sens demande.
+// Une position donnee ne depend donc que de la DONNEE, pas du geste de
+// l'utilisateur, et c'est ce qui rend une liste reproductible.
+const egauxDecr = await chercher(JETON, 50, { sort: 'size', order: 'desc' });
+const egauxAsc = await chercher(JETON, 50, { sort: 'size', order: 'asc' });
+const parTaille = (rows) => {
+  const groupes = new Map();
+  for (const r of rows || []) {
+    if (!groupes.has(r.size)) groupes.set(r.size, []);
+    groupes.get(r.size).push(r.name);
+  }
+  return groupes;
+};
+const decr = parTaille(egauxDecr.j && egauxDecr.j.rows);
+const asc = parTaille(egauxAsc.j && egauxAsc.j.rows);
+const tailles = [...decr.keys()].sort((a, b) => b - a);
+const groupesEgaux = tailles.length > 0 && tailles.every((t) => {
+  const d = decr.get(t) || [];
+  const a = asc.get(t) || [];
+  return d.length === a.length && d.length > 0
+    && d.join('|') === a.join('|')
+    && d.every((n, i) => i === 0 || d[i - 1] <= n);
+});
+verifier('a taille egale, les noms restent croissants quel que soit le sens',
+  groupesEgaux,
+  tailles.map((t) => `taille ${t} : desc [${(decr.get(t) || []).join(', ')}] / `
+    + `asc [${(asc.get(t) || []).join(', ')}]`).join(' ; '));
+
+// Et le corollaire : le serveur rend bien la MEME liste, pas une liste
+// recomposee a chaque requete. Deux appels identiques donnent le meme ordre.
+const repete1 = await chercher(JETON, 50, { sort: 'size', order: 'desc' });
+const repete2 = await chercher(JETON, 50, { sort: 'size', order: 'desc' });
+verifier('deux requetes identiques rendent le meme ordre, dans le meme sens',
+  (repete1.j.rows || []).map(nomDe).join('|') === (repete2.j.rows || []).map(nomDe).join('|'),
+  `${(repete1.j.rows || []).map(nomDe).join(', ')} / `
+  + `${(repete2.j.rows || []).map(nomDe).join(', ')}`);
+
+const parNom = await chercher(JETON, 50, { sort: 'name', order: 'desc' });
+verifier('le tri par nom respecte le sens demande',
+  parNom.j && parNom.j.rows && parNom.j.rows[0].name > parNom.j.rows[parNom.j.rows.length - 1].name,
+  `premiere « ${parNom.j && parNom.j.rows && parNom.j.rows[0].name} », `
+  + `derniere « ${parNom.j && parNom.j.rows && parNom.j.rows[parNom.j.rows.length - 1].name} »`);
 
 // ------------------------------------------------------------------ la sonde
 // Elle a cree des fichiers ; elle ne doit en avoir detruit aucun. Une sonde
@@ -229,6 +296,23 @@ if (notes.length) {
   console.log('\nContrat de la recherche — MESURÉ, non jugé :');
   for (const n of notes) console.log(`  - ${n}`);
 }
+// On rend le volume. C'est la DERNIERE chose, et c'est deliberé : les
+// verdicts ci-dessus prouvent que la sonde n'a detruit aucun fichier qu'elle a
+// crees, et celle-ci retire les siens.
+//
+// Sans ce nettoyage, la sonde suivante trouve `w9k_a` en tete de liste au lieu
+// du dossier attendu, et echoue sur une salete qu'elle n'a pas produite.
+// Mesure le 27/09/2026 : la sonde `ui` est devenue rouge 17/19 en suivant la
+// `recherche`, parce que l'interface trie par taille et que cette sonde avait
+// pose des poids arbitraires.
+try {
+  fs.rmSync(DOSSIER, { recursive: true, force: true });
+  noter(`dossier de travail retire : ${DOSSIER}`);
+} catch (e) {
+  noter(`PAS PU NETTOYER ${DOSSIER} : ${e.code || e.message} — `
+    + 'les residus peuvent faire echouer une sonde qui passe apres');
+}
+
 if (echecs.length) {
   console.log('\nÉchecs :');
   for (const e of echecs) console.log(`  - ${e}`);

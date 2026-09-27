@@ -7,7 +7,7 @@
 mod scan;
 mod win32;
 
-use scan::{Progress, Row, Snapshot};
+use scan::{trier_lignes, Progress, Row, Snapshot, Tri};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -1044,39 +1044,18 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         });
     }
 
+    // Le tri passe par la fonction partagée : `/api/tree` et `/api/search`
+    // doivent produire le MÊME ordre, sinon la même liste change de tête selon
+    // la route qui l'a rendue.
+    //
+    // L'ancien code comparait quatre critères sans jamais trancher l'égalité :
+    // deux entrées de même taille sortaient dans l'ordre de l'index, et
+    // changeaient de place quand on inversait le sens du tri. L'utilisateur ne
+    // pouvait pasKilculer l'ordre, et une sonde ne pouvait pas le mesurer —
+    // elle aurait conclu « le tri n'a pas été appliqué » en voyant une liste
+    // inchangée.
     let total = rows.len();
-    let asc = order == "asc";
-    match sort.as_str() {
-        "name" => rows.sort_by(|a, b| {
-            let k = a.name.to_lowercase().cmp(&b.name.to_lowercase());
-            if asc {
-                k
-            } else {
-                k.reverse()
-            }
-        }),
-        "mtime" => rows.sort_by(|a, b| {
-            if asc {
-                a.mtime.cmp(&b.mtime)
-            } else {
-                b.mtime.cmp(&a.mtime)
-            }
-        }),
-        "count" => rows.sort_by(|a, b| {
-            if asc {
-                a.count.cmp(&b.count)
-            } else {
-                b.count.cmp(&a.count)
-            }
-        }),
-        _ => rows.sort_by(|a, b| {
-            if asc {
-                a.size.cmp(&b.size)
-            } else {
-                b.size.cmp(&a.size)
-            }
-        }),
-    }
+    trier_lignes(&mut rows, Tri::depuis(&sort), order != "asc");
 
     let parent_size = snap.size[id as usize];
     let mut path: Vec<Crumb> = Vec::new();
@@ -2420,14 +2399,58 @@ fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             .and_then(|s| s.snap.clone())
             .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
     };
+
+    // La garde de MEMoire, distincte de la borne d'AFFICHAGE.
+    //
+    // Elle vaut quatre fois la borne demandée, et jamais moins de 4 000 : une
+    // borne de 1 ne doit pas faire remonter 4 000 lignes dans le tri, mais une
+    // borne de 20 000 doit pouvoir juger sur 20 000. C'est le compromis entre
+    // deux coûts qui ne s'ajoutent pas — le balayage est déjà fait pour
+    // compter, seules les allocations en plus sont évitées.
+    let garde = limit.saturating_mul(4).max(4_000);
+
     let needle = term.to_lowercase();
-    let mut rows = snap.search(&needle, limit);
-    rows.sort_by_key(|row| std::cmp::Reverse(row.size));
-    let truncated = rows.len() >= limit;
+    let r = snap.search(&needle, garde);
+
+    // On trie AVANT de plafonner, et sur l'union déjà rendue.
+    //
+    // L'ordre du parcours ne vaut rien comme critère : il suit l'index, et
+    // l'index ne connaît ni la taille ni le nom. Plafonner d'abord revenait à
+    // dire « les 800 premiers encountered », puis à les présenter par taille
+    // décroissante — l'utilisateur lisait une sélection par taille, et ce
+    // n'en était pas une.
+    let mut lignes = r.lignes;
+    let tri = Tri::depuis(q.get("sort").map(|s| s.as_str()).unwrap_or("size"));
+    let decroissant = q.get("order").map(|s| s != "asc").unwrap_or(true);
+    trier_lignes(&mut lignes, tri, decroissant);
+
+    // Le plafond s'applique ICI, après le tri. `truncated` devient un fait :
+    // on a rendu moins qu'on n'en a trouvé, ou on a tout rendu.
+    // Le drapeau se calcule APRES la coupe. Avant, `lignes` portait encore
+    // le jeu entier : `total > lignes.len()` donnait `6 > 6`, et le serveur
+    // annonait « rien n a ete coupe » en en coupant cinq. Mesure par la
+    // sonde `recherche` a la borne 5 sur un total de 6.
+    lignes.truncate(limit);
+    let tronque = r.total > lignes.len();
+
     Ok(Resp::Json(
-        serde_json::to_string(
-            &serde_json::json!({ "rows": rows, "truncated": truncated, "gen": snap.gen }),
-        )
+        serde_json::to_string(&serde_json::json!({
+            "rows": lignes,
+            // `total` est le compte REEL. L'ancien `rows.len() >= limit`
+            // était une supposition, fausse dans les deux sens : il
+            // annonçait « tronqué » quand la page était complète, et
+            // ne pouvait rien dire quand le parcours s'était arrêté avant.
+            "total": r.total,
+            "truncated": tronque,
+            // `exact: false` signifie « au moins total » : la garde de
+            // mémoire a été atteinte, la liste est un échantillon trié.
+            // Un plancher honnête, jamais un silence.
+            "exact": r.exact,
+            "garde": garde,
+            "tri": q.get("sort").cloned().unwrap_or_else(|| "size".into()),
+            "order": if decroissant { "desc" } else { "asc" },
+            "gen": snap.gen,
+        }))
         .unwrap(),
     ))
 }

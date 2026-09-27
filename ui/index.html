@@ -375,7 +375,14 @@
 <script>
 const $ = s => document.querySelector(s);
 let state = { drives: [], scanning: null };
-let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set(), gen: 0 };
+let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set(), gen: 0,
+  // Le compte RÉEL des correspondances d'une recherche, et le fait qu'il
+  // soit complet. Avant le 27/09/2026, l'interface ne pouvait rien dire de ce
+  // qu'elle ne montrait pas : elle écrivait « tronqué » quand la page était
+  // complète, dans un cas sur deux. Une personne qui supprime doit savoir
+  // qu'elle regarde une liste partielle.
+  total: 0, totalExact: true, isSearch: false };
+
 let pendingDry = null;
 // Le serveur s'arrête à la demande de cette page. Une fois posé, plus rien ne
 // doit partir : chaque minuteur deviendrait une requête vers un port fermé, et
@@ -845,15 +852,33 @@ async function search() {
   // sonde d'interface : 1 case cochée avant, 0 après.
   if (!q) { cur.view = 'table'; await load(true); return; }
   if (!cur.drive) return;
-  const res = await api(`/api/search?drive=${cur.drive}&q=${encodeURIComponent(q)}&limit=800`);
+  // Le tri est demandé au serveur, qui sait désormais trier l'union. Sans ce
+  // paramètre, `sort` et `order` étaient ignorés, et la liste
+  // revenait toujours par taille — c'était le cas le 27/09.
+  const res = await api(`/api/search?drive=${cur.drive}&q=${encodeURIComponent(q)}`
+    + `&limit=800&sort=${cur.sort}&order=${cur.order}`);
   cur.rows = res.rows;
   cur.gen = res.gen;
   cur.parentSize = res.rows.reduce((s, r) => s + r.size, 0) || 1;
   cur.truncated = res.truncated;
+  // `total` est le compte RÉEL des correspondances, et `exact` dit s'il est
+  // complet. Ce sont deux faits du serveur, pas une déduction faite ici.
+  cur.total = res.total;
+  cur.totalExact = res.exact !== false;
   cur.path = [{ name: `${cur.drive}:\\`, id: 0 }, { name: `« ${q} »`, id: 0 }];
   cur.isSearch = true;
   renderCrumbs();
-  $('#count').textContent = `${nf.format(cur.rows.length)} résultat(s)`;
+  // On affiche le VRAI compte. L'ancien texte disait « tronqué — affinez »
+  // alors que rien n'avait été coupé dans un cas sur deux, et ne disait
+  // jamais combien il y en avait de cachés. Une personne qui supprime doit
+  // savoir qu'elle regarde une liste partielle.
+  const affiches = cur.rows.length;
+  const total = typeof cur.total === 'number' ? cur.total : affiches;
+  $('#count').textContent = affiches < total
+    ? `${nf.format(affiches)} sur ${nf.format(total)} résultat(s) — affinez la recherche`
+    : `${nf.format(affiches)} résultat(s)`
+      + (cur.totalExact ? '' : ` (au moins ${nf.format(total)})`);
+
   const tb = $('#rows'); tb.innerHTML = '';
   const frag = document.createDocumentFragment();
   for (const r of cur.rows.slice(0, 800)) {
