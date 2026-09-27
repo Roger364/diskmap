@@ -285,4 +285,4 @@ if (echecs.length) {
   console.log('ÉCHECS / CONSTATS :');
   for (const e of echecs) console.log(`  - ${e}`);
 }
-process.exit(echecs.length ? 1 : 0);
+process.exitCode = echecs.length ? 1 : 0;

@@ -135,4 +135,4 @@ if ((a4.items || []).length === 2 && a4.blocked === 1) {
 
 console.log('');
 console.log(rouges.length === 0 ? 'vert  aucun défaut' : `ROUGE ${rouges.length} défaut(s) : ${rouges.join(', ')}`);
-process.exit(rouges.length === 0 ? 0 : 1);
+process.exitCode = rouges.length === 0 ? 0 : 1;

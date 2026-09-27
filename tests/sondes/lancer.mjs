@@ -724,6 +724,7 @@ if (filet) {
   console.log(`  filet   : ${filet.refus} execution(s) refusee(s), ${filet.incidents.length} incident(s) — tous produits par la sonde d'epreuve du filet`);
 }
 
-if (rouges.length) process.exit(1);
-if (pasPu.length) process.exit(2);
-process.exit(0);
+// Trois sorties dures devenaient un seul code : rouge 1, « pas pu
+// eprouver » 2, sinon 0. Le harnais n a plus de coupure au milieu de sa
+// propre sortie -- c est lui aussi un processus qui a des sockets.
+process.exitCode = rouges.length ? 1 : (pasPu.length ? 2 : 0);

@@ -201,6 +201,5 @@ console.log(`  ${verifs.filter(Boolean).length}/${verifs.length} vérifications`
 if (echecs.length) {
   console.log('ÉCHECS :');
   for (const e of echecs) console.log(`  - ${e}`);
-  process.exit(1);
 }
-process.exit(0);
+process.exitCode = echecs.length ? 1 : 0;

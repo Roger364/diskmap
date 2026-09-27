@@ -201,4 +201,4 @@ try { fs.rmdirSync(DOSSIER); } catch { /* non vide, ou déjà parti */ }
 console.log('');
 console.log(`${verifs.filter(Boolean).length}/${verifs.length} vérifications`);
 if (echecs.length) { console.log('ÉCHECS :'); for (const e of echecs) console.log(`  - ${e}`); }
-process.exit(echecs.length ? 1 : 0);
+process.exitCode = echecs.length ? 1 : 0;

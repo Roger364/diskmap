@@ -147,4 +147,4 @@ if (echecs.length) {
   for (const e of echecs) console.log(`  - ${e}`);
 }
 await navigateur.close();
-process.exit(echecs.length ? 1 : 0);
+process.exitCode = echecs.length ? 1 : 0;

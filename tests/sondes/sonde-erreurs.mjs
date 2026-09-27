@@ -288,4 +288,4 @@ if (notes.length) {
   console.log('\nNotes :');
   for (const n of notes) console.log(`  - ${n}`);
 }
-process.exit(echecs.length ? 1 : 0);
+process.exitCode = echecs.length ? 1 : 0;
