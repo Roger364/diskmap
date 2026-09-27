@@ -150,6 +150,17 @@ const SONDES = [
     quoi: 'Ce que rend la recherche, ce qu elle coupe, et ce qu elle pretend',
   },
   {
+    // Lecture seule : elle cherche sur les volumes REELS, et ne prend pas le volume
+    // de travail en argument. Elle eprouve le seul chemin que la precedente ne peut
+    // pas atteindre — la garde de MEMoire, quand la recherche ne peut pas tout
+    // materialiser et doit donc dire « au moins N ». Ce chemin a ete livre le
+    // 27/09/2026 sans qu'aucune sonde ne l'exerce. Le volume jetable fait 511 Mio :
+    // fabriquer 4 000 correspondances y prendrait plus de temps que le test.
+    nom: 'rechercheGrande', fichier: 'sonde-recherche-large.mjs', args: (c) => [c.url], ci: true,
+    detruit: 'rien',
+    quoi: 'Quand la recherche ne peut pas tout montrer, elle dit « au moins N » au lieu de pretendre',
+  },
+  {
     nom: 'ui', fichier: 'sonde-ui-suppression.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Le geste reel dans l interface, jusqu a l apercu — ce qu aucune sonde serveur ne voit',
