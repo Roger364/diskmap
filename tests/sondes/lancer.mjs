@@ -494,9 +494,15 @@ function lireResidus(racines, volume) {
   const trouve = [];
   const racine = racines.find((r) => new RegExp(`^${volume}:`, 'i').test(r));
   if (!racine) return trouve;
-  for (const d of fs.readdirSync(racine, { withFileTypes: true })) {
-    if (d.isDirectory()) trouve.push(`${d.name}/ (sous ${racine})`);
-  }
+  // Un volume PROPRE n'a pas encore de dossier de sondes : son absence est la
+  // normale, pas une erreur. Sans ce try/catch, le harnais echouait sur le
+  // premier volume neuf — c'est-a-dire en CI, sur un runner qui n'a jamais
+  // eu de sondes (run du 27/09/2026, #31).
+  try {
+    for (const d of fs.readdirSync(racine, { withFileTypes: true })) {
+      if (d.isDirectory()) trouve.push(`${d.name}/ (sous ${racine})`);
+    }
+  } catch { /* racine absente : volume propre */ }
   const corbeille = `${volume}:/$RECYCLE.BIN`;
   let charges = 0;
   let sids = [];
