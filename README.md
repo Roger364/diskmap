@@ -17,8 +17,11 @@ next section describes, on Windows, and it has been measured on one machine.
   run, and an unsigned executable that walks an entire disk is the kind of thing
   antivirus heuristics dislike. Signing is a per-year certificate cost this
   project has not paid — see *Build and run* to compile it yourself instead.
-- **There is no installer and no published release.** Build from source, or take
-  the binary the CI workflow produces as an artifact.
+- **There is no installer.** Every push on `master` that passes the CI publishes a
+  tagged release with the Windows binary attached, so you can download a tested
+  build from the Releases page without installing anything. The binary is taken
+  from the job's artifact rather than rebuilt: what you download is the one that
+  passed `fmt`, `clippy`, `test` and the probes.
 
 ## What it does
 
@@ -115,10 +118,10 @@ knowing if you script the API, since both answer `403`:
 Two causes, only one of which could actually be addressed.
 
 **The MFT is not reachable without elevation.** Reading the file table directly
-would take a few seconds, but opening a handle on `\\.\C:` requires
-administrator rights. Measured on an unelevated session: `C:`, `D:` and `G:`
-refuse to open, only `E:` succeeds. Speed therefore comes from parallelism:
-rayon fork/join, one job per subdirectory down to 16 levels deep.
+would take a few seconds, but opening a handle on a volume's raw device
+requires administrator rights. Measured on an unelevated session: the NTFS
+volumes refuse to open, only the exFAT one succeeds. Speed therefore comes from
+parallelism: rayon fork/join, one job per subdirectory down to 16 levels deep.
 
 **Aggregation was moved out of the walk.** Rolling sizes up to parents *during*
 the scan costs a lock per file and per depth level. Instead the scan keeps only
@@ -133,13 +136,15 @@ followed: doing so would double-count (`C:\Documents and Settings` points at
 
 ### Measurements
 
-On a machine with 24 logical cores and NVMe drives:
+Measured on a 24-core machine with NVMe drives, then rounded — the figures are
+here for the order of magnitude, not as a promise, and a release build on
+another machine will differ:
 
 | Volume | Files | Folders | Size | Cold scan |
 |---|---|---|---|---|
-| `C:` | 2,256,830 | 297,990 | 873 GB | **35 s** |
-| `G:` | 1,086,153 | 179,309 | 438 GB | 9 s |
-| `E:` | 24,350 | 1,044 | 40 GB | 0.45 s |
+| system | ~2.3 M | ~300 k | ~870 GB | **35 s** |
+| data | ~1.1 M | ~180 k | ~440 GB | 9 s |
+| external | ~24 k | ~1 k | ~40 GB | 0.45 s |
 
 About 73,000 entries/s. The result is cached in binary form under
 `%LOCALAPPDATA%\diskmap\`, so later launches load in about a second instead of
@@ -150,6 +155,9 @@ handle per file. Measured on `System32`, 2.15 ms against 2.91 ms for raw
 `FindFirstFileW`. The hypothesis was wrong, so the standard API stays.
 
 ## Build and run
+
+Download `diskmap.exe` from the [Releases page](https://github.com/Roger364/diskmap/releases)
+and run it, or build from source:
 
 ```bat
 cargo build --release
@@ -176,8 +184,8 @@ cd tests\sondes && npm test               the disposable-volume rule, on its own
 ```
 
 The probes that create and delete test files may only run on a **disposable
-volume**. Not a disposable folder: on 26/09/2026 a probe ran on the working
-volume `G:` and destroyed 65 real files permanently, sending 68 more to the
+volume**. Not a disposable folder: on 26/09/2026 a probe ran on a working data
+volume and destroyed 79 real files permanently, sending 89 more to the
 Recycle Bin, scattered across the whole disk. The paths it aimed at were
 resolved against a rescanned index, so they designated other files than its own
 — see `SECURITY.md` and §3.6 of that report.
@@ -192,24 +200,28 @@ beside it.
 
 The question the rule asks is deliberately not "does this volume look
 throwaway". It is **"what else dies if I destroy it?"**, and the obvious
-indicators answer it backwards. On the development machine, `D:` is 50 MB, is
-neither the boot nor the system volume, and is labelled "Reserved for system" —
-every heuristic approves it. It is in fact a partition of the disk that carries
-the 476 GB of `G:`. Size, `IsBoot` and `IsSystem` are anti-correlated with safety:
-`G:` also reports "neither boot nor system", and holds everything.
+indicators answer it backwards. A small secondary partition on a data disk — a
+few dozen megabytes, neither the boot nor the system volume, often labelled
+"Reserved for system" — is approved by every heuristic there is, and holds
+somebody's work. Size, `IsBoot` and `IsSystem` are anti-correlated with safety:
+the data disk itself reports "neither boot nor system" as well, and that is
+where everything lives. This is not a hypothetical: it is the volume the audit
+that produced this rule was written about.
 
-A **physical** disk is therefore never accepted, even alone on its medium: a
-single-partition 4 TB drive can be somebody's only backup. And when the
-measurement itself fails — PowerShell unavailable, nothing read — the run is
-refused rather than assumed, because a case that was not measured is neither
-success nor failure, and here both readings are destructive.
+So a **physical** disk is never accepted, even alone on its medium: a
+single-partition drive can be somebody's only backup, and no size or label
+distinguishes it. A "sole partition" test was written, measured, and removed —
+it was wrong. And when the measurement itself fails — PowerShell unavailable,
+nothing read — the run is refused rather than assumed, because a case that was
+not measured is neither success nor failure, and here both readings are
+destructive.
 
 The one way through is `DISKMAP_SONDE_MACHINE_EPHEMERE=<why>`, which asserts that
 the **machine** is disposable rather than the volume. No measurement can
-establish that: a CI runner's `D:` is a physical disk like any other, and it is
-the runner that is thrown away. It is a value, not a flag, and it is reprinted
-inside a banner on every run it permits — a declaration nobody can see is a
-declaration nobody read.
+establish that: a CI runner's spare drive is a physical disk like any other,
+and it is the runner that is thrown away. It is a value, not a flag, and it is
+reprinted inside a banner on every run it permits — a declaration nobody can see
+is a declaration nobody read.
 
 None of this touches the application. `diskmap` still deletes on whatever volume
 you point it at, with its own protections intact; the rule governs only where
