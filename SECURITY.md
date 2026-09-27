@@ -1,8 +1,16 @@
 # Audit de sécurité — diskmap 0.1.0
 
+**Références de ligne :** les `fichier:ligne` de ce document ont été revérifiés le
+**27/09/2026**, chacun désigné par le **symbole** qu'il annonce et non par un décalage —
+c'est ainsi qu'on a trouvé que trois d'entre eux pointaient vers la mauvaise fonction, et
+qu'un décrivait un défaut déjà corrigé dans le code. Une référence de ligne est une
+affirmation : elle se vérifie comme une. Le contrôle est à refaire à chaque commit qui
+déplace du code, et il n'est pas encore automatisé.
+
 **Date de l'audit :** 26/09/2026, 19:00–20:30
 **Périmètre :** `src/main.rs` (serveur HTTP + suppression), `src/win32.rs` (SHFileOperationW),
-`src/scan.rs` (parcours + cache), `ui/index.html` (interface), `tests/sondes/` (13 sondes),
+`src/scan.rs` (parcours + cache), `ui/index.html` (interface), `tests/sondes/` (13 sondes
+à l'audit ; 20 au 27/09),
 `.github/workflows/build.yml`.
 **Méthode :** lecture intégrale du code, historique git, exécution de `cargo test`,
 `cargo clippy --all-targets -- -D warnings` et `cargo fmt --check`, puis rejeu des sondes
@@ -77,8 +85,15 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1218-1236`) ; `execute` ne résout plus rien et ne supprime que les chemins
-figés par l'aperçu (`struct Montre`, `src/main.rs:63-90`).
+(`src/main.rs:1520`) ; `execute` ne résout plus rien et ne supprime que les chemins
+figés par l'aperçu (`struct Montre`, `src/main.rs:101`).
+
+**La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
+ci-dessus ferme l'éffacement, parce que c'est lui qui était mesuré. Mais l'interface
+épinglait le dossier courant par un identifiant, et le redemandait après chaque analyse :
+la même dérive, appliquée à la navigation, est restée en place pendant toute la
+correction de l'effacement, et même après elle. Une cause racine corrigée pour un seul
+appelant n'est pas une cause racine corrigée : c'est un appelant sur deux.
 
 ### 3.2 Une page tierce pouvait effacer n'importe quel fichier — `679ee7d` (corrigé)
 
@@ -205,12 +220,12 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
 |---|---|
-| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:795`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:772`) |
+| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:861`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:783`) |
 | DNS rebinding | Rien, pour la même raison |
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1161`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1385`) — voir R5 |
 
 ---
 
@@ -252,7 +267,7 @@ l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1161`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1385`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -274,9 +289,9 @@ runners auto-hébergés.
 
 ### R4 — Le cache n'est validé que par son numéro de série · **Moyenne** · *corrigé*
 
-`src/scan.rs:489` : `load(path, expected_serial)` vérifie le magic, la version et le numéro
+`src/scan.rs:526` : `load(path, expected_serial)` vérifie le magic, la version et le numéro
 de série. La racine est lue ligne 522 (`let root = …`) puis **jamais comparée** à la lettre du
-volume. Or `dir_path` reconstruit les chemins à partir de `dirs[0].name` (`src/scan.rs:353`),
+volume. Or `dir_path` reconstruit les chemins à partir de `dirs[0].name` (`src/scan.rs:503`),
 c'est-à-dire de cette racine.
 
 Un `C.bin` contenant l'arbre de `G:` serait accepté. Scénario réaliste : `C:` défaillante,
@@ -383,7 +398,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:1599`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2592`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -408,10 +423,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1322` insère à chaque `dry` ; `p.retain` (`src/main.rs:1358`) n'est appelé que
-dans `execute`. Des aperçus répétés sans confirmation font croître la map sans borne —
-jusqu'à 4 Mio d'identifiants, soit une centaine de milliers de chemins. Purger dans `dry`
-aussi règle le tir en une ligne.
+`src/main.rs:1656` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1661`) n'était
+appelé que dans `execute` (`src/main.rs:1764`). Des aperçus répétés sans confirmation
+faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
+milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
+endroit (`src/main.rs:1657`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -468,6 +484,53 @@ Reste un détail d'affichage assumé : l'interface rend `piege.txt ` sans le ren
 (espaces finales), ce qui peutcheonner un utilisateur qui cherche pourquoi le fichier est
 refusé. Le motif dit « introuvable sur le disque », ce qui est vrai mais pas pédagogique.
 
+### R10 — L'écran changeait de dossier après une réanalyse, sans le dire · **Haute** · *corrigé le 27/09/2026*
+
+Le même identifiant en position que §3.1, appliqué à la navigation, et d'autant plus
+grave : §3.1 pouvait faire supprimer le mauvais fichier, ce défaut faisait **viser le
+mauvais dossier**, et la ligne cochée appartenait alors à ce dossier-là.
+
+**Mesuré, sur le runner, le 27/09/2026.** L'interface se trouvait dans le dossier de la
+sonde ; après une réanalyse, elle affichait `D:\a\diskmap` — le dépôt. La sonde a reçu le
+clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation a visé ce
+que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
+
+**Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
+le serveur pose `rescan = done > 0` (`src/main.rs:1982`) et l'interface part en `poll()` ;
+`poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
+La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
+en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
+disparaît ailleurs sur le volume — et le runner churn en permanence, ce qui l'a fait
+naître là et jamais sur le volume de développement.
+
+**La règle :**
+
+> Une cible s'adresse par son chemin. Un identifiant est une position, et une position
+> ne se demande pas comme une adresse.
+
+**Le correctif, dans les deux sens.** `/api/tree` et `/api/open` résolvent un `chemin`
+palier par palier depuis la racine ; chaque ligne, chaque palier du fil d'Ariane et la
+clé de sélection portent le leur ; et le serveur renvoie toujours le chemin reconstruit
+par l'index, jamais celui qu'il a reçu — donc un chemin venu du client n'ouvre que ce que
+l'analyse a vue. Second sens : un dossier qui n'existe plus reçoit un **404 nommé**, que
+l'interface affiche (« ce dossier n'existe plus ») avant de remonter d'un cran. Elle ne
+montre surtout pas un autre dossier à la place.
+
+**Épreuves, les deux sens cassés puis remis à l'octet près.** Résolution de chemin
+renvoyant la racine : la navigation devient impossible et la sonde le dit. 404 remplacé en
+silence par la racine : les deux verdicts « dossier disparu » rougissent, et la mesure
+montre l'application à la racine, sans un mot. Tests Rust : `dossier_de` retrouve le même
+dossier dans deux instantanés dont les numéros sont redistribués, refuse un chemin absent
+au lieu de désigner un autre, ignore la casse et les deux séparateurs. Sonde bout en bout :
+`sonde-identifiant.mjs`, 12/12 sur le runner comme en local.
+
+**Un détail que la mesure a refusé, et qui vaut d'être écrit.** Sur le volume jetable de
+511 Mio, l'analyse est finie avant que la veille de quatre secondes ne la voie :
+l'interface ne recharge rien. La sonde provoque donc le rechargement par un geste
+d'utilisateur et exige que la génération affichée ait changé. Sans cela, son verdict « même
+dossier » passait à vide — un test qui passe toujours ne prouve rien, et c'est la moitié
+du travail de ce constat.
+
 ---
 
 ## 6. Ce qui est solide
@@ -477,14 +540,14 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **La cible est figée à l'aperçu.** `Montre` porte le chemin résolu ; `execute` ne résout
   plus rien. C'est la bonne architecture : la seule façon de supprimer reste de décider ce
   qu'on supprime.
-- **Une génération par instantané** (`src/scan.rs:236,305`), servie par `/api/tree` et
+- **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
   `/api/search`, exigée par `dry`. Un identifiant périmé est refusé, pas réinterprété.
 - **Jeton** : `BCryptGenRandom` (`src/win32.rs:216`), usage unique, dix minutes, lié au
   volume, avec repli qui ne dérive jamais d'une constante.
 - **CSRF** : `X-Diskmap` sur tous les POST, `Host` local sur toutes les routes, lectures
   comprises. Le raisonnement sur le rebinding (l'en-tête `X-Diskmap` est posable librement
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
-- **Points d'analyse** refusés au scan (`src/scan.rs:774`) *et* à l'exécution
+- **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
 - **`\\?\` interdit à l'effacement** (`src/win32.rs:242`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
@@ -495,7 +558,13 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:238`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:553`) : `rm -rf` y serait un bug, et le code le dit.
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1041`). Un
+  identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
+  navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
+  serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
+  même propriété que « la cible est figée à l'aperçu », appliquée à la navigation — et la
+  seconde était la première sans la garantie de la génération (voir R10).
 
 État de la chaîne de qualité au 26/09, après R1–R8 : `cargo test` 10/10, `cargo clippy
 --all-targets -- -D warnings` propre, `cargo fmt --check` propre. Dépendances : `rayon`,

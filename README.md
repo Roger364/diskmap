@@ -290,6 +290,29 @@ vouch for the other.
 Measured 27/09/2026, run `36329398102`: **19/19** elevated, **16/16** not.
 The gap is not noise; it is the checks that only mean something on one side.
 
+### Two rules that cost seven probes each, on 27/09/2026
+
+**A diagnostic is not destroyed by the tool that shows it.** The harness kept the last
+twenty-four lines of a red probe. That is the right call when a probe *crashes* — the
+call stack is last — and the wrong one when a probe fails on its third check out of forty.
+The interface probe went red on a click that had not navigated, waited sixty seconds, then
+read the screen: the log showed a directory belonging to the runner's own temporary
+folder, and nothing about the click. Same class, twice more that day: a window of 400
+results that discarded the match, and a syntax check that passed on a stale copy of the
+file the browser was not reading. Red verdicts are now printed wherever they are, with
+their measurement, before the tail.
+
+> A verdict is only worth what its measurement is worth. If the thing under test cannot
+> change the outcome, the check is not evidence — say so, in the same line, or fix it.
+
+The two verdicts that could not fail on 27/09 are the reason this rule exists. One
+required a row to keep its name across a sort change, which sorting is supposed to
+change. The other checked the order of a list with **one row**, where every order is the
+same order — it passed while the server served the reverse, and it would have kept
+passing. A probe now states its own support ("this folder has several rows to order")
+before drawing a conclusion from it, and the UI probe's sort check is measured on four
+files whose names and sizes do not rank alike.
+
 ### What makes a volume disposable
 
 The harness refuses to start, before opening a server or analysing anything,
