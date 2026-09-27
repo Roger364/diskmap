@@ -221,6 +221,24 @@ pub struct Row {
     pub path: String,
 }
 
+/// Ce que la recherche trouve sur un volume, et ce qu'elle sait.
+///
+/// `exact` distingue deux choses qu'il ne faut pas confondre : on a trouvé
+/// 40 000 correspondances, ou on sait qu'il y en a AU MOINS 40 000 parce que
+/// la garde de mémoire a stopper la collecte. Dans le premier cas la liste est
+/// complète ; dans le second elle est un échantillon trié, et l'interface doit
+/// le dire. Une liste qui ment sur sa propre exhaustivité fait prendre une
+/// decision de suppression sur une image partielle du disque.
+pub struct Recherche {
+    /// Les lignes collectées, au plus `garde`. C'est le seul endroit où l'on
+    /// alloue : `total` peut être bien plus grand, et ne coûte qu'un `usize`.
+    pub lignes: Vec<Row>,
+    /// Nombre de correspondances RENCONTRÉES, pas nombre renvoyé.
+    pub total: usize,
+    /// `total` est-il complet ? Faux dès qu'on a dépassé la garde.
+    pub exact: bool,
+}
+
 /// Bit de type d'un sélecteur : 1 = fichier, 0 = dossier.
 ///
 /// Les identifiants vivent dans DEUX espaces qui se recouvrent : le dossier 34
@@ -241,6 +259,88 @@ pub struct Row {
 /// entrée de répertoire, soit 2¹⁶ entrées pour un To) ; `Snapshot::entree`
 /// refuse par ailleurs tout identifiant qui porterait le bit sans être dans les
 /// bornes du type annoncé.
+/// Le critère de tri d'une ligne de résultat.
+///
+/// Un seul nom de critère, pas quatre chaînes comparées à chaque endroit :
+/// `/api/tree` et `/api/search` doivent produire le MÊME ordre, sinon la même
+/// liste change de tête selon la route qui l'a rendue.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Tri {
+    Taille,
+    Nom,
+    Date,
+    Nombre,
+}
+
+impl Tri {
+    /// Ce que la requête HTTP en dit. Un critère inconnu ne doit pas faire
+    /// échouer la requête : il retombe sur la taille, qui est ce que
+    /// l'interface affiche par défaut. Une requête qui casse sur un `sort`
+    /// mal orthographié perdrait l'utilisateur au pire moment.
+    pub fn depuis(s: &str) -> Tri {
+        match s {
+            "name" => Tri::Nom,
+            "mtime" | "date" => Tri::Date,
+            "count" => Tri::Nombre,
+            _ => Tri::Taille,
+        }
+    }
+}
+
+impl Row {
+    /// La clé numérique du critère.
+    ///
+    /// `mtime` est ramené à zéro quand il est négatif. Sur un volume où les
+    /// horodatages manquent, un `-1` converti en `u64` vaut 18 446 744 073
+    /// 709 551 615 : ce fichier passerait pour le plus récent de tous les
+    /// temps. C'est un mensonge, et un tri qui ment est pire qu'un tri
+    /// absent — on ne peut pas s'en apercevoir.
+    fn cle(&self, t: Tri) -> u64 {
+        match t {
+            Tri::Taille => self.size,
+            Tri::Nom => 0,
+            Tri::Date => self.mtime.max(0) as u64,
+            Tri::Nombre => self.count,
+        }
+    }
+}
+
+/// Trie `lignes` par `t`, et tranche l'égalité par NOM CROISSANT.
+///
+/// Le nom reste croissant dans les deux sens. C'est le point qui a coûté un
+/// essai compilé : l'idée naturelle, `Reverse((clé, nom))`, retourne le tuple
+/// ENTIER, donc le nom part à l'opposé de la clé. Elle compile, elle a l'air
+/// correcte, et elle produit un ordre où deux lignes de même taille changent
+/// de place quand on inverse le sens — donc un ordre que personne ne peut
+/// prévoir. On compare les deux composantes séparément, `then_with`, sans
+/// copier le nom à chaque comparaison.
+///
+/// `Tri::Nom` ne compare que le nom : mettre une clé à zéro ferait alors
+/// trancher l'égalité par nom aussi, ce qui est le même résultat, mais par un
+/// chemin qui ne veut rien dire.
+pub fn trier_lignes(lignes: &mut [Row], t: Tri, decroissant: bool) {
+    lignes.sort_by(|a, b| {
+        // Le nom est la SEULE cle : rien a trancher derriere, et le sens
+        // demande doit rester respecte. L'interface demande `name`/`desc` par
+        // defaut, donc l'ignorer rendrait le selecteur inerte.
+        if t == Tri::Nom {
+            return if decroissant {
+                b.name.cmp(&a.name)
+            } else {
+                a.name.cmp(&b.name)
+            };
+        }
+        let ka = a.cle(t);
+        let kb = b.cle(t);
+        if decroissant {
+            kb.cmp(&ka)
+        } else {
+            ka.cmp(&kb)
+        }
+        .then_with(|| a.name.cmp(&b.name))
+    });
+}
+
 pub const BIT_FICHIER: u32 = 0x8000_0000;
 
 /// Sélecteur correspondant à une position et à un type.
@@ -464,33 +564,59 @@ impl Snapshot {
     }
 
     /// Recherche insensible à la casse sur les noms (dossiers puis fichiers).
-    pub fn search(&self, needle_lower: &str, limit: usize) -> Vec<Row> {
+    /// Recherche insensible à la casse sur les noms, dossiers ET fichiers.
+    ///
+    /// Renvoie l'union des deux, `total` : le nombre réel de correspondances
+    /// sur le volume, et `exact` : si ce compte est complet.
+    ///
+    /// Les deux listes ne sont plus jamais parcourues l'une À LA PLACE de
+    /// l'autre. Le 27/09/2026, un `if out.len() < limit` faisait qu'un dossier
+    /// prenait la place d'un fichier : trois fichiers lisibles sur le disque,
+    /// portant le terme, n'étaient pas cherchés. Pas écartés pour être
+    /// petits — jamais vus. Et comme le tri par taille venait après, la liste
+    /// affichait des tailles décroissantes en donnant l'impression d'avoir été
+    /// choisie ainsi.
+    ///
+    /// `garde` borne la MÉMOIRE, pas le résultat. Elle existe parce qu'un
+    /// terme d'une seule lettre peut produire des dizaines de milliers de
+    /// `Row`, et que chaque `Row` porte deux `String`. Au-delà, on continue de
+    /// COMPTER — c'est gratuit, on visite les noms de toute façon — mais on ne
+    /// matérialise plus. Le tri porte alors sur l'échantillon collecté, et la
+    /// réponse le dit : `exact: false`. Un plancher honnête, jamais un silence.
+    pub fn search(&self, needle_lower: &str, garde: usize) -> Recherche {
         let needle = needle_lower.as_bytes();
-        let mut out: Vec<Row> = Vec::new();
         if needle.is_empty() {
-            return out;
+            return Recherche {
+                lignes: Vec::new(),
+                total: 0,
+                exact: true,
+            };
         }
+        let mut out: Vec<Row> = Vec::new();
+        let mut total = 0usize;
+
         for d in &self.dirs {
             if contains_ci(&d.name, needle) {
-                let i = d.id as usize;
-                out.push(Row {
-                    id: d.id,
-                    sel: sel(d.id, true),
-                    name: d.name.to_string(),
-                    size: self.size[i],
-                    count: self.count[i],
-                    mtime: self.mtime[i],
-                    is_dir: true,
-                    path: self.dir_path(d.id).to_string_lossy().into_owned(),
-                });
-                if out.len() >= limit {
-                    break;
+                total += 1;
+                if out.len() < garde {
+                    let i = d.id as usize;
+                    out.push(Row {
+                        id: d.id,
+                        sel: sel(d.id, true),
+                        name: d.name.to_string(),
+                        size: self.size[i],
+                        count: self.count[i],
+                        mtime: self.mtime[i],
+                        is_dir: true,
+                        path: self.dir_path(d.id).to_string_lossy().into_owned(),
+                    });
                 }
             }
         }
-        if out.len() < limit {
-            for (idx, f) in self.files.iter().enumerate() {
-                if contains_ci(&f.name, needle) {
+        for (idx, f) in self.files.iter().enumerate() {
+            if contains_ci(&f.name, needle) {
+                total += 1;
+                if out.len() < garde {
                     out.push(Row {
                         id: idx as u32,
                         sel: sel(idx as u32, false),
@@ -501,13 +627,14 @@ impl Snapshot {
                         is_dir: false,
                         path: self.file_path(idx as u32).to_string_lossy().into_owned(),
                     });
-                    if out.len() >= limit {
-                        break;
-                    }
                 }
             }
         }
-        out
+        Recherche {
+            lignes: out,
+            total,
+            exact: total <= garde,
+        }
     }
 
     // ---------- persistance binaire (cache disque) ----------
@@ -1118,5 +1245,141 @@ mod tests {
         let mut reader = Reader { b: &[0; 4], p: 2 };
         assert!(reader.take(usize::MAX).is_err());
         assert_eq!(reader.p, 2);
+    }
+}
+
+#[cfg(test)]
+mod tests_tri {
+    use super::*;
+
+    fn l(nom: &str, size: u64, mtime: i64, is_dir: bool) -> Row {
+        Row {
+            id: 0,
+            sel: 0,
+            name: nom.to_string(),
+            size,
+            count: 1,
+            mtime,
+            is_dir,
+            path: String::new(),
+        }
+    }
+
+    fn noms(rows: &[Row]) -> Vec<&str> {
+        rows.iter().map(|r| r.name.as_str()).collect()
+    }
+
+    /// L'egalite se tranche par nom CROISSANT, et le nom reste croissant
+    /// quand on inverse le sens. Sans cela, deux lignes de meme taille
+    /// changeaient de place selon le sens choisi, et ni l'utilisateur ni une
+    /// sonde ne pouvaient prevoir l'ordre.
+    #[test]
+    fn legalite_se_tranche_par_nom_dans_les_deux_sens() {
+        let base = vec![
+            l("b", 10, 0, false),
+            l("a", 10, 0, true),
+            l("c", 30, 0, false),
+        ];
+        let mut grand = base.clone();
+        trier_lignes(&mut grand, Tri::Taille, true);
+        assert_eq!(noms(&grand), vec!["c", "a", "b"]);
+
+        let mut petit = base;
+        trier_lignes(&mut petit, Tri::Taille, false);
+        assert_eq!(noms(&petit), vec!["a", "b", "c"]);
+
+        // Le point qui compte : a taille egale, l'ordre ne depend PAS du sens.
+        let egaux_grand: Vec<&str> = grand
+            .iter()
+            .filter(|r| r.size == 10)
+            .map(|r| r.name.as_str())
+            .collect();
+        let egaux_petit: Vec<&str> = petit
+            .iter()
+            .filter(|r| r.size == 10)
+            .map(|r| r.name.as_str())
+            .collect();
+        assert_eq!(
+            egaux_grand, egaux_petit,
+            "l ordre des egalites a change de sens"
+        );
+        assert_eq!(egaux_grand, vec!["a", "b"]);
+    }
+
+    /// `mtime` peut valoir -1 sur un systeme de fichiers qui ne le renseigne
+    /// pas. Un `as u64` nu enverrait -1 vers 18 446 744 073 709 551 615, et ce
+    /// fichier passerait pour le plus recent du disque.
+    #[test]
+    fn une_date_negative_ne_passe_pour_la_plus_recente() {
+        let mut v = vec![l("inconnu", 1, -1, false), l("recent", 1, 100, false)];
+        trier_lignes(&mut v, Tri::Date, true);
+        assert_eq!(noms(&v), vec!["recent", "inconnu"]);
+    }
+
+    /// Un dossier et un fichier peuvent porter le meme nom sur le volume.
+    #[test]
+    fn un_dossier_et_un_fichier_de_meme_nom_ne_paniquent_pas() {
+        let mut v = vec![l("x", 5, 0, true), l("x", 5, 0, false)];
+        trier_lignes(&mut v, Tri::Taille, true);
+        assert_eq!(v.len(), 2);
+    }
+
+    /// Un critere inconnu ne doit pas casser la requete : il retombe sur la
+    /// taille, qui est ce que l'interface affiche par defaut.
+    #[test]
+    fn un_critere_inconnu_retombe_sur_la_taille() {
+        assert_eq!(Tri::depuis("nimporte quoi"), Tri::Taille);
+        assert_eq!(Tri::depuis(""), Tri::Taille);
+        assert_eq!(Tri::depuis("name"), Tri::Nom);
+        assert_eq!(Tri::depuis("mtime"), Tri::Date);
+        assert_eq!(Tri::depuis("count"), Tri::Nombre);
+    }
+
+    /// Le tri par nom se fait sur le nom SEUL, sans passer par une cle
+    /// numerique : mettre la cle a zero ferait trancher l'egalite par le nom
+    /// aussi, ce qui donnerait le meme resultat par un chemin qui ne veut rien
+    /// dire.
+    #[test]
+    fn le_tri_par_ne_depend_que_du_nom() {
+        let mut v = vec![
+            l("c", 1, 900, false),
+            l("a", 999, 1, true),
+            l("b", 50, 500, false),
+        ];
+        trier_lignes(&mut v, Tri::Nom, false);
+        assert_eq!(noms(&v), vec!["a", "b", "c"]);
+        trier_lignes(&mut v, Tri::Nom, true);
+        assert_eq!(noms(&v), vec!["c", "b", "a"]);
+    }
+
+    /// Borne large, contre une regression grossiere : 50 000 lignes en moins
+    /// d'une demi-seconde. Mesure a froid, pas en moyenne.
+    #[test]
+    fn cinquante_mille_lignes_restent_rapides() {
+        let mut v: Vec<Row> = (0..50_000u32)
+            .map(|i| {
+                let k = i.wrapping_mul(2_654_435_761);
+                l(
+                    &format!("f{:05}", k % 50_000),
+                    u64::from(k % 977),
+                    (i % 31) as i64 - 1,
+                    i % 7 == 0,
+                )
+            })
+            .collect();
+        let debut = std::time::Instant::now();
+        trier_lignes(&mut v, Tri::Taille, true);
+        let ms = debut.elapsed().as_secs_f64() * 1000.0;
+        let verifie = v
+            .windows(2)
+            .all(|p| p[0].size > p[1].size || (p[0].size == p[1].size && p[0].name <= p[1].name));
+        assert!(
+            verifie,
+            "l ordre produit ne respecte pas la cle puis le nom"
+        );
+        assert!(
+            ms < 500.0,
+            "le tri de 50 000 lignes depasse 500 ms : {ms:.0} ms"
+        );
     }
 }
