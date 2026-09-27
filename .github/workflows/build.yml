@@ -122,11 +122,13 @@ jobs:
   # inexpliquable, « un binaire perime que personne ne savait de quel commit il
   # sortait ». Ici, le tag nomme le commit, et le binaire est celui du commit.
   #
-  # `needs: windows` n'est pas decoratif : si la qualite ou les sondes echouent,
-  # aucune release n'est creee. Publier n'est pas une consequence du push, c'est
-  # une consequence du push QUI A PASSE.
+  # `needs: [windows, sondes]` n'est pas decoratif : si la qualite OU les sondes
+  # echouent, aucune release n'est creee. Publier n'est pas une consequence du
+  # push, c'est une consequence du push QUI A PASSE. Les deux jobs sont
+  # bloquants, y compris celui qui supprime vraiment : un binaire publie apres
+  # un echec du filet, c'est le scenario qu'on a deja paye une fois.
   release:
-    needs: windows
+    needs: [windows, sondes]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: windows-latest
     permissions:
