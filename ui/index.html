@@ -1719,8 +1719,23 @@ $('#autocols').onclick = () => {
   ajusteToutes();
   hideTip();
 };
-$('#sort').onchange = e => { cur.sort = e.target.value; if (!$('#q').value.trim()) load(true); };
-$('#order').onchange = e => { cur.order = e.target.value; if (!$('#q').value.trim()) load(true); };
+// Changer le tri recharge par le chemin qui correspond a ce qui est affiche :
+// la vue dossier, ou la recherche en cours.
+//
+// Le garde d avant — « seulement si le champ de recherche est vide » — venait
+// de ce que le serveur IGNORAIT `sort` et `order` sur `/api/search`. Il les
+// honore depuis le 27/09/2026 : le selecteur etait donc redevenu INERTE pendant
+// une recherche, sans que rien ne le dise. On le changeait, la liste ne bougeait
+// pas, et rien ne distinguait « le reglage ne sert a rien » de « le serveur
+// l ignore ».
+//
+// `load(true)` et non `load()` dans les deux cas : un re-tri ne doit pas perdre
+// la selection.
+const rechargerTri = () => {
+  if ($('#q').value.trim()) search(); else load(true);
+};
+$('#sort').onchange = e => { cur.sort = e.target.value; rechargerTri(); };
+$('#order').onchange = e => { cur.order = e.target.value; rechargerTri(); };
 $('#go').onclick = search;
 $('#q').onkeydown = e => { if (e.key === 'Enter') search(); };
 document.querySelectorAll('.view .btn').forEach(b => {

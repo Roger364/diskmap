@@ -82,6 +82,14 @@ fs.writeFileSync(DOSSIER + '/Documents/photo.jpg', `photo-${Date.now()}\n`);
 for (const [nom, ko] of [['delta', 1], ['alpha', 2], ['charlie', 3], ['bravo', 4]]) {
   fs.writeFileSync(DOSSIER + '/Documents/' + nom + '.txt', 'x'.repeat(ko * 100));
 }
+// Le meme support, pour le TRI PENDANT UNE RECHERCHE. Un jeton que rien ne
+// porte ailleurs, donc le resultat est le meme sur toutes les machines : c est
+// la seule maniere d avoir plusieurs lignes a ordonner dans une vue recherche,
+// ou les dependances de l environnement decident du nombre de resultats.
+// ILS sont ranges par leur taille, donc l ordre par nom les change.
+for (const [nom, ko] of [['zztri-3', 1], ['zztri-1', 2], ['zztri-2', 3]]) {
+  fs.writeFileSync(DOSSIER + '/Documents/' + nom + '.txt', 'x'.repeat(ko * 100));
+}
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
 const indexe = await attendreFichier(BASE, VOL, 'cible.txt');
 verifier('le fichier d’essai est dans l’instantané', indexe,
@@ -484,16 +492,94 @@ const etatTri = async () => page.evaluate(() => ({
     return `${nm ? nm.textContent : '?'}=${num ? num.textContent.trim() : '?'}`;
   }),
 }));
+// --- le tri agit-il PENDANT une recherche ? --------------------------------
+//
+// Le 27/09, le serveur IGNORAIT `sort` et `order` sur `/api/search`, et le
+// client compensait par un garde : le selecteur etait inerte pendant une
+// recherche. Le serveur honore les deux depuis, et le garde est parti. Un
+// réglage redevenu actif sans mesure est un réglage dont on ne sait rien.
+//
+// Ce que la sonde exige, et qui ne depend d'aucun contenu : la MEME liste de
+// resultats, dans l ORDRE DEMANDE. Le nombre de resultats n entre pas — il
+// depend du volume — mais l ordre, si.
+if (fichierTrouve) {
+  await page.fill('#q', 'zztri-');
+  await page.press('#q', 'Enter');
+  let trouve = true;
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll('#rows tr .nm').length >= 3,
+      null, { timeout: 60000 });
+  } catch { trouve = false; }
+  const avantRecherche = await nomsLignes();
+  verifier('la recherche de contrôle rend plusieurs lignes à ordonner',
+    trouve && avantRecherche.length >= 3,
+    `${avantRecherche.length} ligne(s) : ${JSON.stringify(avantRecherche)}`);
+
+  // Le support doit avoir quelque chose a changer : avant le reglage, la liste
+  // est par taille decroissante, donc elle n'est PAS dans l ordre par nom. Sans
+  // ce verdict, « la liste est dans l ordre demande » pourrait passer sans que
+  // le reglage ait fait quoi que ce soit.
+  const ordreDemande = [...avantRecherche].sort(comparerNoms);
+  const dejaDansLOrdre = JSON.stringify(avantRecherche) === JSON.stringify(ordreDemande);
+  verifier('et la liste n’est pas DÉJÀ dans l’ordre demandé', !dejaDansLOrdre,
+    `avant=${JSON.stringify(avantRecherche)} · `
+    + `l ordre demandé serait ${JSON.stringify(ordreDemande)}`);
+
+  // On attend un FAIT, pas une generation. `cur.gen` est la generation de
+  // l instantane, et une nouvelle interrogation du meme instantane la laisse
+  // inchangee : attendre `cur.gen` a suppose qu une relance le fait bouger, et
+  // le verdict a rougi alors que le tri venait de fonctionner. Le fait, c est
+  // l ordre affiche.
+  await page.selectOption('#sort', 'name');
+  await page.selectOption('#order', 'asc');
+  let rechargée = false;
+  try {
+    await page.waitForFunction(
+      () => {
+        const premier = document.querySelector('#rows tr .nm');
+        return !!premier && premier.textContent === 'zztri-1.txt';
+      }, null, { timeout: 60000 });
+    rechargée = true;
+  } catch { /* rendu plus bas */ }
+
+  const apresRecherche = await nomsLignes();
+  const memes = avantRecherche.length === apresRecherche.length
+    && avantRecherche.every((n) => apresRecherche.includes(n));
+  verifier('changer le tri garde les mêmes résultats', memes,
+    `avant=${JSON.stringify(avantRecherche)} · après=${JSON.stringify(apresRecherche)}`);
+  const ordreApres = [...apresRecherche].sort(comparerNoms);
+  verifier('et les range dans l’ordre demandé, et non dans celui des tailles',
+    JSON.stringify(apresRecherche) === JSON.stringify(ordreApres),
+    `demandé ${JSON.stringify(ordreApres)} · `
+    + `affiché ${JSON.stringify(apresRecherche)} · `
+    + `la liste a-t-elle bouge ? ${rechargée ? 'oui' : 'NON MESURABLE'}`);
+}
+
 if (fichierTrouve) {
   // Le tri n'agit que hors recherche : le handler teste
   // `if (!$('#q').value.trim())` avant de recharger. On revient donc à la vue
   // dossier, et on le fait ICI, à la fin, pour ne pas déranger les sections
   // qui précèdent et qui naviguent.
+  await page.selectOption('#sort', 'size');
+  await page.selectOption('#order', 'desc');
   await page.fill('#q', '');
   await page.press('#q', 'Enter');
+  // On attend le FIL D ARIANE du dossier, et non « des lignes » : quitter une
+  // recherche laisse les lignes de la recherche a l ecran pendant la reponse du
+  // serveur, donc « au moins une ligne » est vrai trop tot. Le bloc capturait
+  // alors les resultats de la recherche au lieu du dossier, et l attente
+  // passait quand meme. C est l epreuve de rupture qui l a montre : avec le tri
+  // rompu, trois verdicts rougissaient au lieu d un, et les deux autres etaient
+  // des consequences de cette course-la.
+  // `« ` est le marqueur du pseudo-dossier de recherche : aucun vrai dossier ne
+  // porte de chevron gauche d ouverture dans son fil.
   try {
     await page.waitForFunction(
-      () => document.querySelectorAll('#rows tr .nm').length > 0,
+      () => {
+        const c = document.querySelector('#crumbs')?.textContent ?? '';
+        return !c.includes('« ') && document.querySelectorAll('#rows tr .nm').length > 0;
+      },
       null, { timeout: 30000 });
   } catch { /* rendu plus bas, avec la mesure */ }
 
