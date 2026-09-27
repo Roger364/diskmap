@@ -22,7 +22,7 @@ l'état : `%LOCALAPPDATA%\diskmap\suppressions.log` (lecture seule).
 | Risque résiduel le plus élevé | Aucun connu : R1 à R4 corrigés et vérifiés |
 | Nouvelle découverte de cet audit | XSS stockée via le nom de volume → effacement arbitraire sans interface |
 | Seconde moitié de la cause | Le harnais de sondes n'avait aucun filet — §3.6 |
-| Pertes réelles | **Aucune donnée unique perdue** — §8 |
+| Pertes réelles | **Aucune donnée unique perdue** — inventaire en annexe |
 
 Verdict : les six causes sont corrigées, R1 à R4 aussi, et le filet du harnais empêche
 désormais qu'une sonde puisse viser hors de sa racine. Ce qui reste ouvert est listé en §7.
@@ -40,52 +40,17 @@ de lancer des sondes destructrices hors d'un volume qu'il sait jetable (§7/16).
 
 ---
 
-## 2. Chronologie de l'incident
-
-Le journal enregistre `horodatage\tressultat\ttaille\tcount\tchemin`. Sur 957 lignes,
-**168 concernent des données réelles** ; les 789 autres sont les fichiers de test que les
-sondes créent (`_diskmap_*`, `essai-*`).
-
-Les noms de dossiers et de fichiers ci-dessous sont des **placeholders** : les chemins réels
-ont été remplacés, parce que ce rapport est public et qu'il n'a rien à divulguer du contenu
-d'un disque personnel. La structure, les volumes, les horaires et les effets sont ceux du
-journal ; seule la divulgation des noms a été neutralisée.
-
-| Heure (26/09) | Effet | Cible |
-|---|---|---|
-| 05:05:16 | corbeille | `G:\<cache pnpm>\v11\index.db` |
-| **05:55:14** | **définitif — 25 fichiers** | `G:\<projet A>\*` : LICENSE, README(.i18n/.zh), SAFETY*, THIRD_PARTY_NOTICES, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, pytest.ini, tsconfig* (10) |
-| 05:55:25 | corbeille — 5 | `G:\<projet A>\website\{.gitignore,AGENTS.md}`, `G:\<sauvegardes>\<projet B>\{LISEZMOI-sauvegarde.md, projet-B-2026-09-21.bundle, projet-B-2026-09-22.bundle}` |
-| **05:56:11** | **définitif — 25 fichiers** | `G:\<sauvegarde photos>\Photos\<dossier imagerie>\<lecteur DICOM>\*.dll` |
-| **05:56:15** | **définitif — 11 fichiers** | `G:\<profil utilisateur>\AppData\Local\Temp\<restauration>\<projet B>\*` (11), `G:\<projet C>\{DECISIONS,PROJECT_STATE,ROADMAP,README}.md` + 6, `G:\Users\Public\desktop.ini`, `G:\<projet A>\<config d'agent>\project-id` |
-| 05:56:15 | définitif — 2 | `G:\<sauvegardes>\incident-2026-09-22\stash-*.patch` |
-| 05:56:24 → 05:56:51 | corbeille — ~62 | `G:\<vapeurs>*` (30), `G:\<jeux>*` (14), `G:\<sauvegarde photos>\…` (12), `G:\<sauvegardes>\*` (6) |
-
-Deux entrées du 25/09 à 21:02 (`E:_diskmap_test`) sont des sondes, pas des données.
-
-**Indices de mécanisme :**
-
-- La suppression de 05:05:16 (`G:\<cache pnpm>\v11\index.db`) correspond **mot pour mot** au
-  symptôme consigné dans le commentaire `Montre` de `src/main.rs` : l'agent qui a écrit le
-  correctif a reproduit le bug sur le disque réel avant de le corriger.
-- Les lots font **exactement 25 fichiers**, à 4–15 secondes d'intervalle, et traversent des
-  racines sans rapport entre elles (`G:\<profil utilisateur>\…`, `G:\Users\Public`,
-  `G:\<projet A>\…`, `G:\<projet C>\…`). Un nettoyage manuel choisit dans **un** dossier.
-  C'est la signature d'identifiants résolus contre un index décalé.
-- La dernière suppression réelle est à 05:56:51. Le correctif du défaut d'index est commité
-  à **06:29:57** (`bb5c60e`), soit 33 minutes plus tard.
-
-**Ce qui a déclenché ces suppressions.** L'agent de développement qui écrivait
-l'application a lancé son harnais de sondes sur le volume de travail `G:` — le volume
-réel, celui qui contient les données. La sonde de coût, `sonde-suppression-lot.mjs`,
-posait des fichiers sous un dossier de travail de l'agent et envoyait au
-serveur des **identifiants** en espérant qu'ils désigneraient ces fichiers. Le serveur les
-a résolus contre un index réanalysé depuis (§3.1) : les chemins visés désignaient d'autres
-fichiers, et l'agent, qui ne pouvait pas le voir, n'a rien constaté. La sonde n'a pas
-commis l'erreur — **elle a fait confiance à la composante même qu'elle était censée
-éprouver**. Le harnais n'avait aucun filet pour la rattraper (§3.6).
+> **Le récit de l'incident est en annexe** : `docs/incident-2026-09-26.md`
+> (chronologie minute par minute, inventaire des pertes, et comment reproduire
+> le défaut d'origine). Ce document-ci est la politique : les causes, le modèle de
+> menace, les constats, et ce qui reste à traiter. L'essentiel de l'incident
+> tient en une ligne : le 26/09/2026, un identifiant d'instantané était une
+> *position* et non une identité, et une sonde destructive a résolu ses
+> identifiants contre un index réanalysé — 168 fichiers réels visés, 79 détruits
+> définitivement. C'est corrigé (`bb5c60e`) et éprouvé (`generation`).
 
 ---
+
 
 ## 3. Causes racines
 
@@ -273,7 +238,7 @@ un avertissement lu au lancement six minutes plus tôt n'y est plus.
 
 `journal` (`src/main.rs:1599`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
-précisément ce qui a rendu l'incident du §2 impossible à qualifier.
+précisément ce qui a rendu l'incident impossible à qualifier.
 
 **Correctif :** chaque ligne porte désormais le lot, la génération, le sélecteur reçu, le
 chemin **prévu** et le chemin **réalisé** :
@@ -505,53 +470,3 @@ reste. C'est le prix d'un point unique, et il est préférable à une vérificat
 répliquée — donc oubliée — dans chacune des sondes.
 
 ---
-
-## 8. Pertes réelles — inventaire
-
-Les 168 chemins du journal ont été comparés un par un à l'état du disque le 26/09 au soir.
-
-| État | Nb | Détail |
-|---|---|---|
-| Intacts, taille identique à la destruction | 111 | photos, jeux, sauvegardes, bundles |
-| Présents, taille différente | 43 | 25 DLL d'un lecteur d'imagerie, 18 fichiers d'un projet de code |
-| Encore absents | 14 | 2,28 Mo |
-
-Sur les 14 absents : 2,05 Mo sont des `.tsbuildinfo` — cache d'incrémental TypeScript,
-régénéré par le prochain `tsc` ; 174 octets sont un `desktop.ini`, que Windows recrée ;
-et 234 Ko sont 11 fichiers d'un projet de code, dont **les 11 sont présents dans le dépôt
-d'origine** sur un autre volume, lui-même sauvegardé en trois bundles git dont un hors
-machine.
-
-Des 43 « taille différente » : les 18 fichiers du projet de code portent des dates du
-26/09 06:03–08:34, **après** la destruction de 05:56 — ce projet a continué à être travaillé,
-l'écart est du travail normal. Les 25 DLL du lecteur d'imagerie sont des tables de
-redirection sans code ni donnée, toutes remplacées par des équivalents.
-
-**Conclusion : aucune donnée unique n'a été perdue.** Le journal
-`%LOCALAPPDATA%\diskmap\suppressions.log` reste la liste exhaustive de ce qui a été
-touché, et doit être conservé.
-
----
-
-## 9. Reproduction
-
-```bat
-cargo build --release
-node tests\sondes\lancer.mjs --liste
-
-rem Sondes destructives : UNIQUEMENT sur un volume jetable, jamais sur un volume de
-rem travail. Sur cette machine, un VHD de 512 Mo monté sur une lettre libre suffit.
-set DISKMAP_SONDE_VOLUME=V
-set DISKMAP_SONDE_RACINE=V:\_diskmap_sondes
-node tests\sondes\lancer.mjs --volume V
-
-rem Ce qu'on a exécuté le 26/09/2026, le filet interposé et V: jetable :
-node tests\sondes\lancer.mjs --volume V
-rem   -> 11/11 sondes vertes, 231 suppressions, toutes sur V:
-```
-
-`filet` est la première à jouer, et c'est voulu : elle prouve que le filet est
-interposé avant que quoi que ce soit d'autre ne s'exécute. `generation` est celle qui
-prouve §3.1 — un identifiant périmé est refusé au lieu de viser un autre fichier. La
-section 1 de `lot` rejoue l'incident complet. Aucune de ces trois ne détruit rien qui ne
-lui appartienne.
