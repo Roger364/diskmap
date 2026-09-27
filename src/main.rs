@@ -1151,6 +1151,12 @@ struct DeleteReq {
     /// récent revient à viser un autre fichier. Mesuré — voir `Snapshot::gen`.
     #[serde(default)]
     gen: Option<u64>,
+    /// Les noms de dossiers personnels que la personne a saisis, un par champ.
+    /// `#[serde(default)]` : un client plus ancien n'envoie rien, et il doit
+    /// alors se faire refuser par le serveur — ce qui est le but — sans que le
+    /// protocole devienne illisible.
+    #[serde(default)]
+    perso: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1174,6 +1180,11 @@ struct DeletePreview {
     /// Le volume a-t-il une corbeille ? Faux ⇒ une suppression « corbeille »
     /// détruirait les fichiers. On le dit AVANT, pas seulement après.
     corbeille: bool,
+    /// Les dossiers personnels que ce lot touche : `["Images", "Documents"]`.
+    /// L'interface doit faire nommer CHACUN d'eux avant d'activer son bouton —
+    /// un champ par dossier, donc six champs quand on a tout sélectionné d'un
+    /// profil. Voir `dossiers_personnels`.
+    personnels: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1243,6 +1254,63 @@ fn blocked_reason(path: &Path) -> Option<&'static str> {
         return Some("profil utilisateur protégé");
     }
     None
+}
+
+/// Répertoires dont la perte n'est pas anodine : ce sont les seuls que
+/// quelqu'un souvient d'avoir. Un disque se nettoie, un dossier de photos non.
+///
+/// La liste est bilingue, parce que Windows nomme ces répertoires dans la
+/// langue de la machine et qu'une règle seulement française ne protège
+/// personne sur une installation anglaise. Elle porte sur des NOMS, pas sur
+/// des personnes : `C:\Users\<nom>` n'en fait volontairement pas partie — tout
+/// y serait personnel, et la règle viderait l'outil de son usage.
+const DOSSIERS_PERSONNELS: &[&str] = &[
+    // Français
+    "BUREAU",
+    "DOCUMENTS",
+    "IMAGES",
+    "MUSIQUE",
+    "VIDÉOS",
+    "TÉLÉCHARGEMENTS",
+    "FAVORIS",
+    // Anglais
+    "DESKTOP",
+    "PICTURES",
+    "MUSIC",
+    "VIDEOS",
+    "DOWNLOADS",
+    "FAVOURITES",
+    "SAVED GAMES",
+];
+
+/// Les dossiers personnels que ce chemin traverse, écrits comme ils le sont
+/// sur le disque, sans doublon.
+///
+/// `C:\Users\lucas\Images\2024\a.jpg` rend `["Images"]` — un seul, même si le
+/// chemin passe dix fois par le nom, parce que la question posée à la personne
+/// est « quel dossier », pas « combien de fois ».
+///
+/// La comparaison passe par `to_uppercase()` des deux côtés, accents compris :
+/// `Téléchargements` ne devient jamais `TELECHARGEMENTS`, et une constante
+/// écrite sans accent ne détecterait rien. Une règle de sécurité qui ne
+/// détecte pas est une règle morte — de la même nature que celle que
+/// `tests/sondes/filet.mjs` portait avant d'être réparée.
+fn dossiers_personnels(path: &Path) -> Vec<String> {
+    let mut vus: Vec<String> = Vec::new();
+    for seg in path.to_string_lossy().split(['\\', '/']) {
+        let seg = seg.trim();
+        if seg.is_empty() {
+            continue;
+        }
+        let haut = seg.to_uppercase();
+        if !DOSSIERS_PERSONNELS.contains(&haut.as_str()) {
+            continue;
+        }
+        if !vus.iter().any(|v| v.eq_ignore_ascii_case(seg)) {
+            vus.push(seg.to_string());
+        }
+    }
+    vus
 }
 
 fn delete(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
@@ -1384,6 +1452,21 @@ fn dry(
         });
     }
 
+    // Les dossiers personnels que ce lot touche, PARCOURUS SUR CE QUI SERA
+    // RÉELLEMENT SUPPRIMÉ : un élément bloqué ne part pas, il ne doit donc pas
+    // faire défaut de le confirmer. C'est la seule liste que l'interface verra, et elle
+    // est calculée ici, pas chez le client — sinon un client qui n'en veut pas
+    // n'enverrait aucun.
+    let mut personnels: Vec<String> = Vec::new();
+    for m in &montres {
+        for d in dossiers_personnels(&m.path) {
+            if !personnels.iter().any(|p| p.eq_ignore_ascii_case(&d)) {
+                personnels.push(d);
+            }
+        }
+    }
+    personnels.sort_by_key(|d| d.to_uppercase());
+
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
     // cacher quoi que ce soit, puisqu'il est écrit en clair juste à côté. C'est
     // l'aléa qui doit être imprévisible — et lui seul.
@@ -1414,6 +1497,7 @@ fn dry(
             deletable,
             blocked,
             corbeille: win32::corbeille_disponible(letter),
+            personnels,
         })
         .unwrap(),
     ))
@@ -1449,6 +1533,28 @@ fn execute(
         && req.confirm.clone().unwrap_or_default() != "EFFACER"
     {
         return Err(("400 Bad Request", "confirmation « EFFACER » absente".into()));
+    }
+
+    // Les dossiers personnels suivent la même règle que le mot « EFFACER » :
+    // chacun doit être nommé. Les attendus sont RECALCULÉS ici, sur les chemins
+    // figés de l'aperçu — le serveur ne fait jamais confiance à une liste
+    // envoyée par le client, sans quoi il suffirait d'en envoyer une vide pour
+    // que la règle ne s'applique jamais.
+    let mut attendus: Vec<String> = Vec::new();
+    for m in &peek.items {
+        for d in dossiers_personnels(&m.path) {
+            if !attendus.iter().any(|p| p.eq_ignore_ascii_case(&d)) {
+                attendus.push(d);
+            }
+        }
+    }
+    for d in &attendus {
+        if !req.perso.iter().any(|s| s.trim().eq_ignore_ascii_case(d)) {
+            return Err((
+                "400 Bad Request",
+                format!("dossier personnel « {d} » non confirmé : nomme-le pour confirmer la suppression"),
+            ));
+        }
     }
 
     // Validé : le jeton est consommé, il ne servira qu'une fois.
@@ -1700,13 +1806,83 @@ fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{confirmation_required, LigneJournal};
+    use super::{confirmation_required, dossiers_personnels, LigneJournal};
+    use std::path::Path;
 
     #[test]
     fn requires_confirmation_when_recycling_would_destroy() {
         assert!(confirmation_required(true, false));
         assert!(confirmation_required(false, true));
         assert!(!confirmation_required(true, true));
+    }
+
+    /// Le cas FR, y compris l'accent : `Téléchargements` ne devient pas
+    /// `TELECHARGEMENTS` à la majuscule, et une constante écrite sans accent ne
+    /// détecterait rien. Une règle qui ne détecte pas est une règle morte —
+    /// même nature que celle que `tests/sondes/filet.mjs` portait avant d'être
+    /// réparée.
+    #[test]
+    fn trouves_les_dossiers_personnels_en_francais() {
+        assert_eq!(
+            dossiers_personnels(Path::new(r"C:\Users\lucas\Images\a.jpg")),
+            ["Images"]
+        );
+        assert_eq!(
+            dossiers_personnels(Path::new(r"C:\Users\lucas\Téléchargements\setup.exe")),
+            ["Téléchargements"]
+        );
+        assert_eq!(
+            dossiers_personnels(Path::new(r"C:\Users\lucas\Bureau\notes")),
+            ["Bureau"]
+        );
+    }
+
+    #[test]
+    fn trouves_les_dossiers_personnels_en_anglais() {
+        assert_eq!(
+            dossiers_personnels(Path::new(r"C:\Users\sam\Pictures\x.png")),
+            ["Pictures"]
+        );
+        assert_eq!(
+            dossiers_personnels(Path::new(r"C:\Users\sam\Desktop\y.txt")),
+            ["Desktop"]
+        );
+    }
+
+    /// Un dossier de travail nommé `Documents` sur un disque de données serait
+    /// un faux positif... et on ne devine pas les intentions : la règle porte
+    /// sur des noms, elle ne peut pas savoir. Ce test dit au moins que le cas
+    /// est connu, et qu'un simple préfixe ne suffit pas à la déclencher.
+    #[test]
+    fn un_prefixe_ne_compte_pas() {
+        assert!(dossiers_personnels(Path::new(r"D:\projets\images-utils\x.rs")).is_empty());
+        assert!(dossiers_personnels(Path::new(r"D:\burns\a.iso")).is_empty());
+    }
+
+    /// Le dossier personnel est nommé UNE fois, même quand dix fichiers y
+    /// sont : la question posée à la personne est « quel dossier », pas « combien
+    /// de fois ». Ni la casse ni les variantes de chemin ne doivent créer un
+    /// second champ à remplir.
+    #[test]
+    fn chaque_dossier_n_est_nomme_qu_une_fois() {
+        let mut v: Vec<String> = Vec::new();
+        for p in [
+            r"C:\Users\lucas\Images\a.jpg",
+            r"C:\Users\lucas\Images\2024\b.jpg",
+            r"C:\Users\lucas\Documents\c.pdf",
+            r"c:\users\LUCAS\images\d.jpg",
+        ] {
+            for d in dossiers_personnels(Path::new(p)) {
+                if !v.iter().any(|x: &String| x.eq_ignore_ascii_case(&d)) {
+                    v.push(d);
+                }
+            }
+        }
+        assert_eq!(
+            v.len(),
+            2,
+            "attendu Images et Documents : pas de doublon, pas de variante de casse"
+        );
     }
 
     fn ligne(corbeille: &str, prevu: &str, realise: &str) -> String {

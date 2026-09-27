@@ -90,6 +90,11 @@ const SONDES = [
     quoi: 'En-tete exige, chemins proteges refuses, jeton — le tout en simulation',
   },
   {
+    nom: 'personnels', fichier: 'sonde-dossiers-personnels.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
+    quoi: 'Un lot qui touche un dossier personnel doit le nommer, et un dossier ordinaire ne declenche rien',
+  },
+  {
     nom: 'generation', fichier: 'sonde-generation.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Un identifiant est une position : la generation le rend verifiable',

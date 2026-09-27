@@ -205,6 +205,14 @@
   .plist { max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
   .plist div { padding:5px 10px; border-bottom:1px solid #23262e; display:flex; gap:10px; font-size:12.5px; }
   .plist div:last-child { border-bottom:none; }
+  /* Les champs de dossiers personnels. Ils se ressemblent volontairement :
+     la règle veut qu'on les remplisse TOUS, pas qu'on distingue le urgent du
+     moins urgent. Le libellé porte le nom du dossier, le champ le répète en
+     gris, et l'aide en dessous ne s'allume que sur une saisie fausse. */
+  .pfields { margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+  .pfield { display:flex; flex-direction:column; gap:4px; font-size:12.5px; }
+  .pfield .search { max-width:220px; }
+  .p-aide { font-size:11.5px; min-height:14px; color:var(--danger, #e5534b); }
   .plist .p { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .plist .s { color:var(--muted); white-space:nowrap; }
   .plist .b { color:var(--hot); white-space:nowrap; }
@@ -1035,9 +1043,51 @@ async function openDelete() {
   $('#modal').classList.remove('hidden');
 }
 
+// Ce que la personne a saisi dans les champs de dossiers personnels, par nom de
+// dossier. Changer de mode re-rend le corps et l'effacerait : il faudrait
+// ressaisir parce qu'on a choisi « définitif », et la règle perdrait son sens.
+function persoSaisies() {
+  const m = {};
+  document.querySelectorAll('#dbody .perso-in').forEach(i => { m[i.dataset.perso] = i.value; });
+  return m;
+}
+
+// La saisie attendue, dossier par dossier. Le serveur compare EXACTEMENT, sans
+// tenir compte de la casse : l'interface ne peut pas être plus laxiste, sinon
+// le bouton s'allumerait sur une valeur que le serveur refuse.
+function persoCorrect(i) {
+  return (i.value || '').trim().toLowerCase() === (i.dataset.perso || '').toLowerCase();
+}
+
+// Le bouton s'allume quand TOUT est saisi : chaque dossier personnel nommé, et
+// « EFFACER » quand l'effet prévu est la destruction. Les deux conditions
+// s'appliquent à la fois, sinon il resterait actif sur un lot qui détruit.
+function toutSaisi() {
+  const d = pendingDry;
+  if (!d || d.deletable === 0) return false;
+  const mode = document.querySelector('input[name=dmode]:checked').value;
+  if (mode === 'permanent' || !d.corbeille) {
+    if ((($('#dconfirm') && $('#dconfirm').value) || '').trim() !== 'EFFACER') return false;
+  }
+  return Array.from(document.querySelectorAll('#dbody .perso-in')).every(persoCorrect);
+}
+
+function majBouton() {
+  const b = $('#ddo');
+  if (b) b.disabled = !toutSaisi();
+  document.querySelectorAll('#dbody .perso-in').forEach(i => {
+    const aide = i.parentElement.querySelector('.p-aide');
+    if (aide) {
+      aide.textContent = (i.value || '').trim() === '' || persoCorrect(i)
+        ? '' : 'ne correspond pas au dossier affiché';
+    }
+  });
+}
+
 function renderDeleteBody() {
   const d = pendingDry;
   if (!d) return;
+  const memo = persoSaisies();
   const mode = document.querySelector('input[name=dmode]:checked').value;
   let h = '';
   // « Tout sélectionner » dans un gros dossier peut viser des centaines de Go.
@@ -1074,6 +1124,27 @@ function renderDeleteBody() {
          '</div>';
   }
   h += '</div>';
+  // Les dossiers personnels. Un champ par dossier : un seul champ dans le cas
+  // courant — on a ouvert Images, on valide, et rien n'a changé — et autant de
+  // champs que de dossiers touchés quand on a « tout sélectionné » un profil.
+  // C'est le seul cas où le coût se paie, et c'est le bon.
+  if (d.personnels && d.personnels.length) {
+    const n = d.personnels.length;
+    h += `<div class="warn" style="margin-top:12px"><b>Dossier personnel</b> : ` +
+         `${n} élément${n > 1 ? 's de ce lot se trouvent' : ' de ce lot se trouve'} dans un ` +
+         `dossier que Windows nomme « Bureau », « Documents », « Images », ` +
+         `« Téléchargements » et quelques autres. Ce n'est pas un blocage : c'est ` +
+         `une occasion de regarder où l'on est avant de valider.</div>`;
+    h += '<div class="pfields">';
+    for (const nom of d.personnels) {
+      h += `<label class="pfield">Pour supprimer ce qui est dans <b>${escapeHtml(nom)}</b>, tape son nom :` +
+           `<input class="search perso-in" data-perso="${escapeHtml(nom)}" ` +
+           `placeholder="${escapeHtml(nom)}" autocomplete="off" spellcheck="false" />` +
+           `<span class="p-aide"></span></label>`;
+    }
+    h += '</div>';
+  }
+
   if (mode === 'permanent' || !d.corbeille) {
     h += `<div class="warn" style="margin-top:12px">Suppression <b>définitive</b>, ` +
          `aucune récupération possible depuis la corbeille. Tape <b>EFFACER</b> pour confirmer.</div>` +
@@ -1083,6 +1154,13 @@ function renderDeleteBody() {
          `Les éléments iront dans la corbeille : tu peux les restaurer depuis l'explorateur.</p>`;
   }
   $('#dbody').innerHTML = h;
+  document.querySelectorAll('#dbody .perso-in').forEach(i => {
+    if (memo[i.dataset.perso] != null) i.value = memo[i.dataset.perso];
+    i.oninput = majBouton;
+  });
+  const dc = $('#dconfirm');
+  if (dc) dc.oninput = majBouton;
+  majBouton();
 }
 
 async function doDelete() {
@@ -1095,13 +1173,27 @@ async function doDelete() {
       return;
     }
   }
+  // Les dossiers personnels sont exigés ICI aussi, et pas seulement dans l'état
+  // du bouton : un appel direct à `doDelete` ne doit pas passer par la porte.
+  const manquant = Array.from(document.querySelectorAll('#dbody .perso-in'))
+    .filter(i => !persoCorrect(i));
+  if (manquant.length) {
+    alert('Ce lot touche un dossier personnel. Pour continuer, tape le nom de '
+      + 'chacun, un par champ :\n'
+      + manquant.map(i => i.dataset.perso).join('\n'));
+    return;
+  }
   $('#ddo').disabled = true;
   let res;
   try {
     res = await api('/api/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ drive: cur.drive, mode, token: pendingDry.token, confirm }),
+      body: JSON.stringify({
+        drive: cur.drive, mode, token: pendingDry.token, confirm,
+        perso: Array.from(document.querySelectorAll('#dbody .perso-in'))
+          .map(i => i.value.trim()),
+      }),
     });
   } catch (e) {
     $('#dbody').innerHTML = `<div class="warn">Refusé : ${escapeHtml(String(e.message || e))}</div>`;
