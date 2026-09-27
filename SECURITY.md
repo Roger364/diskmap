@@ -346,6 +346,37 @@ et sur disque. `sonde-palier.mjs` refait le trajet en lecture seule : elle fait 
 le plus gros dossier de la machine (`G:\ggames`, 344,2 Go) parce que le volume jetable fait
 511 Mio et ne peut pas atteindre le palier.
 
+**Le runner de GitHub Actions est TOUJOURS élevé — et cela a coûté sept sondes.**
+
+Rien dans le dépôt ne demande l'élévation, et le workflow ne la demande pas non plus :
+les actions GitHub tournent en administrateur par construction. Le premier run où la
+règle d'élévation est entrée en vigueur l'a donc prise pour un défaut du produit, alors
+que c'étaient sept sondes qui affirmaient « aucun mot n'est exigé » en mode corbeille —
+une affirmation codée en dur, vraie sur ma machine et fausse là-bas, sans qu'une seule
+ligne d'application change de comportement. Le test était faux, pas le produit.
+
+La conséquence est une règle de rédaction du harnais, pas une règle de code :
+
+> Une sonde ne suppose jamais l'instance. Elle la LIT sur `/api/state`, et elle en
+> déduit la règle qu'elle va éprouver.
+
+`tests\sondes\config.mjs` porte `estEleve()` et `motsExiges()`, une **seconde
+implémentation** de la règle du serveur — dérivée des faits, jamais recopiée de sa
+réponse, sinon elle ne vérifierait plus rien. Sept sondes l'utilisent.
+
+**Vérifié de bout en bout : `sonde-elevation.mjs`**, dans un vrai navigateur et sans rien
+supprimer. Elle mesure la bannière, le jeton d'instance, l'accord exact entre les mots
+demandés par l'interface et ceux que le serveur exige pour le même lot, la destination
+qui reste annoncée quand un mot est exigé, et le bouton d'exécution qui s'allume sur le
+mot exact, au caractère près. Elle énonce une **loi** et non une branche — corbeille
+présente, lot sous le palier, mode corbeille ⇒ `EFFACER` exigé si et seulement si
+l'instance est élevée — de sorte que le runner éprouve la moitié droite et la machine de
+développement la gauche, sans qu'aucune des deux puisse valider l'autre.
+
+Résultat mesuré le 27/09/2026, run `36329398102` : **19/19** sur le runner élevé, **16/16**
+sur instance normale. L'écart n'est pas du bruit : ce sont les vérifications qui n'ont de
+sens que d'un seul côté.
+
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
 `journal` (`src/main.rs:1599`) écrivait l'issue, la taille et le chemin **réellement traité**.

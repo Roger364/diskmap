@@ -78,7 +78,9 @@ Defaults and guards:
   decides, and says which word it wants for which mode — elevated asks for the
   same word as permanent deletion, **added to** whatever the lot already
   required, not in place of it. And when nothing is at stake, no word is asked
-  for: a rule that fires too often is a rule you stop reading.
+  for: a rule that fires too often is a rule you stop reading. Checked
+  end-to-end by `sonde-elevation.mjs` — see "The CI runner is always
+  elevated" below.
 - **A big enough lot has to be spelled out.** Under 20 GB, one click is the
   whole ceremony. Over it, you type `SUPPRIMER`; over 500 GB, `SUPPRIMER TOUT`.
   The thresholds are not a guess — the incident of 26/09/2026 moved **74.2 GB**
@@ -256,6 +258,37 @@ volume and destroyed 79 real files permanently, sending 89 more to the
 Recycle Bin, scattered across the whole disk. The paths it aimed at were
 resolved against a rescanned index, so they designated other files than its own
 — see `SECURITY.md` and §3.7 of that report.
+
+### The CI runner is always elevated, and it cost seven probes
+
+Nothing in the repository asks for elevation, and the workflow does not
+either: GitHub Actions jobs run as administrator by construction. So the
+first run after the elevation rule landed read it as a product defect when it
+was seven probes asserting, in hardcoded text, that no word is required in
+Recycle Bin mode — true on the maintainer's machine, false there, with not
+one line of application behaviour having changed. The test was wrong, not
+the product.
+
+The rule that came out of it is about how a probe is written:
+
+> A probe never assumes the instance. It reads it from `/api/state`, and
+> derives the rule it is going to test from that.
+
+`tests\sondes\config.mjs` carries `estEleve()` and `motsExiges()` — a
+**second implementation** of the server's rule, derived from the facts and
+never copied from its answer, since a copy would verify nothing. Seven probes
+use it, and `sonde-elevation.mjs` checks the whole chain in a real browser:
+the banner, the instance token, the exact agreement between the words the
+interface asks for and the words the server requires of the same lot, the
+destination still announced when a word is required, and the button that
+lights up on the exact word and not before. It states a **law** rather than a
+branch — Recycle Bin present, lot under the threshold, Recycle Bin mode ⇒
+`EFFACER` required if and only if the instance is elevated — so the runner
+exercises one half and a developer's machine the other, and neither can
+vouch for the other.
+
+Measured 27/09/2026, run `36329398102`: **19/19** elevated, **16/16** not.
+The gap is not noise; it is the checks that only mean something on one side.
 
 ### What makes a volume disposable
 
