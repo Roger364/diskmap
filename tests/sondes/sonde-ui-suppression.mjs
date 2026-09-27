@@ -186,9 +186,22 @@ if (titre !== null) {
   // La promesse affichée doit correspondre à ce que le volume sait faire.
   console.log(`      promesse : « ${corps.slice(corps.indexOf('corbeille') > 0 ? corps.indexOf('corbeille') - 60 : 0, 240)}… »`);
   if (A_CORBEILLE) {
-    verifier('elle promet la corbeille, et le volume en a une',
-      /restaurer depuis l.?.?explorateur/.test(corps) && !/définitivement détruits/.test(corps),
+    // La promesse n'est plus une formule : elle est MESURÉE. Le serveur relève
+    // le plafond du volume et son occupation, et l'interface doit dire si ce
+    // lot tient — ou avouer qu'il déborde. Une formule (« tu peux les restaurer
+    // » donnée à toutes les lettres près) ne prouverait plus rien du tout.
+    const annonce = /Les éléments iront dans la corbeille/.test(corps);
+    const mesure = /de plafond/.test(corps) && /y tient/.test(corps);
+    const avertit = /Rien ne sera détruit tout de suite/.test(corps);
+    verifier('elle annonce la corbeille, et le volume en a une',
+      annonce && !/définitivement détruits/.test(corps),
       corps.slice(0, 240));
+    // Sur un lot minuscule — le fichier de la sonde — ça tient toujours. La
+    // branche du débordement est éprouvée ailleurs, sur un volume dont le
+    // plafond est atteint ; ici on vérifie au moins qu'aucun avertissement ne
+    // sort quand la mesure dit que ça tient.
+    verifier('elle donne la mesure, pas une formule',
+      mesure && !avertit, corps.slice(0, 240));
   } else {
     verifier('elle AVERTIT que le volume n’a pas de corbeille, au lieu de promettre la restauration',
       /pas de corbeille/.test(corps) && /définitivement détruits/.test(corps),

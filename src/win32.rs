@@ -346,6 +346,259 @@ pub fn corbeille_disponible(lettre: char) -> bool {
     std::path::Path::new(&format!("{lettre}:\\$RECYCLE.BIN")).is_dir()
 }
 
+// ---------------------------------------------------------------------------
+// L'état RÉEL de la corbeille : ce qu'elle peut garder, et ce qu'elle garde déjà.
+//
+// Ce que l'application savait déjà, c'est si le fichier EST entré dans la
+// corbeille — les fiches `$I` sont lues après la suppression et l'issue est
+// journalisée comme ce qui a eu lieu. Ce qu'elle ne mesurait pas, et qu'elle
+// affirmait quand même en afficheant « récupérables dans la corbeille », c'est
+// que la corbeille le GARDERA.
+//
+// Elle ne le garde pas toujours. Windows plafonne la corbeille de chaque volume
+// (`MaxCapacity`) et, passé le plafond, PURGE les entrées les plus anciennes
+// SANS DEMANDER : supprimer un fichier peut en détruire un autre, sans que
+// personne l'ait demandé et sans que le journal en parle. Le 27/09/2026, trois
+// volumes de cette machine portaient `NeedToPurge` — le drapeau de Windows qui
+// dit exactement cela. Aucune ligne de code ne le lisait.
+//
+// Le plafond se lit dans le registre de l'utilisateur ; l'occupation se mesure
+// sur les fiches `$I`, dont l'en-tête version 2 porte la taille d'origine à
+// l'octet 4 : 12 octets suffisent, sans parcourir l'arborescence d'une charge de
+// 40 Go.
+// ---------------------------------------------------------------------------
+
+/// `HKEY_CURRENT_USER`, en tant que poignée.
+const HKEY_CURRENT_USER: *mut std::ffi::c_void = 0x8000_0001usize as *mut std::ffi::c_void;
+/// `RRF_RT_REG_DWORD` : la valeur est un DWORD, et le reste est une erreur.
+const RRF_RT_REG_DWORD: u32 = 0x0000_0018;
+/// `RRF_SUBKEY_WOW6464KEY` : lire la vue 32 bits si le processus l'est. Sans ce
+/// drapeau, un binaire 32 bits lirait un emplacement que le 64 bits n'écrit pas.
+const RRF_SUBKEY_WOW6464KEY: u32 = 0x0001_0000;
+/// Nombre maximal de fiches ouvertes pour mesurer. Au-delà, la mesure est
+/// INCOMPLÈTE et le dit : une sous-estimation qui se déguise en exactitude
+/// produirait un avertissement faux, ce qui est pire que pas d'avertissement.
+const CORBEILLE_FICHES_MAX: usize = 4_000;
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn GetVolumeNameForVolumeMountPointW(mount: *const u16, name: *mut u16, name_len: u32) -> i32;
+}
+
+#[link(name = "advapi32")]
+extern "system" {
+    fn RegGetValueW(
+        hkey: *mut std::ffi::c_void,
+        sub_key: *const u16,
+        value: *const u16,
+        flags: u32,
+        out_type: *mut u32,
+        out_data: *mut u8,
+        out_size: *mut u32,
+    ) -> i32;
+}
+
+/// Le GUID du volume, tel que le registre l'indexe.
+///
+/// `GetVolumeNameForVolumeMountPointW` est la fonction qui rend
+/// `\\?\Volume{325a8542-…}\`, et c'est ce nom qui sert de sous-clé sous
+/// `BitBucket\Volume`. `GetVolumeInformationW` aurait paru convenir — son nom
+/// le promet — mais elle ne prend AUCUN paramètre de format : le drapeau
+/// `VOLUME_NAME_GUID` n'existe que sur sa cousine `…ByHandleW`. On l'a essayée,
+/// elle rend le LIBELLE du volume, et le plafond n'est jamais mesuré. C'est le
+/// genre d'erreur qui ne se voit pas : la fonction ne rend pas `None`, elle
+/// rend `None` pour une raison qu'on ne cherche pas.
+fn guid_volume(lettre: char) -> Option<String> {
+    let racine: Vec<u16> = format!("{lettre}:\\")
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let mut tampon = [0u16; 64];
+    let ok = unsafe {
+        GetVolumeNameForVolumeMountPointW(racine.as_ptr(), tampon.as_mut_ptr(), tampon.len() as u32)
+    };
+    if ok == 0 {
+        return None;
+    }
+    let fin = tampon.iter().position(|&c| c == 0)?;
+    let brut = String::from_utf16_lossy(&tampon[..fin]);
+    // `\\?\Volume{325a8542-…}\` -> `{325a8542-…}` : la sous-clé ne garde que les
+    // accolades. Une forme inattendue ne se devine pas — elle rend `None`.
+    let debut = brut.find('{')?;
+    let fin = brut.rfind('}')?;
+    if debut >= fin {
+        return None;
+    }
+    Some(brut[debut..=fin].to_string())
+}
+
+fn lire_dword(sous_cle: &str, valeur: &str) -> Option<u32> {
+    let sk: Vec<u16> = sous_cle.encode_utf16().chain(Some(0)).collect();
+    let v: Vec<u16> = valeur.encode_utf16().chain(Some(0)).collect();
+    let mut out: u32 = 0;
+    let mut taille: u32 = std::mem::size_of::<u32>() as u32;
+    let code = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            sk.as_ptr(),
+            v.as_ptr(),
+            RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY,
+            std::ptr::null_mut(),
+            (&mut out as *mut u32).cast::<u8>(),
+            &mut taille,
+        )
+    };
+    (code == 0).then_some(out)
+}
+
+/// Ce que la corbeille du volume peut garder, et ce qu'elle garde déjà.
+pub struct EtatCorbeille {
+    /// Plafond configuré, en octets. `None` = clé absente ou volume inconnu.
+    /// On ne TOMBE PAS sur un plafond par défaut documenté mais non mesuré : un
+    /// plafond inventé donnerait le verdict « ça tient », qui serait faux.
+    pub plafond: Option<u64>,
+    /// Octets déjà pris, mesurés sur les tailles déclarées par les fiches `$I`.
+    pub occupe: u64,
+    /// La mesure est-elle allée jusqu'au bout ? Faux ⇒ `occupe` est un MINIMUM,
+    /// et l'interface doit le dire au lieu de le présenter comme exact.
+    pub complet: bool,
+}
+
+impl EtatCorbeille {
+    /// Le lot tient-il dans la corbeille ?
+    ///
+    /// `Some(true)` : il déborde. `Some(false)` : il tient. `None` : indécidable,
+    /// faute de plafond mesuré — et l'interface n'affirmera alors rien.
+    ///
+    /// « Il déborde » décrit un ÉTAT qu'on va créer, pas un dommage qu'on
+    /// provoque : mesuré le 27/09/2026 sur `V:`, 12 fichiers de 6 Mo pour un
+    /// plafond de 51 Mo, la corbeille a fini à **1,66 fois** son plafond et
+    /// les 12 fichiers y étaient. Windows n'a rien détruit à cet instant —
+    /// le plafond n'est pas appliqué à la suppression. Ce qui suit, la purge,
+    /// Windows la décide plus tard, à son rythme, sans prévenir.
+    ///
+    /// C'est pourquoi le calcul se contente de comparer : dire « Windows va
+    /// détruire » au moment de la suppression aurait été faux, et l'a été
+    /// pendant une heure. Ce que le calcul garantit, en revanche, c'est
+    /// qu'aucune affirmation optimiste n'est faite sur un volume dont on
+    /// ignore la contenance — c'est le sens du `None`.
+    pub fn deborde(&self, lot: u64) -> Option<bool> {
+        self.plafond.map(|p| self.occupe.saturating_add(lot) > p)
+    }
+}
+
+/// Mesure l'état de la corbeille d'un volume.
+///
+/// Le coût est celui de l'OUVERTURE des fiches, pas de leur énumération (mesuré
+/// le 26/09/2026 sur G: : 3 ms pour en énumérer 1500, 190 ms pour les ouvrir).
+/// D'où le plafond d'ouvertures et le `complet` : au-delà de 4 000 fiches on
+/// s'arrête et on déclare la mesure incomplète, plutôt que de faire attendre
+/// l'interface en énumérant une corbeille de disque saturé.
+pub fn etat_corbeille(lettre: char) -> EtatCorbeille {
+    let plafond = guid_volume(lettre).and_then(|g| {
+        lire_dword(
+            &format!(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\BitBucket\\Volume\\{g}"
+            ),
+            "MaxCapacity",
+        )
+        // La clé est en mégaoctets. Un zéro n'est pas un plafond de zéro octets,
+        // c'est une valeur absente déguisée : on ne le confond pas.
+        .filter(|mio| *mio > 0)
+        .map(|mio| u64::from(mio) * 1_048_576)
+    });
+
+    let mut occupe = 0u64;
+    let mut lus = 0usize;
+    let mut complet = true;
+    if let Ok(sids) = std::fs::read_dir(format!("{lettre}:\\$RECYCLE.BIN")) {
+        for sid in sids.flatten() {
+            // Un sous-dossier d'un autre compte renvoie EPERM : ce n'est pas une
+            // corbeille vide, et son volume est déjà connu par ailleurs. On
+            // l'écarte, et la mesure reste celle DU COMPTE COURANT — ce que
+            // Windows purge, lui, l'est aussi.
+            let Ok(entrees) = std::fs::read_dir(sid.path()) else {
+                continue;
+            };
+            for f in entrees.flatten() {
+                let nom = f.file_name().to_string_lossy().into_owned();
+                if !nom.starts_with("$I") {
+                    continue;
+                }
+                if lus >= CORBEILLE_FICHES_MAX {
+                    complet = false;
+                    break;
+                }
+                // Une `$I` sans sa charge `$R` est une fiche ORPHELINE : elle
+                // décrit un fichier qui n'est plus dans la corbeille. La compter
+                // ferait dire « la corbeille est pleine » d'un vide, et c'est le
+                // chiffre qui décide du verdict. C'est aussi ce que laisse une
+                // purge de Windows — d'où la vérification, et non une confiance.
+                if !f
+                    .path()
+                    .with_file_name(nom.replacen("$I", "$R", 1))
+                    .exists()
+                {
+                    continue;
+                }
+                if let Some(t) = taille_croyable(&f.path()) {
+                    occupe = occupe.saturating_add(t);
+                    lus += 1;
+                }
+            }
+            if !complet {
+                break;
+            }
+        }
+    }
+    EtatCorbeille {
+        plafond,
+        occupe,
+        complet,
+    }
+}
+
+/// Fenêtre dans laquelle une date de suppression est believable : de 1990 à 2100.
+///
+/// Une fiche `$I` illisible — écriture interrompue, format d'une autre
+/// version — porte alors une date qui n'est pas une date. Mesuré le 27/09/2026 sur G: : une `$I` de 152 octets
+/// dont l'octet 8 valait 4,4 Po, et dont la somme faisait basculer l'occupation
+/// de la corbeille à `u64::MAX`. Une mesure de Charpie ne se laisse pas compter.
+const FILETIME_MIN: u64 = 122_756_256_000_000_000; // 1990-01-01
+const FILETIME_MAX: u64 = 157_469_184_000_000_000; // 2100-01-01
+
+/// La taille qu'une fiche `$I` déclare pour sa charge — si elle est croyable.
+///
+/// L'en-tête de la version 2 a été MESURÉ, pas supposé : deux fichiers de
+/// tailles connues ont été mis à la corbeille, puis leurs `$I` relues. Le
+/// champ taille est à l'octet 8, et non à l'octet 4 comme le laissait croire la
+/// disposition la plus citée. Un octet de décalage ne se voit pas — il ne
+/// produit aucune erreur, seulement des tailles fausses.
+///
+/// ```
+/// 0x00  4  version (2)      0x0C  4  (réservé)
+/// 0x04  4  (réservé)        0x10  8  date de suppression (FILETIME)
+/// 0x08  8  TAILLE           0x18  4  longueur du chemin
+/// ```
+///
+/// Seuls les 24 premiers octets sont lus : une fiche est surtout un chemin, et
+/// un chemin long se lirait pour rien. La date est exigée plausible, parce
+/// qu'une `$I` mal écrite ferait passer un nombre aberrant pour une taille.
+fn taille_croyable(fiche: &std::path::Path) -> Option<u64> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(fiche).ok()?;
+    let mut entete = [0u8; 24];
+    f.read_exact(&mut entete).ok()?;
+    if u32::from_le_bytes(entete[0..4].try_into().ok()?) != 2 {
+        return None;
+    }
+    let quand = u64::from_le_bytes(entete[16..24].try_into().ok()?);
+    if !(FILETIME_MIN..FILETIME_MAX).contains(&quand) {
+        return None;
+    }
+    Some(u64::from_le_bytes(entete[8..16].try_into().ok()?))
+}
+
 /// Écart entre l'époque FILETIME (1601) et l'époque Unix, en unités de 100 ns.
 const EPOQUE_FILETIME: u64 = 116_444_736_000_000_000;
 
@@ -494,4 +747,107 @@ fn volume_info(w: &[u16]) -> (String, String, u32) {
         from_wide(fs.as_ptr(), fs.len()),
         serial,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EtatCorbeille;
+
+    /// La taille d'une charge est à l'octet 8 de l'en-tête `$I` version 2 —
+    /// et à l'octet 4 on lit n'importe quoi, sans le moindre symptôme.
+    ///
+    /// L'en-tête est reconstruit ici depuis ce que la corbeille de `V:` a
+    /// réellement écrit : version, 4 octets nuls, taille, date, longueur du
+    /// chemin. Un octet de bourrage en trop — la disposition la plus citée en
+    /// compte un — et ce test échoue, ce qui est exactement son rôle.
+    #[test]
+    fn la_taille_declaree_est_a_son_place() {
+        let mut entete = Vec::new();
+        entete.extend_from_slice(&2u32.to_le_bytes());
+        entete.extend_from_slice(&[0u8; 4]);
+        entete.extend_from_slice(&4096u64.to_le_bytes());
+        entete.extend_from_slice(&134_000_000_000_000_000u64.to_le_bytes());
+        entete.extend_from_slice(&4u32.to_le_bytes());
+        entete.extend_from_slice(&[0u8; 8]);
+        // `taille_croyable` lit un FICHIER : on écrit, on relit.
+        let p = std::env::temp_dir().join(format!("dm-fiche-{}.bin", std::process::id()));
+        std::fs::write(&p, &entete).unwrap();
+        let t = super::taille_croyable(&p);
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(t, Some(4096));
+    }
+
+    /// Une date illisible ne se laisse pas compter comme une taille.
+    ///
+    /// C'est le défaut que la mesure a réellement rencontré : une `$I` de 152
+    /// octets sur G: portait 4,4 Po à l'octet 8 et une date qui n'était pas une
+    /// date. Sans ce refus, l'occupation de la corbeille vaut `u64::MAX` et le
+    /// verdict « ça ne tient pas » serait vrai par accident, pour la mauvaise
+    /// raison — sur n'importe quel volume, y compris une corbeille vide.
+    #[test]
+    fn une_fiche_illisible_ne_devient_pas_une_taille() {
+        let mut entete = Vec::new();
+        entete.extend_from_slice(&2u32.to_le_bytes());
+        entete.extend_from_slice(&[0u8; 4]);
+        entete.extend_from_slice(&0x3cd4_11c0_0000_0000u64.to_le_bytes());
+        entete.extend_from_slice(&0x3e_01dd4d4bu64.to_le_bytes()); // pas une date
+        let p = std::env::temp_dir().join(format!("dm-fiche-bad-{}.bin", std::process::id()));
+        std::fs::write(&p, &entete).unwrap();
+        let t = super::taille_croyable(&p);
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(t, None);
+    }
+
+    /// Un plafond inconnu ne vaut pas « ça tient ».
+    ///
+    /// C'est tout l'intérêt du `Option` : sans plafond mesuré, aucune
+    /// affirmation optimiste ne doit sortir. Un défaut de 5 % dokumenté mais
+    /// non relevé produirait ici un `Some(false)` — c'est-à-dire exactement le
+    /// mensonge qu'on a retiré de l'interface.
+    #[test]
+    fn sans_plafond_mesure_on_ne_prononce_nothing() {
+        let e = EtatCorbeille {
+            plafond: None,
+            occupe: 0,
+            complet: true,
+        };
+        assert_eq!(e.deborde(u64::MAX), None);
+    }
+
+    #[test]
+    fn un_lot_qui_depasse_le_plafond_est_annonce() {
+        let e = EtatCorbeille {
+            plafond: Some(100),
+            occupe: 90,
+            complet: true,
+        };
+        assert_eq!(e.deborde(20), Some(true));
+        assert_eq!(e.deborde(10), Some(false));
+    }
+
+    /// Une mesure INCOMPLÈTE reste un minimum, jamais un total : c'est ce que
+    /// `complet` sert à dire à l'interface, et ce que l'occupation plus le lot
+    /// ne doit pas faire oublier.
+    #[test]
+    fn une_mesure_incomplete_porte_encore_son_drapeau() {
+        let e = EtatCorbeille {
+            plafond: Some(100),
+            occupe: 90,
+            complet: false,
+        };
+        assert_eq!(e.deborde(5), Some(false));
+        assert!(!e.complet, "l'interface doit pouvoir dire « au moins »");
+    }
+
+    /// Le débordement ne peut pas s'inverser par saturation : un lot absurdement
+    /// grand plus une occupation au bord ne doit pas revenir « ça tient ».
+    #[test]
+    fn la_saturation_ne_retourne_pas_la_vraie() {
+        let e = EtatCorbeille {
+            plafond: Some(10),
+            occupe: u64::MAX - 1,
+            complet: true,
+        };
+        assert_eq!(e.deborde(100), Some(true));
+    }
 }

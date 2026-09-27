@@ -241,6 +241,9 @@
   }
   .ok { color:#7fc0a0; }
   .ko { color:var(--hot); }
+  /* Ni vert ni rouge : la corbeille a bien pris le lot, et ce qui reste à dire
+     est un avertissement. La couleur de `.warn`, en texte. */
+  .mi { color:#e8c89c; }
 </style>
 </head>
 <body>
@@ -382,6 +385,32 @@ let veilleTimer = null;
 
 // ---------- formatage ----------
 const nf = new Intl.NumberFormat('fr-FR');
+// Ce que la corbeille du volume peut garder, tel que le serveur l'a MESURÉ.
+//
+// Chaque champ absent se dit « inconnu » au lieu d'être remplacé par un
+// plausible : un plafond deviné donnerait un verdict — « ça tient » — qui serait
+// faux, et c'est précisément le mensonge qu'on a retiré de cette page.
+function etatCorbeille(d) {
+  const out = { suffixeVol: '', occupe: null, plafond: null, phrase: '', deborde: null };
+  if (!d) return out;
+  out.deborde = d.corbeille_deborde;
+  if (d.corbeille_plafond == null) {
+    out.phrase = 'Tu pourras les restaurer depuis l explorateur.';
+    out.suffixeVol = ` de ${cur.drive}`;
+    return out;
+  }
+  out.suffixeVol = ` de ${cur.drive}`;
+  out.plafond = hsize(d.corbeille_plafond);
+  out.occupe = (d.corbeille_complet ? '' : 'au moins ') + hsize(d.corbeille_occupe);
+  if (d.corbeille_deborde === true) {
+    out.phrase = `Elle est déjà pleine : ${out.occupe} dedans pour ${out.plafond} de plafond.`;
+  } else {
+    out.phrase = `Il y a ${out.occupe} dedans pour ${out.plafond} de plafond : `
+      + `ce lot de ${hsize(d.total_size)} y tient.`;
+  }
+  return out;
+}
+
 function hsize(b) {
   if (b >= 1e12) return (b/1e12).toFixed(2).replace('.',',') + ' To';
   if (b >= 1e9) return (b/1e9).toFixed(2).replace('.',',') + ' Go';
@@ -1150,8 +1179,33 @@ function renderDeleteBody() {
          `aucune récupération possible depuis la corbeille. Tape <b>EFFACER</b> pour confirmer.</div>` +
          `<input class="search" id="dconfirm" placeholder="EFFACER" style="width:150px;margin-top:9px" />`;
   } else {
+    // « Les éléments iront dans la corbeille : tu peux les restaurer » était
+    // une CROYANCE, et une seule : « dans la corbeille » veut dire « dans la
+    // corbeille MAINTENANT ». Le serveur mesure le plafond et l'occupation ; ici
+    // on les montre, et le verdict.
+    const etat = etatCorbeille(pendingDry);
     h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
-         `Les éléments iront dans la corbeille : tu peux les restaurer depuis l'explorateur.</p>`;
+         `Les éléments iront dans la corbeille${etat.suffixeVol}. ` +
+         `${etat.phrase}</p>`;
+    if (pendingDry.corbeille_deborde === true) {
+      // Ce que la mesure dit, et pas ce qu'on voudrait qu'elle dise : sur V:,
+      // 72 Mo pour un plafond de 51 Mo, RIEN n'a été détruit — les 12
+      // fichiers étaient tous dans la corbeille, à 1,66 fois le plafond. Le
+      // plafond n'est pas appliqué à la suppression ; la purge arrive plus tard,
+      // au rythme de Windows, et sans prévenir. Dire « Windows va détruire » à
+      // cet instant serait donc faux, et un avertissement faux
+      // apprend moins qu'un avertissement absent. Ce qu'on peut dire, et qui suffit :
+      // ce qui est dedans n'y est pas garanti.
+      h += `<div class="warn" style="margin-top:10px">Ce lot <b>dépassera</b> le plafond de la ` +
+           `corbeille${etat.suffixeVol} : ${etat.occupe} dedans, ` +
+           `${hsize(pendingDry.total_size)} de plus pour ${etat.plafond} au total. ` +
+           `Rien ne sera détruit tout de suite — mesuré le 27/09/2026, la corbeille ` +
+           `dépassait alors son plafond de 66 % et les fichiers y étaient tous. ` +
+           `Mais Windows purge ses entrées les plus anciennes <b>quand il lui plaît</b>, ` +
+           `sans prévenir : ce qui est dedans n’y est plus garanti. Vider la ` +
+           `corbeille avant, ou passer en suppression définitive si tu ne veux ` +
+           `rien laisser à Windows.</div>`;
+    }
   }
   $('#dbody').innerHTML = h;
   document.querySelectorAll('#dbody .nom-in').forEach(i => {
@@ -1210,7 +1264,16 @@ async function doDelete() {
           ` · ${hsize(res.freed)} libérés` +
           (res.done
             ? (res.to_trash
-                ? ` · <span class="ok">récupérables dans la corbeille</span>`
+                ? (res.corbeille_deborde === true
+                    // Le vert « récupérables » serait ici un mensonge mesuré :
+                    // les fichiers sont bien dedans, mais le lot a porté la
+                    // corbeille au-delà de son plafond, et rien ne garantit
+                    // qu'ils y restent. Ce qui reste vrai — et que `irreversible`
+                    // nomme quand c'est faux —, c'est qu'ils y sont MAINTENANT.
+                    ? ` · <span class="mi">dans la corbeille, mais au-delà de son `
+                      + `plafond : rien n’a été détruit, et rien n’est garanti `
+                      + `pour la suite</span>`
+                    : ` · <span class="ok">récupérables dans la corbeille</span>`)
                 : ` · <span class="ko"><b>définitif</b></span>`)
             : '') +
           `</p>`;

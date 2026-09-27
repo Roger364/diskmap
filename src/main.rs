@@ -72,6 +72,13 @@ struct PendingDel {
     /// Elle est journalisée : un numéro d'identifiant ne veut rien dire sans
     /// l'instantané qui lui donnait ce sens.
     gen: u64,
+    /// La corbeille pouvait-elle garder ce lot ? MESURÉ à l'aperçu, pas redemandé
+    /// à l'exécution : c'est l'état de la corbeille AVANT qui décide, et le
+    /// lire après n'aurait plus aucun sens.
+    ///
+    /// `Some(true)` : le lot déborde. `None` : indécidable, faute de plafond
+    /// mesuré — et l'interface n'affirmera alors rien.
+    corbeille_deborde: Option<bool>,
 }
 
 /// Un élément tel qu'il a été MONTRÉ, figé au moment de l'aperçu.
@@ -1180,6 +1187,18 @@ struct DeletePreview {
     /// Le volume a-t-il une corbeille ? Faux ⇒ une suppression « corbeille »
     /// détruirait les fichiers. On le dit AVANT, pas seulement après.
     corbeille: bool,
+    /// Plafond de la corbeille du volume, en octets. `None` : non mesuré.
+    corbeille_plafond: Option<u64>,
+    /// Octets déjà occupés dans cette corbeille, mesurés sur les fiches `$I`.
+    corbeille_occupe: u64,
+    /// `corbeille_occupe` est-il exhaustif ? Faux ⇒ c'est un MINIMUM.
+    corbeille_complet: bool,
+    /// Ce lot déborde-t-il la corbeille ? `None` = indécidable.
+    ///
+    /// « Récupérable » n'est vrai qu'instantanément : Windows purge les entrées
+    /// les plus anciennes pour tenir dans son plafond, sans demander. Le dire
+    /// AVANT vaut mieux que le découvrir dans le journal après coup.
+    corbeille_deborde: Option<bool>,
     /// Les dossiers que ce lot touche et qui doivent etre nommes : `["Images",
     /// ".git"]`. Le nom dit ce qu'il fait — ce ne sont pas seulement des
     /// dossiers « personnels » : `.git` et `.ssh` y sont aussi.
@@ -1199,6 +1218,11 @@ struct DeleteOutcome {
     to_trash: bool,
     /// Demandés en corbeille, mais détruits faute d'avoir été pris par elle.
     irreversible: usize,
+    /// Ce lot était trop gros pour la corbeille du volume. Repris de la
+    /// PRÉVISION mesurée à l'aperçu : après coup, « trop gros » ne se constate
+    /// plus — ce qui s'est perdu est déjà perdu, et rien dans le disque ne
+    /// dira que le plafond existait.
+    corbeille_deborde: Option<bool>,
     results: Vec<PreviewItem>,
     rescan: bool,
 }
@@ -1481,6 +1505,11 @@ fn dry(
     }
     a_nommer.sort_by_key(|d| d.to_uppercase());
 
+    // L'état de la corbeille, mesuré UNE fois et figé avec l'aperçu : c'est
+    // l'état AVANT qui décide, et le relever à l'exécution serait déjà faux.
+    let etat = win32::etat_corbeille(letter);
+    let deborde = etat.deborde(total);
+
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
     // cacher quoi que ce soit, puisqu'il est écrit en clair juste à côté. C'est
     // l'aléa qui doit être imprévisible — et lui seul.
@@ -1499,6 +1528,7 @@ fn dry(
                 items: montres,
                 at_ms: now_ms(),
                 gen: snap.gen,
+                corbeille_deborde: deborde,
             },
         );
     }
@@ -1511,6 +1541,10 @@ fn dry(
             deletable,
             blocked,
             corbeille: win32::corbeille_disponible(letter),
+            corbeille_plafond: etat.plafond,
+            corbeille_occupe: etat.occupe,
+            corbeille_complet: etat.complet,
+            corbeille_deborde: deborde,
             a_nommer,
         })
         .unwrap(),
@@ -1807,6 +1841,7 @@ fn execute(
             freed,
             to_trash: reversible,
             irreversible,
+            corbeille_deborde: peek.corbeille_deborde,
             results,
             rescan,
         })

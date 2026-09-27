@@ -59,6 +59,18 @@ Defaults and guards:
   app reports what actually happened rather than what was asked for: an entry
   requested for the Recycle Bin but destroyed is counted, named, and logged as
   such. Permanent deletion is available but requires typing `EFFACER`.
+- **The Recycle Bin's capacity is measured, not assumed.** A Bin exists, and
+  the file is in it — that is a fact, and the app checks it against the `$I`
+  records after the fact. It is *not* a promise that the file stays there.
+  Windows caps every volume's Bin (`MaxCapacity`) and purges its oldest entries
+  when it feels like it, without asking. So the preview reads the cap and the
+  current occupancy and shows them: *"15 o inside, 53.5 MB cap — this 20 o lot
+  fits."* When the lot would go past the cap, it says so **before** you
+  confirm, and says what was actually measured: nothing is destroyed at the
+  moment of deletion — measured on 27/09/2026, a 72 MB lot left the Bin at
+  **1.66×** its cap with every file still in it — but Windows decides when to
+  purge, and it does not say so. When the cap cannot be read, the app says
+  nothing rather than falling back on a default it has not measured.
 - **A folder whose loss is not trivial has to be named.** Two families, one
   rule. The personal ones — `Desktop`, `Documents`, `Pictures`, `Music`,
   `Videos`, `Downloads`, `Bureau`, `Images`, `Téléchargements` and their
@@ -227,7 +239,7 @@ volume**. Not a disposable folder: on 26/09/2026 a probe ran on a working data
 volume and destroyed 79 real files permanently, sending 89 more to the
 Recycle Bin, scattered across the whole disk. The paths it aimed at were
 resolved against a rescanned index, so they designated other files than its own
-— see `SECURITY.md` and §3.6 of that report.
+— see `SECURITY.md` and §3.7 of that report.
 
 ### What makes a volume disposable
 

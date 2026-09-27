@@ -21,7 +21,7 @@ l'état : `%LOCALAPPDATA%\diskmap\suppressions.log` (lecture seule).
 | Binaire sur le disque | **Périmé** — `diskmap-CI.exe` (02:51) ne contient aucun des correctifs |
 | Risque résiduel le plus élevé | Aucun connu : R1 à R4 corrigés et vérifiés |
 | Nouvelle découverte de cet audit | XSS stockée via le nom de volume → effacement arbitraire sans interface |
-| Seconde moitié de la cause | Le harnais de sondes n'avait aucun filet — §3.6 |
+| Seconde moitié de la cause | Le harnais de sondes n'avait aucun filet — §3.7 |
 | Pertes réelles | **Aucune donnée unique perdue** — inventaire en annexe |
 
 Verdict : les six causes sont corrigées, R1 à R4 aussi, et le filet du harnais empêche
@@ -105,7 +105,69 @@ disparu.
 
 ---
 
-### 3.6 Le harnais de sondes n'avait aucun filet — **corrigé le 26/09/2026**
+### 3.6 « Réversible par défaut » reposait sur une croyance — **corrigé le 27/09/2026**
+
+La seule affirmation du projet qui ne s'appuyait sur aucune mesure. Le reste du
+travail dit « le fichier est-il DANS la corbeille » — et c'est une mesure, faite
+après coup sur les fiches `$I`. Ce qui n'était mesuré nulle part, c'est la
+question suivante : **la corbeille le gardera-t-elle ?**
+
+Elle ne le garde pas toujours. Windows plafonne la corbeille de chaque volume
+(`HKCU\…\Explorer\BitBucket\Volume\{GUID}\MaxCapacity`) et purge ses entrées les
+plus anciennes quand il le décide, sans demander. Le 27/09/2026, sur cette
+machine, **trois volumes** portaient `NeedToPurge` — le propre drapeau de Windows
+qui annonce la purge. Aucune ligne de code ne le lisait.
+
+Ce que la mesure a donné, et qu'aucune déduction n'aurait fourni :
+
+| Mesuré le 27/09/2026 | Valeur |
+| --- | --- |
+| Plafond de `C:` | 48,5 Gio |
+| Plafond de `G:` | 24,7 Gio (occupé 295 Mio) |
+| Plafond de `V:` (jetable) | **51 Mio** |
+| Lot de 72 Mio mis à la corbeille de `V:` | corbeille à **1,66 ×** son plafond |
+| Fichiers détruits à cet instant | **0** — les 12 y étaient |
+
+La dernière ligne est la plus importante, et elle a corrigé ce que le correctif
+annonçait d'abord. Le plafond **n'est pas appliqué au moment de la suppression** :
+rien n'est détruit, la corbeille déborde simplement, et la purge viendra plus
+tard, au rythme de Windows. L'avertissement affiché dit donc ce qui est mesuré
+— « rien ne sera détruit tout de suite, et rien n'est garanti pour la suite » —
+et non « Windows va détruire », qui aurait été faux, et l'a été pendant une
+heure.
+
+`NeedToPurge` n'est pas utilisé : sa valeur vaut 1 aussi sur `G:`, à 1,2 % de
+son plafond. Un drapeau dont on n'a pas établi le sens ne fonde pas une décision.
+
+Trois défauts sont apparus en chemin, tous mesurés et non déduits :
+
+- **`GetVolumeInformationW` n'a aucun paramètre de format.** Le drapeau
+  `VOLUME_NAME_GUID` n'existe que sur `…ByHandleW`. La fonction rend le LIBELLE
+  du volume, et le plafond n'était jamais mesuré. Corrigé par
+  `GetVolumeNameForVolumeMountPointW`.
+- **La taille d'une fiche `$I` est à l'octet 8**, pas à l'octet 4. Établi en
+  mettant deux fichiers de tailles connues (1 000 000 et 12 345 678 o) à la
+  corbeille, puis en relisant leurs `$I`. Un octet de décalage ne produit aucune
+  erreur : il produit des tailles fausses.
+- **Une `$I` illisible se faisait passer pour une taille.** Sur `G:`, une fiche
+  de 152 o portait 4,4 Po à l'octet 8, et l'occupation de la corbeille valait
+  `u64::MAX`. La date est désormais exigée plausible, et la charge `$R` doit
+  exister : une `$I` sans `$R` est une fiche orpheline, elle décrit un fichier
+  qui n'est plus là.
+
+Quand le plafond n'est pas mesuré, `corbeille_deborde` vaut `null` et
+l'interface **n'affirme rien**. Un plafond de 5 % documenté mais non relevé
+produirait `Some(false)` — c'est-à-dire exactement le mensonge retiré de cette
+page.
+
+Vérification, sur le volume jetable `V:` : 13/13 sondes vertes, dont
+`sonde-corbeille-plafond.mjs`, qui écrit 52 Mio pour un plafond de 51 Mio et
+vérifie que l'annonce suit l'inégalité. `cargo test` 22/22, `clippy -D warnings`
+propre, `fmt --check` propre.
+
+---
+
+### 3.7 Le harnais de sondes n'avait aucun filet — **corrigé le 26/09/2026**
 
 La seconde moitié de la cause, celle qui est dans le dépôt et non dans l'application.
 

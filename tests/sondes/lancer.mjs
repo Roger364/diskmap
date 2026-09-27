@@ -105,6 +105,10 @@ const SONDES = [
     quoi: 'Le mode corbeille tient vraiment sa promesse de reversibilite',
   },
   {
+    nom: 'plafond', fichier: 'sonde-corbeille-plafond.mjs', args: (c) => [c.url, c.volume], ci: true,
+    quoi: 'Le plafond de la corbeille est mesure, et son annonce se tient',
+  },
+  {
     nom: 'lot', fichier: 'sonde-suppression-lot.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Le cout d un lot, et un temoin en mode definitif',
