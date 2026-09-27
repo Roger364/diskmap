@@ -132,6 +132,13 @@ const SONDES = [
     quoi: 'Le geste reel dans l interface, jusqu a l apercu — ce qu aucune sonde serveur ne voit',
   },
   {
+    // Elle ne supprime rien : elle ouvre la modale, mesure, et ne clique jamais
+    // sur « Supprimer ». Elle a donc besoin d un volume analyse, pas jetable.
+    nom: 'elevation', fichier: 'sonde-elevation.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
+    quoi: 'Une instance elevee annonce, et exige — la loi mesuree sur les deux moities',
+  },
+  {
     nom: 'csrf', fichier: 'sonde-csrf-navigateur.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Une page tierce servie en local n efface pas un fichier',
