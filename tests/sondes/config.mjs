@@ -86,7 +86,16 @@ export function racine(vol) {
       `Les sondes créeraient leurs fichiers hors de l'instantane qu'elles interrogent.`
     );
   }
-  return r;
+  // UN SEPARATEUR, toujours. `DISKMAP_SONDE_RACINE` est posee avec des
+  // antislashs par le workflow — `D:\_diskmap_sondes` — alors que le defaut
+  // emploie la barre oblique. Un cheminmelange est un chemin dont on ne sait
+  // pas couper : le 27/09, la sonde d elevation a coupe `D:\_diskmap_sondes` en
+  // un seul segment, a cherche ce segment dans l instantane, et a conclu
+  // « manque D:\_diskmap_sondes` » — l antislash compris — sur un dossier qui
+  // existait bel et bien. Normaliser ici rend la forme du chemin independante
+  // de celui qui l a ecrite, et supprime la classe entiere du defaut plutot
+  // qu un cas.
+  return r.replace(/(?:\\|\/)+/g, '/');
 }
 
 /** Dossier de travail d'une sonde, sous la racine. */

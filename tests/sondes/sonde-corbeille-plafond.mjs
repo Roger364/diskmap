@@ -19,7 +19,7 @@
 // Usage : node sonde-corbeille-plafond.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { dossier, URL_DEFAUT } from './config.mjs';
+import { dossier, racine, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || 'V').toUpperCase();
@@ -52,7 +52,7 @@ async function attendre() {
 // viseraient autre chose.
 async function apercuSur(nom) {
   const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=0&limit=200`)).json();
-  const sonde = t.rows.find(r => r.name === '_diskmap_sondes');
+  const sonde = t.rows.find(r => r.name === racine(VOL).split('/').pop());
   if (!sonde) return { erreur: 'dossier de sondes absent' };
   const l2 = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${sonde.id}&limit=200`)).json();
   const d = l2.rows.find(r => r.name === nom);

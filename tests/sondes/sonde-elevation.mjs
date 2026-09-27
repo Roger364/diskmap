@@ -96,12 +96,18 @@ verifier('le lot d’essai est dans l’instantané', indexe,
 // qu'aucune des deux pages ne s'en aperçoive. Le code de l'interface dit
 // exactement ce risque — « le désaccord, c'est le garde-fou qui disparaît sans
 // bruit » — et rien ne le mesurait.
-// Chercher le dossier PAR SON NOM, et non le descendre depuis la racine. Sur le
-// runner, la racine de D: tient plus de quatre cents entrees, et l arbre est
-// trie par TAILLE DECROISSANTE : le dossier de travail, de quelques octets, tombe
-// donc hors de la fenetre et n existe pas dans `rows`. C est ce qu il s est passe
-// au premier run : la mesure a dit « manque D:\_diskmap_sondes » sur un dossier
-// qui existait bel et bien. Une recherche par nom ne se trompe pas de fenetre.
+
+// Chercher le dossier PAR SON NOM, plutot que descendre depuis la racine.
+//
+// J avais d'abord accuse la FENETRE : la racine du runner tient des centaines
+// d entrees, et l arbre etant trie par taille decroissante, un dossier de
+// quelques octets tomberait hors des `limit` demandes. C etait plausible, et
+// c etait FAUX. La mesure du 27/09 dit « manque D:\_diskmap_sondes` »,
+// antislash compris : le segment cherche etait tout le chemin, separateur
+// barre oblique compris. La cause est le SEPARATEUR — le workflow pose la
+// racine avec des antislashs, le defaut avec des barres obliques — et elle est
+// desormais absorbee par `racine()`, qui normalise. Une recherche par nom
+// reste le bon outil : elle ne suppose ni le chemin, ni la fenetre.
 async function chercher(nom) {
   const r = await fetch(`${BASE}/api/search?drive=${VOL}&q=${encodeURIComponent(nom)}`);
   const texte = await r.text();

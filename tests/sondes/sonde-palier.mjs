@@ -19,7 +19,7 @@
 // Usage : node sonde-palier.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { dossier, Go, PALIER_SUPPRIMER, PALIER_SUPPRIMER_TOUT, URL_DEFAUT } from './config.mjs';
+import { dossier, racine, Go, PALIER_SUPPRIMER, PALIER_SUPPRIMER_TOUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || 'V').toUpperCase();
@@ -82,8 +82,12 @@ await attendre();
 await post(`/api/scan/${VOL}`, {});
 await attendre();
 
-const racine = await get(`/api/tree?drive=${VOL}&id=0&limit=200`);
-const sonde = racine.rows.find(r => r.name === '_diskmap_sondes');
+// Le NOM de la racine de travail est lu, jamais suppose : le workflow pose
+// `D:\_diskmap_sondes` et une machine de developpement peut en poser un autre.
+// Coder le nom en dur rendait la sonde muette des que la variable changeait.
+const racineTravail = racine(VOL).split('/').pop();
+const arbreRacine = await get(`/api/tree?drive=${VOL}&id=0&limit=200`);
+const sonde = arbreRacine.rows.find(r => r.name === racineTravail);
 const l2 = await get(`/api/tree?drive=${VOL}&id=${sonde.id}&limit=200`);
 const d = l2.rows.find(r => r.name === 'palier');
 const l3 = await get(`/api/tree?drive=${VOL}&id=${d.id}&limit=200`);

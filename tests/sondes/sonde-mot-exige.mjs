@@ -18,7 +18,7 @@
 // Usage : node sonde-mot-exige.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { dossier, aCorbeille, URL_DEFAUT } from './config.mjs';
+import { dossier, racine, aCorbeille, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || 'V').toUpperCase();
@@ -66,8 +66,8 @@ async function annonce() {
   await post(`/api/scan/${VOL}`, {});
   await attendre();
   const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=0&limit=200`)).json();
-  const racine = t.rows.find(r => r.name === '_diskmap_sondes');
-  const l2 = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${racine.id}&limit=200`)).json();
+  const racineTravail = t.rows.find(r => r.name === racine(VOL).split('/').pop());
+  const l2 = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${racineTravail.id}&limit=200`)).json();
   const d = l2.rows.find(r => r.name === 'mot-exige');
   const l3 = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${d.id}&limit=200`)).json();
   const r = await post('/api/delete', {
