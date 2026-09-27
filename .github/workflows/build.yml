@@ -28,6 +28,16 @@ jobs:
           npm ci
           npx playwright install chromium
 
+      # La regle « ce volume est-il jetable ? » est eprouvee AVANT toute sonde.
+      # Ce test ne supprime rien : il verifie une fonction pure, les volumes
+      # reellement montes, et — le point qui compte — que le harnais APPELLE
+      # bien la regle. Une garde non exercee est une intention, et ce depot en a
+      # deja mis au jour une : `filet.mjs` refusait par volume sans que la branche
+      # ne puisse jamais s executer.
+      - name: Regle du volume jetable
+        working-directory: tests/sondes
+        run: npm test
+
       # La CI doit rester sûre même sur un runner auto-hébergé : les scénarios
       # qui créent ou suppriment des fichiers ne sont lancés que manuellement,
       # sur un volume jetable explicitement configuré. Le job « sondes » plus bas
@@ -36,7 +46,14 @@ jobs:
       #
       # Même délai long que ci-dessous, pour la même raison : C: est analysé
       # aussi, et sur un runner il contient l'image entière de l'agent.
+      # La machine, pas le volume, est ce qui est ephemere ici. Aucun releve ne
+      # peut etablir cela — le `D:` d'un runner est un disque physique comme un
+      # autre — et c'est donc declare. Le mot est repris tel quel dans le log de
+      # chaque run : une declaration qu'on ne voit pas est une declaration qu'on
+      # n'a pas lue.
       - name: Sondes non destructives
+        env:
+          DISKMAP_SONDE_MACHINE_EPHEMERE: runner-github-ephemere
         run: node tests/sondes/lancer.mjs --volume D --attendre 900 --sans generation,reelle,lot,ui,csrf,erreurs
 
       - name: Publier le binaire
@@ -70,6 +87,16 @@ jobs:
           npm ci
           npx playwright install chromium
 
+      # La regle « ce volume est-il jetable ? » est eprouvee AVANT toute sonde.
+      # Ce test ne supprime rien : il verifie une fonction pure, les volumes
+      # reellement montes, et — le point qui compte — que le harnais APPELLE
+      # bien la regle. Une garde non exercee est une intention, et ce depot en a
+      # deja mis au jour une : `filet.mjs` refusait par volume sans que la branche
+      # ne puisse jamais s executer.
+      - name: Regle du volume jetable
+        working-directory: tests/sondes
+        run: npm test
+
       # Le filet est le sujet de ce job autant que les sondes : c'est lui qui doit
       # empêcher qu'une sonde vise hors de sa racine, et la sortie est ROUGE si
       # une autre sonde qu'`filet` a provoqué un incident. Voir tests/sondes/filet.mjs.
@@ -84,4 +111,5 @@ jobs:
         env:
           DISKMAP_SONDE_VOLUME: D
           DISKMAP_SONDE_RACINE: 'D:\_diskmap_sondes'
+          DISKMAP_SONDE_MACHINE_EPHEMERE: runner-github-ephemere
         run: node tests/sondes/lancer.mjs --volume D --attendre 900

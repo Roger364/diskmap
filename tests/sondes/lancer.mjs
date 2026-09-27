@@ -49,7 +49,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { creerFilet } from './filet.mjs';
-import { URL_DEFAUT, VOLUME_DEFAUT, VOLUME_SANS_CORBEILLE, racine } from './config.mjs';
+import {
+  URL_DEFAUT, VOLUME_DEFAUT, VOLUME_SANS_CORBEILLE, racine, MACHINE_EPHEMERE,
+  interrogerVolumes, volumeJetable, decrireVolume,
+} from './config.mjs';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const DEPOT = path.resolve(ICI, '..', '..');
@@ -122,6 +125,10 @@ const SONDES = [
   {
     nom: 'reversibilite', fichier: 'sonde-reversibilite.mjs',
     args: (c) => [c.url, c.volumeSansCorbeille], ci: false, detruit: 'les siennes',
+    // Elle agit sur un AUTRE volume que le volume principal. C'est ce qui
+    // impose a `racinesDuFilet` de verifier qu'une racine existe pour elle —
+    // sans quoi le filet couvrirait un volume que personne n'a designe.
+    volumeSecondaire: true,
     quoi: 'Sur un volume SANS corbeille, la promesse de reversibilite ne tient pas — et doit etre dite',
   },
 ];
@@ -253,6 +260,74 @@ async function analyser(url, lettre, limiteSecondes) {
   return { ...(vu || { letter: lettre }), delai: true };
 }
 
+// ------------------------------------------------------------ volume jetable
+/**
+ * Refuse de lancer des sondes qui DETRUIENT sur un volume qui n'est pas jetable.
+ *
+ * Ce controle porte sur le HARNAIS, jamais sur l'application : `diskmap` doit
+ * pouvoir supprimer sur n'importe quel volume, c'est son metier. Ce qui est
+ * refuse ici, c'est de faire tourner des tests automatiques destructifs hors
+ * d'un support jetable. Un humain qui utilise l'interface ne passe jamais par
+ * ce chemin, et la regle ne peut donc pas lui retirer la moindre capacite.
+ *
+ * Elle refuse aussi — et c'est volontaire — quand le releve est IMPOSSIBLE. Un
+ * volume dont on n'a pas su dire s'il est jetable n'est pas un volume jetable
+ * presume : « un cas non mesure ne vaut ni succes ni echec », et ici les deux
+ * consequences sont destructrices. Un PowerShell qui echoue doit donc arranger
+ * le run, jamais le laisser passer.
+ */
+function exigerVolumeJetable(vol) {
+  const faits = interrogerVolumes();
+  const cible = (faits || []).find((f) => String(f.lettre).toUpperCase() === String(vol).toUpperCase());
+
+  console.log(`  volumes : ${faits.length} monte(s), releves par PowerShell`);
+  for (const f of [...faits].sort((a, b) => a.lettre.localeCompare(b.lettre))) {
+    const j = volumeJetable(f);
+    console.log(`    ${(j.jetable ? 'jetable ' : 'refuse  ')} ${decrireVolume(f)}`);
+  }
+  console.log('');
+
+  if (!faits.length) {
+    throw new Error(
+      'Aucun volume n a pu etre releve (PowerShell a echoue ou n est pas disponible). '
+      + 'Or un volume dont on ignore s il est jetable ne peut pas etre presume jetable. '
+      + 'Le run est refuse plutot que lance sur une mesure absente.'
+    );
+  }
+  if (!cible) {
+    throw new Error(`Le volume ${vol}: n est pas monte sur cette machine. Rien a eprouver dessus.`);
+  }
+
+  const v = volumeJetable(cible);
+  if (!v.jetable) {
+    if (MACHINE_EPHEMERE) {
+      // La seule voie qui passe, et elle est bruyante. Elle dit ce qu elle
+      // repose : rien. Ni un fait, ni un releve — une affirmation de
+      // l operateur, dont le MOT est affiche pour qu on puisse le discuter.
+      // Si cette ligne te surprend dans un log, c est que quelqu un l a posee
+      // sans y penser, et c est exactement le moment de le voir.
+      console.log('  ============================================================');
+      console.log(`  DECLARATION  « ${MACHINE_EPHEMERE} »`);
+      console.log(`  ${vol}: n est PAS un disque virtuel. Il est accepte sur`);
+      console.log('  DECLARATION, pas sur mesure. Si cette machine contient');
+      console.log('  des donnees, cette declaration est fausse.');
+      console.log('  ============================================================');
+      console.log('');
+      return;
+    }
+    throw new Error(
+      `${v.motif} `
+      + `Les sondes de ce run detruisent : filet, generation, reelle, lot, ui, csrf. `
+      + `Monte un volume jetable (tests\\sondes\\creer-volume-test.ps1) et pointe le run dessus, `
+      + `ou passe --liste pour consulter la table sans rien lancer. `
+      + `Sur une machine ephemere dont aucun volume n est virtuel, declaree : `
+      + `DISKMAP_SONDE_MACHINE_EPHEMERE=<pourquoi>.`
+    );
+  }
+  console.log(`  volume de travail ${vol}: — ${v.motif}`);
+  console.log('');
+}
+
 // ------------------------------------------------------------------ racines
 /**
  * La racine de travail d'un volume.
@@ -261,19 +336,61 @@ async function analyser(url, lettre, limiteSecondes) {
  * analyse — c'est la seule Facon de ne pas finir avec des fichiers crees sur
  * C: et un instantane interroge sur V:, ce qui fait conclure « absent » sans
  * explication. Le volume principal, lui, doit respecter la configuration : une
- * racine posee et ignoree serait pire qu'une racine absente. Le volume
- * secondaire, lui, n'a pas le droit de faire echouer le run : il retombe sur
- * son dossier par defaut, et le dit.
+ * racine posee et ignoree serait pire qu'une racine absente.
+ *
+ * Le volume secondaire ne se rabat PLUS sur un dossier invente, et c'est la
+ * partie qui compte. Le filet transforme chaque racine en AUTORISATION de
+ * supprimer : une racine qu'on n'a pas demandee est une autorisation qu'on n'a
+ * pas demandee non plus. Sur cette machine, poser `DISKMAP_SONDE_RACINE` sur
+ * `V:` suffisait a faire apparaitre `E:/_diskmap_sondes` dans les racines du
+ * filet — un exFAT de 55 Go de donnees reelles, couvert par la garde, que
+ * personne n'avait configure. Un `--tout` suffisait ensuite a y faire agir une
+ * sonde. Le filet n'est pas transparent : c'est le prix d'un point unique, et
+ * un point unique ne doit pas couvrir plus large que ce qu'on lui a demande.
+ *
+ * Aucune racine inventee, donc : `null`. Le filet ne couvre alors que la racine
+ * verifiee, et `filet.mjs` refuse alors par volume comme par chemin. Une sonde
+ * qui aurait besoin de ce volume la REFUSE (voir `racinesDuFilet`) : c'est un
+ * cas non mesure, et un cas non mesure ne vaut ni succes ni echec.
  */
 function racinePour(vol, principal) {
   try {
     return racine(vol);
   } catch (e) {
     if (principal) throw e;
-    const defaut = `${vol}:/_diskmap_sondes`;
-    console.log(`  note   : ${e.message.split('.')[0]}. Repli sur ${defaut}`);
-    return defaut;
+    console.log(`  note   : ${e.message.split('.')[0]}. Aucune racine inventee pour ${vol}:.`);
+    return null;
   }
+}
+
+/**
+ * Les racines que le filet couvre — et le refus, s'il en manque une.
+ *
+ * Le filet est demande AVANT toute sonde, donc ses racines ne peuvent pas
+ *dependre d'un run qu'il supervise deja. D'ou l'ordre inverse : on regarde
+ * d'abord quelles sondes sont retenues, et on exige la racine dont elles ont
+ * besoin. Retenir `reversibilite` alors que `DISKMAP_SONDE_RACINE` pointe
+ * ailleurs n'est pas un detail de configuration, c'est une sonde destructive
+ * sans racine : elle creerait ses fichiers là où le filet ne couvre rien, sur
+ * un volume que personne n'a designe. Le run s'arrete ici, avant le moindre
+ * octet ecrit.
+ */
+function racinesDuFilet(volume, retenues) {
+  const principal = racinePour(volume, true);
+  const secondaire = racinePour(opt.volumeSansCorbeille, false);
+  const sansRacine = retenues.filter((s) => s.volumeSecondaire);
+  if (sansRacine.length && !secondaire) {
+    const noms = sansRacine.map((s) => s.nom).join(', ');
+    throw new Error(
+      `Les sondes « ${noms} » travaillent sur ${opt.volumeSansCorbeille}:, mais ` +
+      `DISKMAP_SONDE_RACINE (${process.env.DISKMAP_SONDE_RACINE}) est sur un autre ` +
+      `volume. Elles n'auraient aucune racine de travail, et le filet ne couvrirait ` +
+      `rien là où elles ecriraient. Pose ` +
+      `DISKMAP_SONDE_VOLUME_SANS_CORBEILLE sur un volume jetable sans corbeille, ` +
+      `ou retire ces sondes du run.`
+    );
+  }
+  return [...new Set([principal, secondaire].filter(Boolean))];
 }
 
 // ------------------------------------------------------------------ nettoyage
@@ -304,7 +421,22 @@ let url = opt.url;
 // filet, et le verdict doit pouvoir le consulter.
 let filet = null;
 
+// Les racines sont resolues AVANT toute chose demarree : rien n'ecoute, rien
+// n'est analyse, donc un refus ici ne coute qu'un message. Le meme refus apres
+// `demarrer` aurait laisse un serveur en ecoute et fait perdre une analyse de
+// C: pour rien — et il n'y a ici aucun `finally` qui rattrape quoi que ce soit.
+let racines = null;
 try {
+  exigerVolumeJetable(opt.volume);
+  racines = racinesDuFilet(opt.volume, retenues);
+} catch (e) {
+  console.error(`\n  REFUS   ${e.message}\n`);
+  process.exit(2);
+}
+
+try {
+  const volume = opt.volume;
+
   if (!url) {
     const binaire = opt.binaire || path.join(DEPOT, 'target', 'release', 'diskmap.exe');
     if (!fs.existsSync(binaire)) {
@@ -324,7 +456,6 @@ try {
   url = url.replace(/\/$/, '') + '/';
   console.log(`  serveur : ${url}`);
 
-  const volume = opt.volume;
   process.stdout.write(`  analyse de ${volume}: et de C: ...`);
   const dv = await analyser(url, volume, opt.attendre);
   const dc = await analyser(url, 'C', opt.attendre);
@@ -349,10 +480,6 @@ try {
   // Le filet est DEMANDÉ avant toute sonde, et son URL est celle que les sondes
   // reçoivent. Le chef d'orchestre, lui, garde la vraie adresse : c'est lui qui
   // analyse, et il n'a pas à se faire filtrer.
-  const racines = [...new Set([
-    racinePour(volume, true),
-    racinePour(opt.volumeSansCorbeille, false),
-  ])];
   const journalFilet = path.join(ICI, 'filet-suppressions.log');
   filet = await creerFilet({ cible: url, racines, journal: journalFilet });
   const urlProbes = filet.url;

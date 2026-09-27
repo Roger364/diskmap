@@ -24,6 +24,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 
 /** Adresse par defaut du serveur a eprouver. */
 export const URL_DEFAUT = process.env.DISKMAP_SONDE_URL || 'http://127.0.0.1:8990/';
@@ -44,6 +45,23 @@ export const VOLUME_DEFAUT = (process.env.DISKMAP_SONDE_VOLUME || 'G')
 export const VOLUME_SANS_CORBEILLE = (process.env.DISKMAP_SONDE_VOLUME_SANS_CORBEILLE || 'E')
   .toUpperCase()
   .replace(/:$/, '');
+
+/**
+ * Ce que l operateur AFFIRME, quand aucun fait ne peut le prouver.
+ *
+ * Un runner GitHub est jetable parce que le RUNNER est ephemere, pas parce que
+ * son `D:` ressemble a un disque virtuel. Aucun releve ne peut etablir cela :
+ * `D:` la, c est un disque physique comme un autre. Il faut donc le dire, et le
+ * dire chaque fois.
+ *
+ * C est une VALEUR, pas un booleen, volontairement. Un `=1` passe inaperçu et
+ * devient un rituel : pose une fois dans un workflow, pose dans tous les
+ * suivants, pose dans un poste de travail par copier-coller — et la regle
+ * n interroge plus rien. En exigeant un MOT, le log affiche ce quelqu un a
+ * reellement cru, et la mention reste assez visible pour etre remarkee.
+ * Elle est donc reprise telle quelle a l ecran, a chaque run.
+ */
+export const MACHINE_EPHEMERE = (process.env.DISKMAP_SONDE_MACHINE_EPHEMERE || '').trim();
 
 /**
  * Racine de travail sur un volume donne.
@@ -74,6 +92,128 @@ export function racine(vol) {
 /** Dossier de travail d'une sonde, sous la racine. */
 export function dossier(vol, nom) {
   return `${racine(vol)}/${nom}`;
+}
+
+// ------------------------------------------------------- volume jetable
+//
+// Une sonde qui detruit ne doit tourner que sur un volume jetable. Le 26/09/2026,
+// elle en a tourne une sur `G:`, le volume de travail par defaut d'une machine
+// qui contenait des donnees.
+//
+// OU EST LA REGLE, ET POURQUOI
+// ----------------------------
+// Elle vit dans le HARNais, jamais dans l'application. `diskmap` doit pouvoir
+// supprimer sur n'importe quel volume : c'est son metier. Ce qui doit etre
+// refuse, c'est de faire courir des tests automatiques qui SUPPRIMENT ailleurs
+// que sur unSupport jetable. Un humain qui clique dans l'interface ne passe
+// jamais par ici.
+//
+// LA QUESTION UTILE
+// -----------------
+// Pas « ce volume a-t-il l'air jetable ? » — cette question a un contre-exemple
+// sur cette machine meme. `D:` fait 50 Mo, n'est ni boot ni systeme : tous les
+// indices lui vont. Il est pourtant une partition du disque 0, celui qui porte
+// les 476 Go de `G:`. Taille, `IsBoot` et `IsSystem` sont ANTI-CORRELES avec la
+// securite : `G:` est lui aussi « ni boot ni systeme », et il porte tout.
+//
+// La bonne question est « qu'est-ce qui meurt si je detruis tout ce volume ? ».
+// Un seul fait y repond, et il est structurel : un disque virtuel. Un VHD est
+// un FICHIER pose sur un autre disque ; le detruire detruit un fichier, et ce
+// fichier n'a ete cree que pour ca. Aucun disque physique, lui, ne peut etre
+// declare jetable par une propriete : un disque de 4 To en une seule partition
+// peut contenir les seules sauvegardes de quelqu'un, et « il n'y a rien a cote »
+// n'y change rien.
+
+/**
+ * Regle pure : ce volume est-il jetable ?
+ *
+ * Volontairement sans effet de bord et sans lecture du disque, pour que le test
+ * mecanique puisse l'eprouver sur des faits releves, sans jamais approcher un
+ * fichier. Une regle qui ne peut pas etre testee sans risque n'est pas une
+ * regle, c'est une intention.
+ *
+ * @param {object|null} f  faits releves par `interrogerVolumes`
+ * @returns {{jetable: boolean, motif: string}}
+ */
+export function volumeJetable(f) {
+  if (!f) return { jetable: false, motif: "ce volume n'est pas monte sur cette machine" };
+  if (f.bus === 'File Backed Virtual') {
+    return {
+      jetable: true,
+      motif: `disque virtuel « ${f.nomDisque} » : ce volume est un fichier, rien d'autre ne l'habite`,
+    };
+  }
+  const autres = Math.max(0, (f.partitions || 0) - 1);
+  const cause = autres > 0
+    ? `${f.partitions} volumes partagent ce disque`
+    : 'un disque physique ne se declare pas jetable';
+  return {
+    jetable: false,
+    motif: `${f.lettre}: est sur « ${f.nomDisque} » (${f.bus || 'bus inconnu'}) — ${cause}. `
+      + 'Detruire ce volume detruirait autre chose que lui.',
+  };
+}
+
+/**
+ * Relit les volumes montes et ce que Windows sait d'eux.
+ *
+ * Un seul processus PowerShell pour toutes les lettres : demarre une fois, il
+ * coute ~1,6 s (mesure), et le harnais analyse de toute facon 2,1 millions de
+ * fichiers. Le script est passe par `-EncodedCommand` (base64 UTF-16LE) plutot
+ * que par la ligne de commande ou l'entree standard : sur cette machine
+ * `powershell -Command -` n'emet rien du tout, et un script a ecrire dans un
+ * fichier temporaire impose de l'encoder. `-EncodedCommand` n'a besoin d'aucun
+ * des deux.
+ *
+ * @returns {Array<object>} faits par lettre de volume, `[]` si PowerShell echoue
+ */
+export function interrogerVolumes() {
+  const script = [
+    // Sans cela, PowerShell ecrit dans la page de code de la console et
+    // l'etiquette « Reserve au systeme » arrive en caractere de remplacement.
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '$r = @()',
+    'Get-Volume | Where-Object { $_.DriveLetter } | ForEach-Object {',
+    '  $p = Get-Partition -DriveLetter $_.DriveLetter -ErrorAction SilentlyContinue',
+    '  $d = $null',
+    '  if ($p) { $d = Get-Disk -Number $p.DiskNumber -ErrorAction SilentlyContinue }',
+    '  $r += [pscustomobject]@{',
+    '    lettre = $_.DriveLetter;',
+    '    etiquette = $_.FileSystemLabel;',
+    '    format = $_.FileSystemType;',
+    '    mo = [math]::Round($_.Size / 1MB, 1);',
+    '    bus = $(if ($d) { [string]$d.BusType } else { "" });',
+    '    nomDisque = $(if ($d) { $d.FriendlyName } else { "" });',
+    '    boot = $(if ($d) { [bool]$d.IsBoot } else { $false });',
+    '    systeme = $(if ($d) { [bool]$d.IsSystem } else { $false });',
+    '    partitions = $(if ($d) { @(Get-Partition -DiskNumber $d.Number).Count } else { 0 })',
+    '  }',
+    '}',
+    '$r | ConvertTo-Json -Compress',
+  ].join('\n');
+
+  const encode = Buffer.from(script, 'utf16le').toString('base64');
+  const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encode], {
+    encoding: 'buffer',
+    timeout: 60_000,
+    windowsHide: true,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (r.status !== 0 || !r.stdout) return [];
+  try {
+    const v = JSON.parse(r.stdout.toString('utf8').trim());
+    return Array.isArray(v) ? v : [v];
+  } catch {
+    return [];
+  }
+}
+
+/** Une ligne lisible sur un volume, pour l'afficher avant d'agir. */
+export function decrireVolume(f) {
+  if (!f) return 'volume absent';
+  const tag = f.etiquette ? ` « ${f.etiquette} »` : '';
+  return `${f.lettre}:${tag} ${f.format} ${f.mo} Mo — « ${f.nomDisque} » (${f.bus || 'bus inconnu'})`
+    + `${f.boot ? ', boot' : ''}${f.systeme ? ', systeme' : ''}, ${f.partitions} volume(s) sur le disque`;
 }
 
 /** Corbeille d'un volume. Sa presence n'est pas garantie (exFAT n'en a pas). */

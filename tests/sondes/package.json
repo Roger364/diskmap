@@ -2,6 +2,9 @@
   "name": "diskmap-sondes",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node verifier-volume-jetable.mjs"
+  },
   "devDependencies": {
     "playwright": "1.58.2"
   }
