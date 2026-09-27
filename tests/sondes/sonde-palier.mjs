@@ -33,10 +33,27 @@ function verifier(nom, condition, mesure) {
   if (!ok) echecs.push(`${nom} — mesuré : ${mesure}`);
   console.log(`${ok ? 'ok   ' : 'ROUGE'} ${nom}${ok ? '' : `\n      mesuré : ${mesure}`}`);
 }
-const get = (c) => fetch(BASE + c).then(r => r.json());
-const post = (c, corps) => fetch(BASE + c, {
-  method: 'POST', headers: H, body: JSON.stringify(corps),
-}).then(r => r.json());
+// Le serveur ne renvoie PAS du JSON quand il refuse : il repond « volume pas
+// encore analyse » en texte, avec un 409. Un `r.json()` transforme donc un refus
+// ATTENDU en SyntaxError, et la sonde PLANTE sans ecrire une seule ligne de
+// motif. C est ce qui rendait le journal muet : cette sonde demande C, G et le
+// volume de travail, et le runner n a que C: et D:.
+//
+// Un corps illisible est un FAIT, pas une panne : il revient comme `error`, et
+// l appelant decide. C est la discipline du reste du harnais, qui garde
+// `r.texte` et ne parse que lorsqu il y a quelque chose a parser.
+const corps = async (r) => {
+  const texte = await r.text();
+  try {
+    return JSON.parse(texte);
+  } catch {
+    return { error: texte.trim() || `HTTP ${r.status}`, rows: null };
+  }
+};
+const get = (c) => fetch(BASE + c).then(corps);
+const post = (c, donnees) => fetch(BASE + c, {
+  method: 'POST', headers: H, body: JSON.stringify(donnees),
+}).then(corps);
 
 async function attendre() {
   for (let i = 0; i < 300; i++) {

@@ -256,6 +256,25 @@ verifier('le fichier sous « Documents » est dans l’instantané', indexePerso
 // vérification aussi — les monter plus haut donnerait un
 // `ReferenceError`, le genre de panne qui ne se montre qu’au moment précis
 // où la sonde réussit enfin ce qu’elle cherche.
+// Ce que l ECRAN montre, et non ce que la sonde suppose qu il montre.
+//
+// Un echec qui dit seulement « le clic n a pas navigue » laisse choisir entre
+// trois causes tres differentes : le dossier affiche n est pas celui de la
+// sonde, la ligne visee n a aucun gestionnaire de clic, ou le clic est parti
+// ailleurs. Elles ne se distinguent pas a la lecture du journal, et les
+// deduire serait exactement l affirmation sans mesure que ce projet refuse.
+//
+// Le marqueur est decideur : `.onclick` est une PROPRIETE DOM, presente quand
+// le gestionnaire est pose et `null` sinon. `[MORT]` ne dit pas « le clic a
+// echoue », il dit « il n y avait rien a appeler ».
+const etatEcran = async () => {
+  const noms = await page.$$eval('#rows tr', (trs) => trs.slice(0, 8).map((tr) => {
+    const nm = tr.querySelector('.nm');
+    return (nm ? nm.textContent : '?') + (nm && nm.onclick ? ' [clic]' : ' [MORT]');
+  }));
+  return `fil : ${await filAriane()} · ${noms.length} ligne(s) : ${noms.join(' | ')}`;
+};
+
 let docsTrouve = false;
 let navigue = false;
 if (fichierTrouve) {
@@ -295,7 +314,7 @@ if (fichierTrouve) {
       navigue = true;
     } catch { /* rendu plus bas */ }
     verifier('le clic sur « Documents » a bien navigué', navigue,
-      `fil : ${await filAriane()}`);
+      await etatEcran());
   }
 }
 
@@ -313,7 +332,7 @@ verifier('le fichier du dossier personnel est listé', persoTrouve,
     ? `${await contenuLignes()} · fil : ${await filAriane()}`
     // Sans navigation, la mesure serait celle d'un autre écran. Le dire vaut
     // mieux que rapporter un vide qui n'est pas là où on le cherche.
-    : `non mesurable : le clic n'a pas navigué (fil : ${await filAriane()})`);
+    : `non mesurable : le clic n'a pas navigué — ${await etatEcran()}`);
 
 if (persoTrouve) {
   await lignePerso.locator('.chk').check();
