@@ -106,25 +106,48 @@ const SONDES = [
   },
   {
     nom: 'plafond', fichier: 'sonde-corbeille-plafond.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
     quoi: 'Le plafond de la corbeille est mesure, et son annonce se tient',
   },
   {
     nom: 'mot', fichier: 'sonde-mot-exige.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
     quoi: 'Le mot exige est celui du contexte, mode par mode',
   },
   {
-    // Lecture seule : des `dry` sur de vrais dossiers deja presents. Le volume
-    // jetable fait 511 Mio et le premier palier est a 20 Go — sans cette sonde,
-    // la regle ne serait verifiee qu'a l'echelle d'un test unitaire, jamais sur
-    // un vrai dossier de 344 Go. Elle ne supprime rien, donc elle peut lire un
-    // disque de donnees sans risque.
+    // Ses lectures sont des `dry` sur des vrais dossiers deja presents : le volume
+    // jetable fait 511 Mio et le premier palier est a 20 Go, donc sans cette sonde
+    // la regle ne serait verifiee qu'a l'echelle d'un test unitaire, jamais sur un
+    // vrai dossier de 344 Go.
+    //
+    // Elle ne supprime AUCUN fichier d autrui, mais elle ne touche pas non plus
+    // un disque en lecture seule : elle cree `petit.txt` sous son dossier et le
+    // retire. L ancienne note « elle ne supprime rien » etait vraie au sens
+    // etroit et fausse au sens du harnais, ou une sonde qui ecrit sur un disque
+    // de donnees doit le declarer.
     nom: 'palier', fichier: 'sonde-palier.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
     quoi: 'Un lot de 344 Go exige un mot, un lot minuscule n en exige aucun',
   },
   {
     nom: 'lot', fichier: 'sonde-suppression-lot.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Le cout d un lot, et un temoin en mode definitif',
+  },
+  {
+    // Elle ne corrige rien et ne tranche rien : elle rend VISIBLE le contrat de
+    // `/api/search` — ce qui est coupe, et ce que le serveur dit de ce qu il a
+    // coupe. Ses verdicts portent sur des invariants vrais quel que soit le
+    // contrat choisi ; le contrat lui-meme sort en NOTE, donc ni vert ni rouge.
+    // C est ce qui permet de decider si `/api/search` doit devenir honnete ou
+    // complet sans avoir encore tranche.
+    //
+    // Le plafond est un PARAMETRE (`limit`), donc six fichiers suffisent a
+    // l exercer. Une sonde qui devait creer huit cents entrees pour prouver la
+    // meme chose n aurait jamais ete ecrite.
+    nom: 'recherche', fichier: 'sonde-recherche.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
+    quoi: 'Ce que rend la recherche, ce qu elle coupe, et ce qu elle pretend',
   },
   {
     nom: 'ui', fichier: 'sonde-ui-suppression.mjs', args: (c) => [c.url, c.volume], ci: true,
@@ -200,6 +223,29 @@ function lireArguments(argv) {
 }
 
 const opt = lireArguments(process.argv.slice(2));
+
+// ------------------------------------------------------- la table se verifie
+//
+// `detruit` n est pas cosmetique : c est ce qui autorise une sonde a tourner
+// sur un volume jetable, et la regle du filet tient sur elle. Une entree qui
+// oublie de le dire ne doit pas passer inapercue jusqu au premier `padEnd` sur
+// un `undefined` — c est ce qui est arrive, et `--liste` plantait au lieu de
+// dire quoi manquer.
+//
+// La faute est donc nommee ici, au chargement, et elle arrete le harnais.
+// C'est le meme parti pris que partout ailleurs : mieux vaut un arret net qu un
+// `undefined` qui attend qu on le decouvre.
+for (const s of SONDES) {
+  const manquant = ['nom', 'fichier', 'args', 'ci', 'detruit', 'quoi']
+    .filter((cle) => s[cle] === undefined);
+  if (manquant.length) {
+    throw new Error(
+      `La sonde « ${s.nom || '(sans nom)'} » ne declare pas : ${manquant.join(', ')}. `
+      + 'Une sonde qui ne dit pas ce qu elle detruit ne peut pas etre executee '
+      + 'en confiance — c est la regle entiere du filet.'
+    );
+  }
+}
 
 if (opt.liste) {
   console.log('  sonde           ci   detruit          ce qu elle eprouve');
