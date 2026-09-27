@@ -21,8 +21,23 @@
 // Cette sonde le porte (voir `post`) : elle joue le CLIENT. C'est
 // `sonde-csrf-navigateur.mjs` qui joue l'attaquant, et qui ne le porte pas.
 
+import { aCorbeille, estEleve, aTaper } from './config.mjs';
+
 const URL = process.argv[2] || 'http://127.0.0.1:8990/';
 const BASE = URL.replace(/\/$/, '');
+
+// L'instance est-elle ÉLEVÉE ? Le runner de GitHub Actions l'est TOUJOURS, et
+// une instance élevée exige `EFFACER` même en mode corbeille : sans cette
+// lecture, les trois vérifications de cycle de vie du jeton ci-dessous sont
+// fausses sur la CI et vraies chez le développeur, sans qu'aucune des deux
+// exécutions ne donne à voir pourquoi. Le mot est donc déduit de l'état
+// réel du serveur, jamais supposé.
+const ELEVE = await estEleve(BASE);
+// La corbeille de C: est MESUREE, pas supposee : cette sonde ne travaille que
+// sur C:, et un volume qui n en a pas exigerait  en mode corbeille.
+const MOT_RECYCLE = aTaper({ permanent: false, corbeille: aCorbeille('C'), eleve: ELEVE });
+console.log(`instance ${ELEVE ? 'ÉLEVÉE' : 'normale'} — `
+  + `mode corbeille : ${MOT_RECYCLE ? `« ${MOT_RECYCLE} »` : 'aucun mot exigé'}`);
 // Sélecteur hors bornes pour tout volume : n_dirs de C: est ~271 000, et la
 // position 1 852 516 352 n'appartient pas non plus à `files`. Le bit de type
 // est mis pour que ce soit un sélecteur de FICHIER, le cas le plus strict.
@@ -154,7 +169,7 @@ verifier('« EFFACER » suivi d’une espace ne suffit pas', r.status === 400, `
 
 // Une demande mal formée ne doit pas obliger à refaire la simulation : le refus
 // doit rendre 400 (jeton présent, confirmation absente) et non 409 (jeton absent).
-r = await effacer('C', [], 'recycle', { token: j1 });
+r = await effacer('C', [], 'recycle', { token: j1, confirm: MOT_RECYCLE });
 verifier('un refus ne consomme pas le jeton', r.status === 200, `HTTP ${r.status} — ${r.texte.slice(0, 90)}`);
 if (r.status === 200) {
   const d = JSON.parse(r.texte);
@@ -163,7 +178,7 @@ if (r.status === 200) {
   verifier('aucune réanalyse déclenchée sans suppression', d.rescan === false, `rescan = ${d.rescan}`);
 }
 
-r = await effacer('C', [], 'recycle', { token: j1 });
+r = await effacer('C', [], 'recycle', { token: j1, confirm: MOT_RECYCLE });
 verifier('le jeton ne sert qu’une fois', r.status === 409, `HTTP ${r.status} — ${r.texte.slice(0, 90)}`);
 
 // --------------------------------------------- 3. les items de la requête
@@ -173,7 +188,7 @@ console.log('\n--- 3. la liste vient du jeton, jamais de la requête ---');
 // faisait foi, c'est Windows qui serait visé — et ce test le dirait sans jamais
 // l'avoir tenté.
 const j2 = await jetonInerte();
-r = await effacer('C', [selWindows ?? INERTE], 'recycle', { token: j2 });
+r = await effacer('C', [selWindows ?? INERTE], 'recycle', { token: j2, confirm: MOT_RECYCLE });
 if (r.status === 200) {
   const d = JSON.parse(r.texte);
   verifier('les items de la requête sont ignorés',

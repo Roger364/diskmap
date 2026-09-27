@@ -302,6 +302,70 @@ export function aCorbeille(vol) {
 }
 
 /**
+ * Les paliers de taille, en octets. Mêmes valeurs que `PALIER_SUPPRIMER` et
+ * `PALIER_SUPPRIMER_TOUT` dans `src/main.rs` — une constante dupliquée est une
+ * constante qui finira par diverger en silence, et les deux sont fixées par le
+ * rapport d'incident (74,2 Go).
+ */
+export const Go = 1e9;
+export const PALIER_SUPPRIMER = 20 * Go;
+export const PALIER_SUPPRIMER_TOUT = 500 * Go;
+
+/**
+ * Les mots que le serveur va exiger — DÉDUITS DES FAITS, jamais recopiés de sa
+ * réponse.
+ *
+ * La règle du serveur a trois entrées : le mode (corbeille ou définitif), la
+ * présence d'une corbeille sur le volume, et le fait que le processus soit
+ * ÉLEVÉ. Les sondes n'en connaissaient que les deux premières jusqu'au
+ * 27/09/2026, et le runner de GitHub Actions est toujours élevé : sept sondes
+ * qui affirmaient « aucun mot n'est exigé » sont donc devenues fausses d'un
+ * coup, sans qu'une seule ligne de l'application ait changé de comportement.
+ * C'est le test qui était faux, pas le produit — mais un test faux qui ne dit
+ * pas pourquoi est un test qu'on ne peut pas/debuguer.
+ *
+ * Cette fonction est l'affirmation INDEPENDANTE des sondes. Si elle recopiait
+ * `mots_recycle` / `mots_permanent`, elle ne vérifierait plus rien : elle
+ * dirait au serveur « est-ce ce que tu as dit ? ».
+ *
+ * Elle est donc à lire comme une seconde implémentation de `mots_exiges`, et
+ * toute divergence entre les deux est un défaut de l'une des deux.
+ */
+export function motsExiges({ permanent = false, corbeille = true, eleve = false, taille = 0 } = {}) {
+  const mots = [];
+  // L'ordre est celui du serveur : le palier le plus élevé l'emporte, et les
+  // règles s'additionnent au lieu de se remplacer.
+  if (taille >= PALIER_SUPPRIMER_TOUT) mots.push('SUPPRIMER TOUT');
+  else if (taille >= PALIER_SUPPRIMER) mots.push('SUPPRIMER');
+  if (permanent || !corbeille || eleve) mots.push('EFFACER');
+  return mots;
+}
+
+/**
+ * Le mot à envoyer, ou `undefined` quand il n'y en a pas.
+ *
+ * `undefined` et non `''` : le champ est alors absent de la requête, ce qui est
+ * la situation normale d'un lot qui n'exige rien.
+ */
+export function aTaper(opts) {
+  const mots = motsExiges(opts);
+  return mots.length ? mots.join(' ') : undefined;
+}
+
+/**
+ * Le serveur tourne-t-il dans une instance ÉLEVÉE ?
+ *
+ * Lu sur `/api/state` — le même endroit que la bannière, donc la même vérité.
+ * On ne le devine pas : une instance élevée n'est pas une propriété de la
+ * machine mais du jeton du processus, et un test qui la présumerait serait
+ * faux chez l'un des deux côtés.
+ */
+export async function estEleve(base) {
+  const s = await (await fetch(`${base.replace(/\/$/, '')}/api/state`)).json();
+  return s.eleve === true;
+}
+
+/**
  * Journal de l'application.
  *
  * C'est la trace que les sondes relisent pour distinguer ce qui a ete DECLARE de

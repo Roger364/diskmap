@@ -2246,6 +2246,11 @@ mod tests {
         );
         // rien de tout ça : pas de corbeille, instance normale, petit lot.
         assert_eq!(mots_exiges(30 * go, true, true, false), vec!["SUPPRIMER"]);
+        // instance élevée, SOUS le palier, corbeille disponible : le mot seul,
+        // sans le palier. Cest le cas de tous les jours sur le runner de la CI :
+        // V: fait 511 Mio, donc aucun palier, et le jeton est élevé.
+        // Cest exactement ce que sept sondes affirmaient contraire le 27/09/2026.
+        assert_eq!(mots_exiges(0, true, true, true), vec!["EFFACER"]);
     }
 
     /// La confirmation doit contenir TOUS les mots, dans l'ordre, EXACTEMENT.

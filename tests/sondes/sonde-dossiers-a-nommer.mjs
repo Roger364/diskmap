@@ -21,12 +21,21 @@
 import fs from 'fs';
 import path from 'path';
 
-import { corbeille, dossier, fouillerCorbeille, URL_DEFAUT, VOLUME_DEFAUT, viderTrouves } from './config.mjs';
+import { aCorbeille, corbeille, dossier, estEleve, aTaper, fouillerCorbeille,
+  URL_DEFAUT, VOLUME_DEFAUT, viderTrouves } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
 const NOM = 'dossiers-a-nommer';
 const DOSSIER = dossier(VOL, NOM);
+// L'instance peut etre ELEVEE : le mot `EFFACER` s'y ajoute meme en mode
+// corbeille. La sonde le lit au lieu de le supposer — sans quoi le refus qu'elle
+// examine porte sur le MOT et non sur le NOM DU DOSSIER, et les quatre
+// verifications ci-dessous concluent que le dossier n'est pas protege alors que
+// c'est la saisie qui ne l'est pas encore. Le runner de GitHub Actions est
+// toujours eleve : c'est la que ce defaut a ete mesure.
+const ELEVE = await estEleve(BASE);
+const MOT = aTaper({ permanent: false, corbeille: aCorbeille(VOL), eleve: ELEVE });
 const PERSO = DOSSIER + '/Documents';
 const PROJET = DOSSIER + '/projet';
 const REPO = PROJET + '/.git';
@@ -174,7 +183,7 @@ if (selProjet) {
         `aNommer = ${JSON.stringify(a.data?.aNommer)}`
       );
       const r = await post('/api/delete', {
-        drive: VOL, mode: 'recycle', token: a.data.token,
+        drive: VOL, mode: 'recycle', token: a.data.token, confirm: MOT,
       });
       const refus = r.texte;
       verifier('et son exécution sans confirmation est refusée',
@@ -194,7 +203,7 @@ if (selProjet) {
 // ------------------------------------------- 3. l'exécution, sans et avec le nom
 console.log('--- 2. l’exécution exige le nom, dossier par dossier ---');
 const sansNom = await post('/api/delete', {
-  drive: VOL, mode: 'recycle', token: apercuPerso.data.token,
+  drive: VOL, mode: 'recycle', token: apercuPerso.data.token, confirm: MOT,
 });
 const refus = sansNom.texte;
 verifier('sans le nom, l’exécution est refusée', sansNom.status === 409 || sansNom.status === 400, `status ${sansNom.status} — ${refus.slice(0, 160)}`);
@@ -203,6 +212,7 @@ verifier('le refus explique quoi faire', /nomme|confirmer/i.test(refus), refus.s
 
 const mauvaisNom = await post('/api/delete', {
   drive: VOL, mode: 'recycle', token: apercuPerso.data.token, noms: ['burns'],
+  confirm: MOT,
 });
 const refus2 = mauvaisNom.texte;
 verifier('avec le MAUVAIS nom, l’exécution est refusée', mauvaisNom.status === 400, `status ${mauvaisNom.status} — ${refus2.slice(0, 160)}`);
@@ -214,6 +224,7 @@ const bonNom = await post('/api/delete', {
   mode: 'recycle',
   token: apercuPerso.data.token,
   noms: ['documents'],
+  confirm: MOT,
 });
 const ok = bonNom.status === 200;
 verifier('avec le bon nom — sans tenir compte de la casse — l’exécution passe', ok, `status ${bonNom.status} — ${bonNom.texte.slice(0, 160)}`);

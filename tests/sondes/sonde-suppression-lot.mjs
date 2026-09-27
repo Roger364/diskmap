@@ -38,7 +38,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import { dossier, corbeille, aCorbeille, attendreAnalyse, attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { dossier, corbeille, aCorbeille, estEleve, aTaper, attendreAnalyse,
+  attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -52,7 +53,15 @@ const DOSSIER_B = dossier(VOL, 'lot-coherence');
 // volume neuf, et le premier lot la fait naître. Une constante figée au
 // chargement serait fausse dès le lot suivant, et la sonde conclurait à un
 // défaut de l'application là où il n'y en a pas.
-const confirmation = (mode) => (mode === 'permanent' || !aCorbeille(VOL) ? 'EFFACER' : undefined);
+// Il y a une TROISIEME entree, et c'est celle qu'on oublie : l'instance
+// ELEVEE. Le runner de GitHub Actions l'est toujours, et les lots de cette
+// sonde s'y faisaient tous refuser en 400 — la regle est correcte, la sonde ne
+// la connaissait pas. Elle est lue sur `/api/state`, comme la banniere, pour
+// qu'il n'y ait qu'une seule verite.
+const ELEVE = await estEleve(BASE);
+const confirmation = (mode) => aTaper({
+  permanent: mode === 'permanent', corbeille: aCorbeille(VOL), eleve: ELEVE,
+});
 const CORBEILLE = corbeille(VOL);
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
 const N_A = 240;   // fichiers du dossier de coût (227 consommés par la section 2)

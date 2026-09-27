@@ -601,14 +601,26 @@ function lireResidus(racines, volume) {
       p.stderr.on('data', (d) => { tout += d.toString(); });
       p.on('close', (code) => resoudre({ code, tout }));
     });
-    // La derniere ligne qui compte : « 8/8 verifications ».
-    const compte = [...sortie.tout.matchAll(/(\d+)\/(\d+)\s+verifications/g)].pop();
-    const resume = compte ? `${compte[1]}/${compte[2]}` : '—';
+    // La derniere ligne qui compte : « 8/8 verifications ». L'accent est
+    // ACCEPTÉ dans les deux écritures : la regex ne portait que `verifications`,
+    // et quatorze sondes sur seize écrivent `vérifications`. Elles affichaient
+    // donc toutes « — » — le même tiret qu'une sonde morte avant la fin, alors
+    // qu'elles venaient de faire vingt-sept vérifications. Un résumé qu'on ne
+    // sait pas lire ne dit pas ce qu'il a couvert.
+    const compte = [...sortie.tout.matchAll(/(\d+)\/(\d+)\s+v[ée]rifications/g)].pop();
+    const resume = compte ? `${compte[1]}/${compte[2]}` : 'SANS SYNTHESE';
     const etatMot = sortie.code === 0 ? 'vert ' : sortie.code === 2 ? 'PAS PU' : 'ROUGE';
     console.log(`  ${etatMot}  ${s.nom.padEnd(15)} ${resume}`);
     if (sortie.code !== 0) {
-      const lignes = sortie.tout.split('\n').filter((l) => /ROUGE|ECHEC|Echecs|Échecs|^  - /.test(l));
-      for (const l of lignes.slice(0, 12)) console.log(`           ${l.trim()}`);
+      // Ce que la sonde a DIT, pas seulement les lignes qui ressemblent a un
+      // motif. Le filtre d’avant guts le cas le plus difficile : une sonde qui
+      // PLANTE n’ecrit aucun motif, elle sort en 1 — et le journal de la CI disait
+      // alors « ROUGE palier » sans une seule ligne de raison. C’est ce qui
+      // s’est passé le 27/09/2026 : `sonde-palier.mjs` lisait `t.rows` d’un volume non
+      // monté, et rien ne le disait. La FIN de la sortie est ce qu’il faut voir :
+      // c’est là que se trouve la pile d’appel.
+      const lignes = sortie.tout.split(/\r?\n/).filter((l) => l.trim());
+      for (const l of lignes.slice(-24)) console.log(`           ${l.trim()}`);
     }
     resultats.push({ nom: s.nom, code: sortie.code, resume });
     if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {

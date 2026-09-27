@@ -23,7 +23,8 @@
 import fs from 'fs';
 
 import { chromium } from './navigateur.mjs';
-import { dossier, aCorbeille, attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { dossier, aCorbeille, estEleve, aTaper, attendreFichier,
+  VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -42,6 +43,13 @@ const CONTRE = process.argv[4] === 'sans-en-tete';
 const DOSSIER = dossier(VOL, 'sonde-ui');
 const NOM = DOSSIER.split('/').pop();
 const A_CORBEILLE = aCorbeille(VOL);
+// L'instance peut etre ELEVEE : le mot `EFFACER` s'ajoute alors meme en mode
+// corbeille, et la modale affiche un champ de plus. Le lire plutot que le
+// supposer evite que cette sonde attribue au nom du dossier un refus qui
+// porte en realite sur le mot — ce qu'elle faisait sur tout runner eleve.
+const ELEVE = await estEleve(BASE);
+// Le lot est celui de la sonde : quelques octets, donc aucun palier de taille.
+const MOT = aTaper({ permanent: false, corbeille: A_CORBEILLE, eleve: ELEVE });
 
 const verifs = [], echecs = [];
 function verifier(nom, cond, mesure) {
@@ -190,6 +198,12 @@ if (titre !== null) {
     // le plafond du volume et son occupation, et l'interface doit dire si ce
     // lot tient — ou avouer qu'il déborde. Une formule (« tu peux les restaurer
     // » donnée à toutes les lettres près) ne prouverait plus rien du tout.
+    // Cette phrase ne doit pas DISPARAITRE quand un mot est exige. Elle
+    // disparaissait : l'interface faisait « si un mot est demande, tais-toi sur
+    // la destination », et sur une instance elevee — donc chez tout
+    // administrateur — l'utilisateur tapait EFFACER sans qu'on lui dise que les
+    // fichiers partaient en corbeille. Destination et saisie sont deux faits
+    // independants, et c'est ce que verifie cette ligne.
     const annonce = /Les éléments iront dans la corbeille/.test(corps);
     const mesure = /de plafond/.test(corps) && /y tient/.test(corps);
     const avertit = /Rien ne sera détruit tout de suite/.test(corps);
@@ -238,7 +252,12 @@ verifier('le fichier sous « Documents » est dans l’instantané', indexePerso
 // un bloc n'existe que dans ce bloc, et la vérification suivante — celle qui
 // dépend du clic — planterait sur une variable invisible. Le parcours entier
 // du fichier a été sorti de l'échec en cascades pour cette seule ligne.
+// `ligneDocs` reste dans le `if` : c’est un `const`, donc le clic et sa
+// vérification aussi — les monter plus haut donnerait un
+// `ReferenceError`, le genre de panne qui ne se montre qu’au moment précis
+// où la sonde réussit enfin ce qu’elle cherche.
 let docsTrouve = false;
+let navigue = false;
 if (fichierTrouve) {
   const ligneDocs = page.locator('#rows tr')
     .filter({ has: page.getByText('Documents', { exact: true }) }).first();
@@ -248,20 +267,53 @@ if (fichierTrouve) {
   } catch { /* rendu plus bas */ }
   verifier('le dossier « Documents » est listé à côté du fichier d’essai',
     docsTrouve, await contenuLignes());
-  if (docsTrouve) await ligneDocs.locator('.nm').click();
+
+  // Le clic doit être SUIVI, pas supposé. `docsTrouve` ne dit que la visibilité
+  // d'une ligne : rien ne garantit que le clic ait navigué. S'il n'a pas
+  // navigué, la recherche de `photo.jpg` porte sur l'écran d'avant, et son
+  // échec conclut alors que l'interface ne liste pas le fichier alors qu'elle
+  // n'a jamais été dans le dossier.
+  //
+  // C'est exactement ce qui est arrivé sur le runner du 27/09/2026 : le fil
+  // d'Ariane disait `…_diskmap_sondes › suppression-reelle` — le dossier de la
+  // SONDE PRÉCÉDENTE — et la ligne annonçait « aucune ligne dans #rows ». Le
+  // message ne disait donc rien du défaut : il décrivait un écran que la sonde
+  // n'était pas censée regarder.
+  if (docsTrouve) {
+    // Même idiomat que plus haut dans ce fichier : on attend que le FIL
+    // change, pas qu’une durée s’écoule. `#crumbs` est DÉJÀ visible avant
+    // le clic — l’attendre serait satisfait dès le départ.
+    const avant = await filAriane();
+    await ligneDocs.locator('.nm').click();
+    try {
+      await page.waitForFunction(
+        (avant) => {
+          const c = document.querySelector('#crumbs')?.textContent ?? '';
+          return c !== avant && c.includes('Documents');
+        },
+        avant, { timeout: 60000 });
+      navigue = true;
+    } catch { /* rendu plus bas */ }
+    verifier('le clic sur « Documents » a bien navigué', navigue,
+      `fil : ${await filAriane()}`);
+  }
 }
 
 const lignePerso = page.locator('#rows tr')
   .filter({ has: page.getByText('photo.jpg', { exact: true }) }).first();
 let persoTrouve = false;
-if (docsTrouve) {
+if (navigue) {
   try {
     await lignePerso.waitFor({ state: 'visible', timeout: 60000 });
     persoTrouve = true;
   } catch { /* idem */ }
 }
 verifier('le fichier du dossier personnel est listé', persoTrouve,
-  `${await contenuLignes()} · fil : ${await filAriane()}`);
+  navigue
+    ? `${await contenuLignes()} · fil : ${await filAriane()}`
+    // Sans navigation, la mesure serait celle d'un autre écran. Le dire vaut
+    // mieux que rapporter un vide qui n'est pas là où on le cherche.
+    : `non mesurable : le clic n'a pas navigué (fil : ${await filAriane()})`);
 
 if (persoTrouve) {
   await lignePerso.locator('.chk').check();
@@ -295,9 +347,22 @@ if (persoTrouve) {
       'le bouton s’est active sur « burns » pour un dossier « Documents »');
     const aide = (await page.locator('#dbody .p-aide').first().textContent().catch(() => '')) || '';
     verifier('l’interface dit pourquoi le nom ne convient pas', aide.length > 0, 'aide vide');
+    // Les mots se remplissent AVANT le nom, et l'ordre est verifiable : un
+    // bouton qui s'allume sur le bon nom TOUT SEUL prouverait que le mot ne
+    // protege de rien.
+    const champsMot = page.locator('#dbody .dconfirm');
+    const nbMots = await champsMot.count();
+    verifier('elle affiche un champ par mot exige', nbMots === (MOT ? 1 : 0),
+      `${nbMots} champ(s) pour le mot ${JSON.stringify(MOT)}`);
+    if (MOT) {
+      await champsMot.first().fill(MOT);
+      await page.waitForTimeout(150);
+      verifier('le bon mot, sans le nom du dossier, ne suffit pas', await desactive(),
+        'le bouton s’est activé sur le seul mot');
+    }
     await champ.fill('documents');
     await page.waitForTimeout(150);
-    verifier('le bouton s’active sur le bon nom, casse indifférence',
+    verifier('le bouton s’active quand le nom ET le mot sont bons',
       !(await desactive()), 'le bouton reste inactif sur « documents »');
 
     await page.click('#dcancel');

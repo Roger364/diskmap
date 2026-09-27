@@ -1222,7 +1222,16 @@ function renderDeleteBody() {
            + `<span class="p-aide"></span></label>`;
     }
     h += '</div>';
-  } else {
+  }
+  // OÙ VONT LES FICHIERS et QUOI TAPER sont deux faits INDÉPENDANTS, et les
+  // confondre — le `else` d’avant — veut dire qu’à la seconde où un mot est
+  // exigé, l’interface cesse d’annoncer la destination. Sur une instance
+  // élevée — donc TOUJOURS sur un runner de CI, et pour tout administrateur — un lot en
+  // mode corbeille exige `EFFACER` : l’utilisateur tapait un mot de suppression
+  // DÉFINITIVE pendant que l’interface ne disait plus rien de la corbeille. Le mot
+  // fait peur, le silence rassure, et les deux ensemble il ne sait pas ce
+  // qu’il valide. Le seuil est donc le MODE, pas la présence d’un mot à taper.
+  if (mode === 'recycle') {
     // « Les éléments iront dans la corbeille : tu peux les restaurer » était
     // une CROYANCE, et une seule : « dans la corbeille » veut dire « dans la
     // corbeille MAINTENANT ». Le serveur mesure le plafond et l'occupation ; ici

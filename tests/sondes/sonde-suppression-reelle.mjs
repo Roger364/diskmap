@@ -21,7 +21,7 @@
 import fs from 'fs';
 
 import { dossier, corbeille, fouillerCorbeille, journal, sidsDeCorbeille,
-  VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+  estEleve, aTaper, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -30,6 +30,18 @@ const DOSSIER = dossier(VOL, NOM);
 const A = DOSSIER + '/a.txt';
 const B = DOSSIER + '/b.txt';
 const CORBEILLE = corbeille(VOL);
+
+// Les trois entrees de la regle de confirmation, lues et non supposees. Sur le
+// runner de GitHub Actions l'instance est TOUJOURS elevee : sans cette lecture
+// la suppression « vers la corbeille » de la section 3 se faisait refuser en
+// 400, et les quatre verifications suivantes constataient un fichier intact.
+const ELEVE = await estEleve(BASE);
+const AVEC_CORBEILLE = fs.existsSync(CORBEILLE);
+const MOT = (mode) => aTaper({
+  permanent: mode === 'permanent', corbeille: AVEC_CORBEILLE, eleve: ELEVE,
+});
+console.log(`instance ${ELEVE ? 'ÉLEVÉE' : 'normale'}, `
+  + `corbeille ${AVEC_CORBEILLE ? 'présente' : 'ABSENTE'} sur ${VOL}`);
 const JOURNAL = journal();
 
 // Chaque exécution marque ses fichiers d'un sceau unique : c'est ce qui permet de
@@ -183,7 +195,7 @@ verifier('a.txt est toujours là après le refus', fs.existsSync(A), 'le fichier
 
 // ------------------------------------------ 3. la corbeille, réversible
 console.log('\n--- 3. suppression vers la corbeille ---');
-r = await effacer(VOL, [], 'recycle', { token: jetonA });
+r = await effacer(VOL, [], 'recycle', { token: jetonA, confirm: MOT('recycle') });
 d = JSON.parse(r.texte);
 verifier('la suppression réussit', r.status === 200 && d.done === 1,
   `HTTP ${r.status}, done=${d.done}, ${JSON.stringify(d.results)}`);

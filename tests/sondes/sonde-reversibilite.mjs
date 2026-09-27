@@ -25,7 +25,8 @@
 //         node sonde-reversibilite.mjs http://127.0.0.1:9004/ G   (doit tenir aussi)
 import fs from 'fs';
 
-import { dossier, corbeille, journal, VOLUME_SANS_CORBEILLE, URL_DEFAUT } from './config.mjs';
+import { dossier, corbeille, journal, estEleve, aTaper,
+  VOLUME_SANS_CORBEILLE, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_SANS_CORBEILLE).toUpperCase();
@@ -34,6 +35,20 @@ const DOSSIER = dossier(VOL, NOM);
 const FICHIER = DOSSIER + '/cible.txt';
 const CORBEILLE = corbeille(VOL);
 const JOURNAL = journal();
+
+// L'instance peut etre ELEVEE, et cette sonde doit alors exiger le mot que le
+// serveur exigera. Elle ne le suppose pas : elle le lit. Le runner de GitHub
+// Actions est toujours eleve, et la suppression y etait refusee en 400 avant
+// meme d'atteindre le fichier — l'invariant de cette sonde, l'accord entre ce
+// que l'application annonce et ce que le disque dit, n'etait alors mesure
+// sur rien du tout.
+const ELEVE = await estEleve(BASE);
+const MOT = aTaper({
+  permanent: false, corbeille: fs.existsSync(CORBEILLE), eleve: ELEVE,
+});
+console.log(`instance ${ELEVE ? 'elevee' : 'normale'}, corbeille `
+  + `${fs.existsSync(CORBEILLE) ? 'presente' : 'ABSENTE'} sur ${VOL} : `
+  + `mode corbeille, ${MOT ? 'mot exige « ' + MOT + ' »' : 'aucun mot exige'}`);
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
 
 const verifs = [], echecs = [];
@@ -107,7 +122,9 @@ const dry = JSON.parse((await post('/api/delete', {
   drive: VOL, items: [sel], mode: 'dry', gen,
 })).texte);
 verifier('l’aperçu se propose de l’effacer', dry.deletable === 1, JSON.stringify(dry.items));
-const r = await post('/api/delete', { drive: VOL, mode: 'recycle', token: dry.token });
+const r = await post('/api/delete', {
+  drive: VOL, mode: 'recycle', token: dry.token, confirm: MOT,
+});
 const d = JSON.parse(r.texte);
 console.log(`      réponse : HTTP ${r.status} · done=${d.done} · failed=${d.failed} ` +
   `· to_trash=${d.to_trash} · irreversible=${d.irreversible}`);

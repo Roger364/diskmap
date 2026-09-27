@@ -19,13 +19,12 @@
 // Usage : node sonde-palier.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { dossier, URL_DEFAUT } from './config.mjs';
+import { dossier, Go, PALIER_SUPPRIMER, PALIER_SUPPRIMER_TOUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || 'V').toUpperCase();
 const DOSSIER = dossier(VOL, 'palier');
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
-const Go = 1e9;
 
 const verifs = [], echecs = [];
 function verifier(nom, condition, mesure) {
@@ -86,12 +85,21 @@ verifier('un lot minuscule n’exige aucun mot',
 // palier quand la machine a de quoi l'atteindre.
 let trouve = null;
 for (const drive of ['C', 'G', VOL]) {
+  // Un volume qui n'est pas monte n'a pas de racine : l'API repond 409 « volume
+  // pas encore analyse », sans `rows`. Le lire comme une liste vide marchait
+  // jusqu'a ce qu'un `t.rows.filter` leve une TypeError — et une sonde qui
+  // PLANTE ne dit rien : elle sort en 1 sans une seule ligne de motif. C'est ce
+  // qui est arrive sur le runner du 27/09/2026, qui n'a que C: et D:.
   const t = await get(`/api/tree?drive=${drive}&id=0&limit=400`);
-  const candidats = t.rows.filter(r => r.is_dir && r.size > 20 * Go)
+  if (!Array.isArray(t.rows)) {
+    console.log(`      ${drive}: ignore — ${t.error || 'aucune racine analysee'}`);
+    continue;
+  }
+  const candidats = t.rows.filter(r => r.is_dir && r.size > PALIER_SUPPRIMER)
     .sort((a, b) => b.size - a.size);
   for (const candidat of candidats) {
     const ap = await apercu(drive, [candidat.sel], t.gen);
-    if (ap.total_size <= 20 * Go || ap.deletable === 0) continue;
+    if (ap.total_size <= PALIER_SUPPRIMER || ap.deletable === 0) continue;
     if (!trouve || ap.total_size > trouve.ap.total_size) {
       trouve = { drive, ap, nom: candidat.name };
     }
@@ -113,7 +121,7 @@ if (!trouve) {
     motsTaille.length === 1 && typeof motsTaille[0].raison === 'string' && motsTaille[0].raison.length > 0,
     JSON.stringify(motsTaille));
   // Le palier le plus élevé ne doit pas être satisfait par le mot du plus bas.
-  if (ap.total_size >= 500 * Go) {
+  if (ap.total_size >= PALIER_SUPPRIMER_TOUT) {
     verifier('au-delà d’un demi-teraoctet, c’est le mot du palier supérieur qui est demandé',
       motsTaille[0] && motsTaille[0].mot === 'SUPPRIMER TOUT', JSON.stringify(motsTaille[0]));
   }
