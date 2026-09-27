@@ -479,8 +479,17 @@ function racinePour(vol, principal) {
  */
 function racinesDuFilet(volume, retenues) {
   const principal = racinePour(volume, true);
-  const secondaire = racinePour(opt.volumeSansCorbeille, false);
   const sansRacine = retenues.filter((s) => s.volumeSecondaire);
+  // La racine du volume secondaire n est demandee que par une sonde qui en a
+  // besoin. La poser quand meme affichait, sur le runner, « le volume analyse
+  // est E: » — E: n existe pas sur cette machine et aucune sonde n y
+  // travaille. Le lecteur devait savoir que E: etait une valeur par defaut et
+  // non un volume monte, pour dissipuer une note qui ne signalait rien. Une note
+  // qu il faut decrypter avant de la lire est du bruit qui cache un vrai
+  // defaut dans le meme paragraphe.
+  const secondaire = sansRacine.length
+    ? racinePour(opt.volumeSansCorbeille, false)
+    : null;
   if (sansRacine.length && !secondaire) {
     const noms = sansRacine.map((s) => s.nom).join(', ');
     throw new Error(
@@ -683,8 +692,32 @@ function lireResidus(racines, volume) {
       // s’est passé le 27/09/2026 : `sonde-palier.mjs` lisait `t.rows` d’un volume non
       // monté, et rien ne le disait. La FIN de la sortie est ce qu’il faut voir :
       // c’est là que se trouve la pile d’appel.
-      const lignes = sortie.tout.split(/\r?\n/).filter((l) => l.trim());
-      for (const l of lignes.slice(-24)) console.log(`           ${l.trim()}`);
+      const lignes = sortie.tout.split(/\r?\n/).map((l) => l.trim())
+        .filter((l) => l);
+      // Les VERDICTS ROUGES, ou qu ils soient dans la sortie. La fin de la
+      // sortie est ce qu il faut voir quand une sonde PLANTE — la pile d
+      // appel est en dernier — mais une sonde qui verifie quarante choses et
+      // rouge a la troisieme n a plus rien a dire en vingt-quatre lignes.
+      // Le 27/09, la sonde d interface a rouge sur un clic qui n avait pas
+      // navigue, et le journal n en montrait que l ETAT SOIXANTE SECONDES
+      // PLUS TARD : un dossier qui n a rien a voir avec la sonde. Un diagnostic
+      // jete par l outil censé l afficher est un diagnostic absent — c est la
+      // troisieme fois de la journee, apres la fenetre de 400 resultats et le
+      // `node --check` porte sur un fichier perime.
+      const rouges = [];
+      for (let i = 0; i < lignes.length; i++) {
+        if (!/^ROUGE\b/.test(lignes[i])) continue;
+        rouges.push(lignes[i]);
+        // La mesure est la ligne suivante, quand elle existe : sans elle, un
+        // echec ne dit pas ce qui a ete mesure.
+        if (lignes[i + 1] && /^mesur/.test(lignes[i + 1])) rouges.push(lignes[i + 1]);
+      }
+      const uniques = [...new Set(rouges)].slice(0, 14);
+      if (uniques.length) {
+        console.log(`           verdicts rouges (${uniques.length > 14 ? '14 premiers' : 'tous'}) :`);
+        for (const l of uniques) console.log(`           ${l}`);
+      }
+      for (const l of lignes.slice(-24)) console.log(`           ${l}`);
     }
     resultats.push({ nom: s.nom, code: sortie.code, resume });
     if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {
