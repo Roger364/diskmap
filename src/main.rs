@@ -913,7 +913,39 @@ fn route(
                     .and_then(|s| s.snap.clone())
                     .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
             };
-            let p = if kind == "file" {
+            // Un chemin venu du client n'est ouvert que s'il est dans l'index,
+            // et c'est le chemin de l'INDEX qui part vers l'explorateur : la
+            // garde répond à la même question que pour un identifiant — « ce
+            // chemin fait-il partie de ce que j'ai analysé ? » — et le client
+            // ne peut pas obtenir un chemin que le serveur n'a pas vu.
+            //
+            // Sans ce garde, un identifiant périmé ouvrait dans l'explorateur le
+            // dossier qui portait son numéro après la ré-analyse : la même
+            // dérive, dans une fenêtre que l'utilisateur voit.
+            let p = if let Some(c) = q.get("chemin") {
+                let (dossier, nom) = if kind == "file" {
+                    let (d, n) = c
+                        .rsplit_once('\\')
+                        .ok_or(("400 Bad Request", "chemin invalide".into()))?;
+                    (d.to_string(), n.to_string())
+                } else {
+                    (c.clone(), String::new())
+                };
+                let did = dossier_de(&snap, &dossier).ok_or((
+                    "404 Not Found",
+                    format!("ce dossier n'existe plus : {dossier}"),
+                ))?;
+                if kind == "file" {
+                    let f = snap
+                        .child_files(did)
+                        .into_iter()
+                        .find(|f| snap.files[*f as usize].name.eq_ignore_ascii_case(&nom))
+                        .ok_or(("404 Not Found", format!("fichier absent de l'index : {c}")))?;
+                    snap.file_path(f)
+                } else {
+                    snap.dir_path(did)
+                }
+            } else if kind == "file" {
                 if (id as usize) >= snap.n_files() {
                     return Err(("400 Bad Request", "fichier hors bornes".into()));
                 }
@@ -977,6 +1009,65 @@ fn state_json(app: &Arc<App>) -> StateJson {
 struct Crumb {
     name: String,
     id: u32,
+    /// Le chemin COMPLET qui mène à ce palier.
+    ///
+    /// C'est par lui que l'interface demande un dossier. Un identifiant ne le
+    /// peut pas : c'est une position (voir `Snapshot::gen`), et une position ne
+    /// survit pas à une ré-analyse.
+    chemin: String,
+}
+
+/// Le chemin d'un enfant, à partir du chemin de son parent.
+///
+/// La racine se termine déjà par un antislash — `V:\` — et ajouter un second
+/// produirait `V:\\dossier`, un chemin que Windows accepte mais que personne
+/// n'écrit. Le test est donc nécessaire, et c'est pour cela qu'il est ici.
+fn chemin_enfant(parent: &str, nom: &str) -> String {
+    if parent.ends_with('\\') {
+        format!("{parent}{nom}")
+    } else {
+        format!("{parent}\\{nom}")
+    }
+}
+
+/// Le dossier de `chemin` dans l'instantané, ou `None` s'il n'y est plus.
+///
+/// Résolu palier par palier depuis la racine, en comparant les noms sans
+/// tenir compte de la casse : Windows ignore la casse, et un chemin refusé pour
+/// cette raison serait un refus que personne ne comprendrait.
+///
+/// LENT — O(profondeur x enfants) — et sans conséquence : un appel par
+/// navigation, là où l'épinglage par identifiant serait rapide et faux.
+fn dossier_de(snap: &scan::Snapshot, chemin: &str) -> Option<u32> {
+    // Windows accepte les deux separateurs, et les deux se rencontrent : le
+    // harnais construit ses chemins avec la barre oblique (voir racine() dans
+    // tests/sondes/config.mjs, normalisee le 27/09 pour la meme raison), alors
+    // que l index porte des antislashs. Comparer la racine sans normaliser
+    // ferait echouer  sur un volume appele  — un refus qui
+    // n aurait rien a voir avec le dossier demande.
+    let normalise = chemin.replace('/', "\\");
+    let chemin = normalise.as_str();
+    let racine = snap.dirs[0].name.as_ref();
+    if racine.eq_ignore_ascii_case(chemin) {
+        return Some(0);
+    }
+    // `get` et non un découpage : un chemin dont les trois premiers octets ne
+    // tombent pas sur une frontière de caractère rendrait `None` au lieu de
+    // paniquer.
+    if !chemin.get(..racine.len())?.eq_ignore_ascii_case(racine) {
+        return None;
+    }
+    let mut cur = 0u32;
+    for nom in chemin[racine.len()..]
+        .split(['\\', '/'])
+        .filter(|s| !s.is_empty())
+    {
+        cur = snap
+            .child_dirs(cur)
+            .into_iter()
+            .find(|c| snap.dirs[*c as usize].name.eq_ignore_ascii_case(nom))?;
+    }
+    Some(cur)
 }
 
 #[derive(serde::Serialize)]
@@ -1014,21 +1105,38 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             .and_then(|s| s.snap.clone())
             .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
     };
-    if (id as usize) >= snap.n_dirs() {
-        return Err(("400 Bad Request", "dossier hors bornes".into()));
-    }
+    // Le dossier demandé est désigné par son CHEMIN. Un identifiant est une
+    // POSITION dans l'instantané, et une position ne survit pas à une
+    // ré-analyse : mesuré le 27/09/2026, l'identifiant 8 est passé du dossier
+    // de la sonde au dépôt entre deux analyses. L'interface épinglait donc le
+    // dossier courant par un nombre, et ce nombre changeait de sens sous ses
+    // pieds — sans un mot, dans un outil dont la raison d'être est de ne pas
+    // viser la mauvaise cible.
+    //
+    // `id` reste accepté pour qui n'a que lui, mais l'interface n'envoie plus
+    // que le chemin.
+    let id: u32 = match q.get("chemin") {
+        Some(c) => dossier_de(&snap, c)
+            .ok_or(("404 Not Found", format!("ce dossier n'existe plus : {c}")))?,
+        None => id,
+    };
 
+    // Le chemin du dossier affiché, reconstruit par l'index — jamais par ce que
+    // le client a envoyé. Les lignes en hériteront, et l'interface pourra donc
+    // les rappeler par leur chemin après une ré-analyse.
+    let base = snap.dir_path(id).to_string_lossy().into_owned();
     let mut rows: Vec<Row> = Vec::new();
     for c in snap.child_dirs(id) {
+        let nom = &snap.dirs[c as usize].name;
         rows.push(Row {
             id: c,
             sel: scan::sel(c, true),
-            name: snap.dirs[c as usize].name.to_string(),
+            name: nom.to_string(),
             size: snap.size[c as usize],
             count: snap.count[c as usize],
             mtime: snap.mtime[c as usize],
             is_dir: true,
-            path: String::new(),
+            path: chemin_enfant(&base, nom),
         });
     }
     for c in snap.child_files(id) {
@@ -1040,7 +1148,7 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             count: 1,
             mtime: snap.files[c as usize].mtime,
             is_dir: false,
-            path: String::new(),
+            path: chemin_enfant(&base, &snap.files[c as usize].name),
         });
     }
 
@@ -1064,6 +1172,7 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         path.push(Crumb {
             name: snap.dirs[cur].name.to_string(),
             id: cur as u32,
+            chemin: String::new(),
         });
         if cur == 0 {
             break;
@@ -1075,6 +1184,16 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         cur = p;
     }
     path.reverse();
+    // Chaque palier porte le chemin complet qui mène à lui : c'est par là que
+    // l'interface remonte, et un identifiant ne le peut pas. Le premier palier
+    // est la racine — `V:\` — dont le chemin est son propre nom.
+    if let Some(racine) = path.first_mut() {
+        racine.chemin = racine.name.clone();
+    }
+    for i in 1..path.len() {
+        let parent = path[i - 1].chemin.clone();
+        path[i].chemin = chemin_enfant(&parent, &path[i].name);
+    }
 
     let truncated = total > offset + limit;
     let rows: Vec<Row> = rows.into_iter().skip(offset).take(limit).collect();

@@ -1199,6 +1199,156 @@ mod tests {
         assert!(s.entree(sel(1, false) + 4).is_none());
     }
 
+    // ---------------------------------------------------------- le chemin, lui
+    //
+    // Un identifiant est une POSITION. La position bouge des qu'un dossier
+    // apparait ou disparait ailleurs sur le volume, et rien ne relie alors
+    // l'ancien numero au dossier qu'il designait. Le 27/09/2026, l'interface
+    // epinglait le dossier courant par un numero : apres une reanalyse, elle
+    // affichait le depot GitHub la ou l'utilisateur avait choisi son dossier.
+    // Silencieusement, dans un outil qui vend l'absence de mauvaise cible.
+    //
+    // Ces tests fixent la CONTRAINTE dont depend toute la navigation : un
+    // chemin designe un dossier, et designe LE MEME dossier apres une
+    // reanalyse qui a rebattu tous les numeros.
+
+    /// Un instantané minimal : `noms` est la suite des NOMMS de dossiers, dans
+    /// l'ordre du parcours, chaque nom portant le nombre de ses barres obliques
+    /// (0 pour la racine). Les identifiants sont donc attribues dans l'ordre.
+    fn instantane(noms: &[&str]) -> Snapshot {
+        let mut dirs = vec![DirRec {
+            id: 0,
+            parent: 0,
+            name: "V:\\".into(),
+            own_mtime: 10,
+        }];
+        for (i, n) in noms.iter().enumerate() {
+            // `n` est un chemin RELATIF, alors que `DirRec::name` est le nom du
+            // dossier seul : c'est ce nom que `dossier_de` compare, palier par
+            // palier. Stocker le chemin entier ferait échouer la résolution dès
+            // le deuxième niveau — et le test aurait vert sur une snapshots
+            // qui ne ressemble à rien.
+            let profondeur = n.matches('\\').count();
+            let nom = n.rsplit('\\').next().unwrap_or(n);
+            dirs.push(DirRec {
+                id: (i + 1) as u32,
+                parent: if profondeur == 0 {
+                    0
+                } else {
+                    (i + 1 - profondeur) as u32
+                },
+                name: (*nom).into(),
+                own_mtime: 10,
+            });
+        }
+        Snapshot::new(
+            "V:\\".into(),
+            dirs,
+            vec![],
+            ScanStats {
+                elapsed_ms: 0,
+                unreadable: Vec::new(),
+                unreadable_total: 0,
+                unreadable_droits: 0,
+                skipped: 0,
+            },
+        )
+    }
+
+    #[test]
+    fn un_chemin_retrouve_le_dossier_apres_une_reanalyse() {
+        // Le meme arbre, deux analyses, deux repartitions des numeros : trois
+        // dossiers sont apparus AVANT `a`, donc tout ce qui suit a recule.
+        let avant = instantane(&["a", "a\\cible"]);
+        let apres = instantane(&["z1", "z2", "z3", "a", "a\\cible"]);
+
+        let cible = "V:\\a\\cible";
+        let id_avant = crate::dossier_de(&avant, cible).expect("connu avant");
+        let id_apres = crate::dossier_de(&apres, cible).expect("connu apres");
+        assert_ne!(
+            id_avant, id_apres,
+            "les deux analyses doivent repartir les numeros, sans quoi le test \
+             ne prouve rien"
+        );
+        // Le contrat : le meme chemin, le MEME dossier.
+        assert_eq!(
+            apres.dir_path(id_apres).to_string_lossy(),
+            cible,
+            "le chemin doit retrouver le dossier, pas un autre"
+        );
+    }
+
+    #[test]
+    fn un_chemin_absent_ne_designe_jamais_un_autre_dossier() {
+        let s = instantane(&["a", "a\\cible"]);
+        // Un dossier qui n'existe pas, un dossier qui a disparu, un volume
+        // etranger : tous doivent dire NON. Le defaut qu'on corrige consistait
+        // precisement a repondre OUI en designant autre chose.
+        for faux in ["V:\\a\\absent", "V:\\absent", "C:\\a\\cible", "", "V:"] {
+            assert_eq!(
+                crate::dossier_de(&s, faux),
+                None,
+                "{faux:?} ne devrait designer aucun dossier"
+            );
+        }
+        // Un separateur final, en revanche, designe BIEN LE MEME dossier. La
+        // resolution ignore les morceaux vides, donc `V:\a\cible\` et
+        // `V:\a\cible` designent la meme chose.
+        //
+        // C'est une tolerance deliberee, et elle est sans consequence : le
+        // serveur ne renvoie jamais vers l/entree du client, il renvoie le
+        // chemin reconstruit par l'index. Deux facons d'ecrire un meme dossier ne
+        // creent donc pas deux dossiers.
+        assert_eq!(crate::dossier_de(&s, "V:\\a\\cible\\"), Some(2));
+        assert_eq!(crate::dossier_de(&s, "V:\\a\\\\cible"), Some(2));
+    }
+
+    #[test]
+    fn un_chemi_est_trouve_quelle_que_son_casse() {
+        // Windows ignore la casse : un chemin refuse pour cette raison serait
+        // un refus que personne ne comprendrait, et l'utilisateur taperait le
+        // bon chemin en boucle.
+        let s = instantane(&["Documents", "Documents\\photos"]);
+        for c in [
+            "V:\\Documents\\photos",
+            "v:\\documents\\PHOTOS",
+            "V:\\DOCUMENTS\\Photos",
+        ] {
+            assert!(crate::dossier_de(&s, c).is_some(), "{c:?} devrait passer");
+        }
+        assert_eq!(
+            crate::dossier_de(&s, "V:\\documents\\photos"),
+            Some(2),
+            "la casse ne doit pas changer le dossier designe"
+        );
+    }
+
+    #[test]
+    fn un_separateur_double_ne_cree_pas_un_dossier_fantome() {
+        // `V:\\` + `\\a` donnerait `V:\\\\a` avec une jointure bete. Windows
+        // l'accepterait, et surtout deux chaines differentes designeraient le
+        // meme dossier : le cache et l'affichage divergeraient.
+        assert_eq!(crate::chemin_enfant("V:\\", "a"), "V:\\a");
+        assert_eq!(crate::chemin_enfant("V:\\a", "b"), "V:\\a\\b");
+        let s = instantane(&["a"]);
+        assert_eq!(
+            crate::dossier_de(&s, "V:\\\\a"),
+            Some(1),
+            "un separateur en trop ne doit pas creer un second dossier"
+        );
+    }
+
+    // La BARRE OBLIQUE aussi. Le harnais construit ses chemins avec elle, et
+    // l index porte des antislashs : refuser `V:/a` sur un volume appele `V:\`
+    // serait un refus qui n a rien a voir avec le dossier demande.
+    #[test]
+    fn la_barre_oblique_designe_le_meme_dossier() {
+        let s = instantane(&["a", "a\\cible"]);
+        assert_eq!(crate::dossier_de(&s, "V:/a/cible"), Some(2));
+        assert_eq!(crate::dossier_de(&s, "V:/"), Some(0));
+        // Et le melange des deux, que produit un client qui edite un chemin.
+        assert_eq!(crate::dossier_de(&s, "V:/a\\cible"), Some(2));
+    }
     #[test]
     fn un_cache_d_autre_lettre_de_volume_est_refuse() {
         // Le numéro de série passe, la lettre ne passe pas : c'est

@@ -375,13 +375,38 @@
 <script>
 const $ = s => document.querySelector(s);
 let state = { drives: [], scanning: null };
-let cur = { drive: null, id: 0, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set(), gen: 0,
+let cur = { drive: null, chemin: null, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set(), gen: 0,
   // Le compte RÉEL des correspondances d'une recherche, et le fait qu'il
   // soit complet. Avant le 27/09/2026, l'interface ne pouvait rien dire de ce
   // qu'elle ne montrait pas : elle écrivait « tronqué » quand la page était
   // complète, dans un cas sur deux. Une personne qui supprime doit savoir
   // qu'elle regarde une liste partielle.
   total: 0, totalExact: true, isSearch: false };
+
+// Le chemin du dossier demande qui n'existe plus, le temps que l'ecran le dise.
+// Vide tant que rien n'a disparu. Le 27/09, l'interface epinglait le dossier
+// courant par un NUMERO : apres une reanalyse, ce numero designait un autre
+// dossier, et l'ecran suivait sans rien dire. La regle est donc inverse — on ne
+// montre que le dossier demande, et quand il n'existe plus, on le DIT.
+let dossierDisparu = '';
+
+// Aller a un dossier par son chemin. Un identifiant ne le peut pas : c'est une
+// position dans un instantane, et la position change de sens des que le disque
+// change. Le geste commun des cinq appels passe par ici, pour qu'aucun ne puisse
+// reviendrait a l'ancien `cur.id = ...`.
+function aller(chemin) {
+  cur.chemin = chemin;
+  dossierDisparu = '';
+  load();
+}
+
+// Le dossier qui contient `chemin`. `V:\` est la racine, et son separateur est
+// en position 2 : le traiter comme un palier ordinaire remonterait hors du
+// volume.
+function parentDe(chemin) {
+  const i = chemin.lastIndexOf('\\');
+  return i <= 2 ? chemin.slice(0, 3) : chemin.slice(0, i);
+}
 
 let pendingDry = null;
 // Le serveur s'arrête à la demande de cette page. Une fois posé, plus rien ne
@@ -624,7 +649,7 @@ function endLoad() {
 }
 
 async function select(letter) {
-  cur.drive = letter; cur.id = 0; cur.path = [];
+  cur.drive = letter; cur.chemin = `${letter}:\\`; cur.path = [];
   renderDrives();
   await load();
 }
@@ -671,11 +696,33 @@ async function load(keepSel) {
   }
   $('#prog').classList.add('hidden');
   const qs = new URLSearchParams({
-    drive: cur.drive, id: cur.id,
+    drive: cur.drive, chemin: cur.chemin,
     sort: cur.sort, order: cur.order, limit: 3000
   });
   beginLoad();
-  const res = await api('/api/tree?' + qs);
+  let res;
+  try {
+    res = await api('/api/tree?' + qs);
+  } catch (e) {
+    endLoad();
+    // 404 : le dossier demande n'existe plus — supprime pendant qu'on le
+    // regardait. Le dire, et remonter d'un cran. NE PAS afficher un autre
+    // dossier a sa place : c'est precisement le defaut du 27/09, et dans un
+    // outil qui supprime, un ecran qui change de dossier sans le dire est une
+    // cible qui change sans le dire.
+    if (e.status === 404) {
+      const demande = cur.chemin;
+      const parent = parentDe(demande);
+      if (parent && parent !== demande) {
+        cur.chemin = parent;
+        dossierDisparu = demande;
+        load(true);
+        return;
+      }
+      dossierDisparu = demande;
+    }
+    throw e;
+  }
   endLoad();
   cur.rows = res.rows;
   cur.gen = res.gen;
@@ -696,9 +743,9 @@ function renderCrumbs() {
     const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '›'; c.appendChild(sep);
   };
   if (!cur.drive) { c.innerHTML = '<span style="color:var(--muted)">Choisis un volume à gauche, puis « Analyser ».</span>'; return; }
-  add(`${cur.drive}:\\`, () => { cur.id = 0; load(); }, cur.path.length === 1);
+  add(`${cur.drive}:\\`, () => aller(`${cur.drive}:\\`), cur.path.length === 1);
   cur.path.slice(1).forEach((p, i) => {
-    add(p.name, () => { cur.id = p.id; load(); }, i === cur.path.length - 2);
+    add(p.name, () => aller(p.chemin), i === cur.path.length - 2);
   });
   const st = document.createElement('span');
   st.className = 'stat';
@@ -754,23 +801,28 @@ function renderRows() {
       <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span>
           <span style="color:var(--muted);font-size:11.5px"> · ${hage(r.mtime)}</span></td>
       <td class="act"><button title="Ouvrir dans l'explorateur">⤢</button></td>`;
-    if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; load(); };
+    if (r.is_dir) tr.querySelector('.nm').onclick = () => aller(r.path);
     tr.querySelector('.act button').onclick = () =>
-      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
+      fetch(`/api/open?drive=${cur.drive}&chemin=${encodeURIComponent(r.path)}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
     const chk = tr.querySelector('.sel .chk');
     chk.onchange = () => toggleSel(r, chk.checked);
     frag.appendChild(tr);
   }
   tb.appendChild(frag);
   const shown = cur.rows.length;
-  $('#count').textContent = `${nf.format(shown)} élément${shown > 1 ? 's' : ''}` +
+  const avert = dossierDisparu
+    ? `Ce dossier n'existe plus (${dossierDisparu}) — voici son parent. ` : '';
+  $('#count').textContent = avert + `${nf.format(shown)} élément${shown > 1 ? 's' : ''}` +
     (cur.truncated ? ` (tronqué — affinez avec la recherche)` : '');
   updateSelBar();
   if (cur.view === 'map') renderMap();
 }
 
 // ---------- sélection ----------
-function selKey(r) { return (r.is_dir ? 'd' : 'f') + ':' + r.id; }
+// La cle de selection est le CHEMIN. Elle etait l'identifiant, qui designe un
+// autre element apres une reanalyse : la selection affichait alors des cases
+// cochees a cote d'autres elements, et rien ne l indiquait.
+function selKey(r) { return (r.is_dir ? 'd' : 'f') + ':' + r.path; }
 function selectedRows() { return cur.rows.filter(r => cur.sel.has(selKey(r))); }
 
 function toggleSel(r, on) {
@@ -813,7 +865,7 @@ function renderMap() {
     el.title = `${o.name} — ${hsize(o.size)}`;
     el.innerHTML = `<div class="t">${escapeHtml(o.name)}</div>` +
       (o.h > 28 ? `<div class="s">${hsize(o.size)}${frac >= 1 ? ' · ' + frac.toFixed(0) + ' %' : ''}</div>` : '');
-    el.onclick = () => { if (o.is_dir) { cur.id = o.id; load(); } };
+    el.onclick = () => { if (o.is_dir) aller(o.path); };
     box.appendChild(el);
   }
 }
@@ -865,7 +917,10 @@ async function search() {
   // complet. Ce sont deux faits du serveur, pas une déduction faite ici.
   cur.total = res.total;
   cur.totalExact = res.exact !== false;
-  cur.path = [{ name: `${cur.drive}:\\`, id: 0 }, { name: `« ${q} »`, id: 0 }];
+  // `« ${q} »` n'est pas un dossier : il ne porte donc pas de chemin, et son
+  // pseudo-palier n'est jamais cliquable — il est toujours le dernier.
+  cur.path = [{ name: `${cur.drive}:\\`, chemin: `${cur.drive}:\\` },
+    { name: `« ${q} »`, chemin: null }];
   cur.isSearch = true;
   renderCrumbs();
   // On affiche le VRAI compte. L'ancien texte disait « tronqué — affinez »
@@ -893,9 +948,9 @@ async function search() {
       <td class="num" style="color:var(--muted)">${r.is_dir ? nf.format(r.count) : ''}</td>
       <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span></td>
       <td class="act"><button title="Ouvrir dans l'explorateur">⤢</button></td>`;
-    if (r.is_dir) tr.querySelector('.nm').onclick = () => { cur.id = r.id; $('#q').value = ''; load(); };
+    if (r.is_dir) tr.querySelector('.nm').onclick = () => { $('#q').value = ''; aller(r.path); };
     tr.querySelector('.act button').onclick = () =>
-      fetch(`/api/open?drive=${cur.drive}&id=${r.id}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
+      fetch(`/api/open?drive=${cur.drive}&chemin=${encodeURIComponent(r.path)}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
     const chk = tr.querySelector('.sel .chk');
     chk.onchange = () => toggleSel(r, chk.checked);
     frag.appendChild(tr);
