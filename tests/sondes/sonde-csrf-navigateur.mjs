@@ -30,7 +30,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { chromium } from './navigateur.mjs';
-import { dossier, attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { URL_DEFAUT, VOLUME_DEFAUT, attendreFichier, attendreFichierDans, dossier } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -144,21 +144,22 @@ async function idVictime() {
   fs.writeFileSync(DOSSIER + '/victime.txt', `victime-${Date.now()}\n`);
   const rep = await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: { 'X-Diskmap': '1' } });
   if (!rep.ok) throw new Error(`réanalyse refusée : HTTP ${rep.status}`);
-  await attendreParcours(true);
-  // On attend que le FAIT soit constaté : `victime.txt` doit APPARAITRE dans
-  // l'instantane. Sortir sur `!scanning` peut revenir avant que le fichier
-  // soit indexe, et la suite renverrait alors « la victime n'est pas dans
-  // l'instantane » — un verdict faux, sans lien avec le CSRF. Voir
-  // `attendreFichier` dans config.mjs.
-  await attendreFichier(BASE, VOL, 'victime.txt');
-    const d1 = await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json();
-  const dir = d1.rows.find(r => r.name === NOM);
-  if (!dir) return null;
-    const d2 = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=100`)).json();
-  const f = d2.rows.find(r => r.name === 'victime.txt');
-  return f ? f.sel : null;
+  // Le dossier, adresse par son CHEMIN, et non par son nom.
+  //
+  // Le 28/09/2026, cette fonction cherchait `q=csrf` puis faisait `.find()` sur
+  // la premiere page de resultats. La recherche est plafonnee, et `csrf` est un
+  // nom que tous les `node_modules` du disque contiennent : le dossier de la
+  // sonde sortait de la page, `sel` valait `null`, et les trois verdicts
+  // rapportaient « la victime n'est pas dans l'instantane » — sur une sonde dont
+  // tout l'objet est de conclure que l'attaque a echoue. Le pire des messages
+  // possibles : il affirme qu'une protection a cede alors que rien n'a ete
+  // mesure.
+  //
+  // Un chemin est unique par construction. L'attente se fait sur le FAIT, dans
+  // ce dossier-la : `attendreFichierDans`.
+  const r = await attendreFichierDans(BASE, VOL, DOSSIER, 'victime.txt');
+  return r ? r.ligne.sel : null;
 }
-
 const journal = () => fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean);
 
 const navig = await chromium.launch();
@@ -173,7 +174,10 @@ const CAS = [
 for (const cas of CAS) {
   console.log(`\n--- ${cas.nom} ---`);
   const sel = await idVictime();
-  verifier('la victime est dans l’instantané', sel != null, `sel=${sel}`);
+  verifier('la victime est dans l’instantané', sel != null,
+    sel == null
+      ? `« ${DOSSIER}\\victime.txt » absent après écriture et ré-analyse : rien n'a été indexé, donc rien n'a été éprouvé`
+      : `sel=${sel}`);
   if (sel == null) continue;
   serveur.selCourant = sel;
 

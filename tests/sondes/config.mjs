@@ -457,6 +457,51 @@ export async function attendreEntree(base, vol, nom, tours = 600) {
   return null;
 }
 
+// Attendre qu'un DOSSIER soit PUBLIE, adresse par son CHEMIN.
+//
+// C'est le fait minimal : `/api/tree` le rend, donc il fait partie de
+// l'instantane. Le CONTENU du dossier, lui, change -- une sonde qui supprime un
+// de ses fichiers pour prouver qu'un identifiant designe une position
+// s'attacherait sinon a attendre un fait devenu faux.
+export async function attendreDossier(base, vol, chemin, tours = 600) {
+  const c = encodeURIComponent(chemin);
+  for (let i = 0; i < tours; i++) {
+    const s = await (await fetch(`${base}/api/state`)).json();
+    if (s && !s.scanning) {
+      const r = await fetch(`${base}/api/tree?drive=${vol}&chemin=${c}&limit=200`);
+      if (r.ok) return await r.json();
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+
+// Attendre qu'un NOM apparaisse dans un DOSSIER adresse par son CHEMIN.
+//
+// La variante par nom (`attendreEntree`) est sujette d'un plafond de resultats : un
+// nom commun sort de la premiere page, et l'absence devient un fait de tri. Un
+// chemin, lui, est unique par construction -- c'est la seule adresse qui ne
+// depende pas du contenu du volume.
+export async function attendreFichierDans(base, vol, chemin, nom, tours = 600) {
+  const c = encodeURIComponent(chemin);
+  for (let i = 0; i < tours; i++) {
+    const s = await (await fetch(`${base}/api/state`)).json();
+    if (s && !s.scanning) {
+      const r = await fetch(`${base}/api/tree?drive=${vol}&chemin=${c}&limit=200`);
+      if (r.ok) {
+        const t = await r.json();
+        const ligne = (t.rows || []).find((x) => x.name === nom);
+        // L'arbre entier, pas seulement la ligne : `id` d'une LIGNE identifie
+        // l'element, pas le dossier qu'on vient de lire, et s'en servir pour
+        // lister ce dossier rend une liste vide. Aucune conversion a deviner.
+        if (ligne) return { ligne, arbre: t };
+      }
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+
 export async function attendreFichier(base, vol, nom, tours = 600) {
   return !!(await attendreEntree(base, vol, nom, tours));
 }

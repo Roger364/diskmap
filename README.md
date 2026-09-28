@@ -379,7 +379,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 > to speak.
 
 The fix has to be in two places, or it does not hold. The probe keeps a count
-(`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:146`).
+(`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:157`).
 The harness refuses the silence: no count means the exit code is forced to `1`
 (`tests/sondes/lancer.mjs:781`) and the reason is printed (`tests/sondes/lancer.mjs:885`). A zero summary has its own door: `tests/sondes/lancer.mjs:780`, reason `tests/sondes/lancer.mjs:881`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
@@ -711,11 +711,19 @@ instead of two.
 | `recherche` | `20/25` | `25/25` |
 | `identifiant` | `12/13` | `13/13` |
 | `ui` | `25/27` | `37/37` |
-| `sans-corbeille` | `10/10` or `SANS SYNTHESE`, run to run | `10/10`, then `SANS SYNTHESE` |
-| total | 17/21 | **19/21** then **20/21** |
+| `sans-corbeille` | `10/10` or `SANS SYNTHESE`, run to run | `10/10` |
+| `csrf` | `0/3` | `12/12` |
+| total | 17/21 | **21/21**, two consecutive full runs |
 
-Two consecutive full runs, rather than announcing the better one: `sans-corbeille` still
-alternates, and `csrf` is red in both.
+The last two rows came later, for the same reason. `recherche` waited for a **generation
+change** — an indirect fact: it can be the running scan's, the one already in flight when the
+probe wrote its files. It now waits for **its own** file, by path. `csrf` looked its folder up
+by `q=csrf`, a name every `node_modules` on the disk contains: the search is capped, the folder
+fell out of the first page, and `sel` was `null` — three verdicts claiming the victim was not
+in the snapshot, on a probe whose whole purpose is to conclude that the attack failed. It
+addresses the folder by path, which is unique by construction.
+
+A name is an address only while it is rare. A path is one.
 
 **What is still red, and why it is not R15.** `csrf` (`sel=null`) and `sans-corbeille`
 (`sel=null`) locate their target by a folder-then-file search without waiting by the fact: the

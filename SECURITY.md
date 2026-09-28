@@ -644,7 +644,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 
 **Le correctif, en deux morceaux qui se répondent.** La sonde passe par un `verifier()` commun
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
-(`tests/sondes/sonde-generation.mjs:146`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
+(`tests/sondes/sonde-generation.mjs:157`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
 (`tests/sondes/lancer.mjs:781`) et le motif est écrit (`tests/sondes/lancer.mjs:885`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:881`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
@@ -1031,18 +1031,27 @@ la règle est écrite, au lieu de deux.
 | `recherche` | `20/25` | `25/25` |
 | `identifiant` | `12/13` | `13/13` |
 | `ui` | `25/27` | `37/37` |
-| `sans-corbeille` | `10/10` ou `SANS SYNTHESE`, d'un run à l'autre | `10/10`, `SANS SYNTHESE` |
-| total | 17/21 | **19/21** puis **20/21** |
+| `sans-corbeille` | `10/10` ou `SANS SYNTHESE`, d'un run à l'autre | `10/10` |
+| `csrf` | `0/3` | `12/12` |
+| total | 17/21 | **21/21**, deux runs complets de suite |
 
-Deux runs complets consécutifs, pour ne pas annoncer le meilleur : `sans-corbeille` alterne
-encore, et `csrf` est rouge dans les deux.
+Les deux dernières lignes sont arrivées après, et pour la même cause. `recherche` attendait un
+**changement de génération** — un fait indirect : c'est celui de l'analyse déjà en cours au
+moment où la sonde a écrit ses fichiers. Elle attend désormais **son** fichier, par son chemin.
+`csrf` cherchait son dossier par `q=csrf`, un nom que tous les `node_modules` du disque
+contiennent : la recherche étant plafonnée, le dossier sortait de la première page et `sel`
+valait `null` — trois verdicts qui affirmaient que la victime n'était pas dans l'instantané, sur
+une sonde dont tout l'objet est de conclure que l'attaque a échoué. Elle l'adresse par son
+chemin, qui est unique par construction.
 
-**Ce qui reste rouge, et pourquoi ce n'est pas R15.** `csrf` (`sel=null`) et `sans-corbeille`
-(`sel=null`) cherchent leur cible par une recherche dossier-puis-fichier, sans attendre par le
-fait : même signature que les quatre lignes ci-dessus, une étape plus loin. C'est la suite
-naturelle du même travail — les corrections de sondes, pas du produit — et elle n'est pas faite. Le dire
-ici plutôt que de le laisser apparaître comme une nouvelle régression : le produit est sain sur
-ce point, l'instrument ne l'est pas encore.
+Un nom n'est une adresse que tant qu'il est rare. Un chemin en est une.
+
+**Ce que cette famille de règles ne couvre toujours pas.** Un nom n'est une adresse que tant
+qu'il est rare : `attendreEntree` — qui cherche par nom — reste en place pour les cas où la
+sonde ne connaît que le nom, et elle garde le risque de la première page. Les trois sondes
+concernées ici n'utilisent plus que `attendreDossier` et `attendreFichierDans`, qui adressent
+par chemin. `attendreFichier` n'a plus d'appelant en dehors de `csrf`, et devrait disparaître
+avec lui.
 
 ---
 

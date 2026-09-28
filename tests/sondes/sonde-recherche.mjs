@@ -39,7 +39,7 @@
 // Usage : node sonde-recherche.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { dossier, racine, URL_DEFAUT } from './config.mjs';
+import { URL_DEFAUT, attendreFichierDans, dossier, racine } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || 'V').toUpperCase();
@@ -114,29 +114,27 @@ console.log(`--- ${VOL} : ${CHEMINS.length} entree(s) sous ${racine(VOL)}/recher
 console.log(`    3 dossiers + 3 fichiers, tous nommes « ${JETON} », poids ${FICHIERS.map((s) => `${s}=${POIDS[s]}`).join(' ')}`);
 console.log('');
 
-// Elles n'entrent dans l'instantane qu'apres une analyse. On attend le
-// CHANGEMENT DE GENERATION, pas la fin d'une analyse : juste apres
-// `POST /api/scan`, l'analyse n'est pas encore lancee, donc `scanning` est
-// encore faux, donc une attente sur `scanning` passe aussitot et l'on mesure
-// l'instantane du run precedent. Mesure : l'ancienne version passait 24/24
-// seule et tombait a 18/24 par le harnais, sur l'ecart
-// [w9k_c, w9k_b, w9k_b.txt, ...] contre [w9k_c, w9k_c.txt, w9k_b, ...] — un
-// ordre par nom, parce que les dossiers de l'ancien arbre etaient vides et
-// donc tous a zero. Le produit triait juste ; la sonde mesurait le volume
-// d'avant.
-const generationAvant = (await chercher(JETON, 1)).j && (await chercher(JETON, 1)).j.gen;
+// Elles n'entrent dans l'instantane qu'apres une analyse. On attend SES
+// FICHIERS, et non la fin d'une analyse, ni meme un changement de generation.
+//
+// Les deux autres sont des faits INDIRECTS, et la mesure a montre qu'ils mentent
+// tous les deux. Juste apres `POST /api/scan`, l'analyse n'est pas encore
+// lancee, donc `scanning` est encore faux : une attente sur le drapeau passe
+// aussitot et l'on mesure l'instantane du run precedent -- l'ancienne version
+// passait 24/24 seule et tombait a 18/24 par le harnais. Puis, depuis que le
+// serveur accepte une demande pendant une analyse (28/09/2026), attendre un
+// CHANGEMENT DE GENERATION n'ameliore rien : le changement peut etre celui de
+// l'analyse deja en cours au moment ou la sonde a ecrit ses fichiers. La sonde
+// lisait alors un instantane anterieur a ses propres ecritures -- `total=0`, et
+// six verdicts rouges qui n'avaient rien a voir avec la recherche.
+//
+// Le seul fait qui la concerne, c'est la presence de SON fichier, adresse par
+// son chemin : un nom, meme unique, depend du contenu du volume. Et l'absence
+// est un resultat, pas une ligne de trop.
 await post(`/api/scan/${VOL}`);
-let generationApres = generationAvant;
-for (let i = 0; i < 200 && generationApres === generationAvant; i++) {
-  await new Promise((r) => setTimeout(r, 200));
-  const r = await chercher(JETON, 1);
-  generationApres = r.j ? r.j.gen : generationAvant;
-}
-verifier('l instantane observe est celui qui contient les fichiers de la sonde',
-  generationApres !== generationAvant,
-  `generation ${generationAvant} -> ${generationApres} : l analyse n a pas change `
-  + 'd instantane, et la sonde mesurerait le volume du run precedent');
-info(`generation : ${generationAvant} -> ${generationApres}`);
+const publication = await attendreFichierDans(BASE, VOL, DOSSIER, `${JETON}_a.txt`);
+verifier('les fichiers de la sonde entrent dans l\'instantane', !!publication,
+  publication ? '' : `« ${JETON}_a.txt » absent de « ${DOSSIER} » apres ecriture et re-analyse : l'instantane ne contient pas ce que la sonde vient d'ecrire`);
 
 // ------------------------------------------------------------------ le contrat
 const ATTENDU = DOSSIERS.length + FICHIERS.length;

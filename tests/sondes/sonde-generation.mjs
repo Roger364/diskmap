@@ -20,7 +20,7 @@
 // Usage : node sonde-generation.mjs http://127.0.0.1:8990/ G
 import fs from 'fs';
 
-import { URL_DEFAUT, VOLUME_DEFAUT, attendreEntree, dossier } from './config.mjs';
+import { URL_DEFAUT, VOLUME_DEFAUT, attendreDossier, dossier } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -68,12 +68,23 @@ async function repos() {
 // L'attente se fait donc sur le fait, par `attendreEntree`, et l'absence est
 // un resultat : elle revient `null` et la sonde la dit.
 async function listing() {
-  const dir = await attendreEntree(BASE, VOL, NOM);
-  if (!dir) return { ids: new Map(), gen: null, absent: true };
-  const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=200`)).json();
-  return { ids: new Map(t.rows.filter(r => r.name.endsWith('.txt')).map(r => [r.name, r.sel])), gen: t.gen, absent: false };
+  // Le dossier, adresse par son CHEMIN. Par son NOM il se perdait parmi 356
+  // `experimental` : la recherche est plafonnee, et un nom courant sort de la
+  // premiere page. Le 28/09/2026, `perime` a ainsi disparu d'un instantane ou
+  // il existait bel et bien — et la sonde a conclu qu'il n'existait pas.
+  //
+  // On attend le DOSSIER, pas un de ses fichiers : la sonde en supprime un entre
+  // les deux lectures, pour prouver qu'un identifiant designe une position.
+  // Attendre `p1.txt` revenait a attendre un fait devenu faux, et le second
+  // instantane n'arrivait jamais.
+  const t = await attendreDossier(BASE, VOL, DOSSIER);
+  if (!t) return { ids: new Map(), gen: null, absent: true };
+  return {
+    ids: new Map((t.rows || []).filter(x => x.name.endsWith('.txt')).map(x => [x.name, x.sel])),
+    gen: t.gen,
+    absent: false,
+  };
 }
-
 fs.mkdirSync(DOSSIER, { recursive: true });
 for (const n of ['p1.txt', 'p2.txt', 'p3.txt', 'p4.txt', 'p5.txt']) fs.writeFileSync(`${DOSSIER}/${n}`, `${n}\n`);
 
