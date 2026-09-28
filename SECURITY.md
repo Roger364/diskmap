@@ -261,12 +261,12 @@ aucun nœud texte cassé.
 
 ### R2 — L'aperçu montre 25 chemins, l'exécution en supprime N · **Haute** · *corrigé*
 
-`ui/index.html:1036` : `for (const it of d.items.slice(0, 25))`, suivi de
+`ui/index.html:1067` : `for (const it of d.items.slice(0, 25))`, suivi de
 `… et ${d.items.length - 25} autre(s)`. Rien n'empêche l'exécution de traiter les N.
 
 « Tout sélectionner » dans un dossier de 200 entrées affiche donc 175 chemins que
 l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
-(`ui/index.html:1025`) est lui aussi purement client, et ne couvre pas le *nombre*.
+(`ui/index.html:1056`) est lui aussi purement client, et ne couvre pas le *nombre*.
 
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
@@ -535,6 +535,53 @@ d'utilisateur et exige que la génération affichée ait changé. Sans cela, son
 dossier » passait à vide — un test qui passe toujours ne prouve rien, et c'est la moitié
 du travail de ce constat.
 
+### R11 — Deux réglages coup sur coup : la réponse la plus ancienne peint l'écran · **Moyenne** · *corrigé le 28/09/2026*
+
+Même famille que R10 et §3.1, et le même refus : **un écran qui montre autre chose que ce que
+l'interface dit**. R10 visait le dossier, celui-ci vise l'ordre. La cible de suppression, elle,
+n'était pas concernée : les lignes affichées étaient les bonnes, dans un autre ordre.
+
+**Mesuré, en local, le 28/09/2026.** Deux sélecteurs — le tri, puis le sens — enchaînés. L'état
+affiché portait `tri=name` et `ordre=asc`, et la liste était rangée par nom **décroissant**. Les
+huit lignes étaient exactement celles du dossier de la sonde : ce n'était ni un volume instable
+ni un tri cassé, c'était une réponse peinte à la place.
+
+**Le serveur n'est pas en cause.** `/api/tree?order=asc` et `order=desc` rendent deux listes
+opposées, mesuré sur la même requête. Le défaut est dans le client : `load()` n'avait aucun
+séquencement, donc deux rechargements qui se croisent se peignent **dans l'ordre de leur
+arrivée**.
+
+**La règle :**
+
+> Une seule réponse a le droit de peindre : la dernière demandée. Une réponse périmée ne touche
+> même pas l'état — sinon la suivante hérite d'un état déjà mêlé.
+
+**Le correctif.** Un jeton par requête (`ui/index.html:694`), incrémenté au départ de `load()` et
+de `search()`, comparé à l'arrivée (`ui/index.html:753` et `ui/index.html:942`). La réponse
+périmée rend la main sans rien écrire. Son **erreur** non plus n'est pas dite : la parler ferait
+remonter d'un cran un dossier qui n'a pas disparu, puisque le chemin à remonter serait celui de la
+requête périmée (`ui/index.html:730`).
+
+**Épreuves, les deux sens.** Jeton retiré, 2 s de latence injectée sur `/api/tree` : deux verdicts
+rougissent, et le nouveau — « l'ordre demandé n'a jamais été contredit à l'écran » — nomme la
+contradiction au lieu de la constater. Jeton remis, même latence : 36/36, et l'historique des
+peintures ne contient plus que les deux situations attendues.
+
+**Un second détail que la mesure a refusé, et qui vaut d'être écrit.** La sonde lisait l'écran à
+la **première** peinture. Le défaut se jouait deux secondes plus tard : son vert ne prouvait rien
+sur la dernière réponse, et son rouge ne tombait que par hasard de charge — une fois sur un run
+complet, jamais sur un volume rapide. Elle enregistre donc chaque peinture
+(`tests/sondes/sonde-ui-suppression.mjs:520`) et attend que l'écran se taise
+(`tests/sondes/sonde-ui-suppression.mjs:543`) avant de lire quoi que ce soit. Le verdict qui en
+découle (`tests/sondes/sonde-ui-suppression.mjs:725`) est le seul qui voie les peintures
+intermédiaires ; tous les autres lisent un instant, et cet instant peut précéder la dernière
+réponse.
+
+**Ce que la fenêtre de deux secondes est, et n'est pas.** Un choix, déclaré : une réponse périmée
+peut arriver après le dernier rendu utile, et une fenêtre trop courte ne la verrait pas — son vert
+ne prouverait alors que la rapidité de la machine. Deux secondes couvrent le service d'un
+`/api/tree` sur un volume analysé, là où la course a été mesurée.
+
 ---
 
 ## 6. Ce qui est solide
@@ -544,6 +591,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **La cible est figée à l'aperçu.** `Montre` porte le chemin résolu ; `execute` ne résout
   plus rien. C'est la bonne architecture : la seule façon de supprimer reste de décider ce
   qu'on supprime.
+- **Une seule réponse peint** (`ui/index.html:694`). Une requête périmée rend la main sans
+  toucher l'état, et son erreur non plus n'est pas dite — R11. Le même refus que pour la cible :
+  l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
   `/api/search`, exigée par `dry`. Un identifiant périmé est refusé, pas réinterprété.
 - **Jeton** : `BCryptGenRandom` (`src/win32.rs:216`), usage unique, dix minutes, lié au

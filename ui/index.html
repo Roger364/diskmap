@@ -675,6 +675,24 @@ function poll() {
 }
 
 // ---------- contenu ----------
+// Le sequencement des reponses. Deux requetes qui se croisent — deux reglages
+// touches coup sur coup, une navigation suivie d un re-tri, une recherche
+// remplacee par la liste du dossier — peuvent se repondre dans l ordre
+// INVERSE, et c est alors la REPONSE LA PLUS ANCIENNE qui peint l ecran.
+//
+// Le serveur, lui, n est pas en cause : `/api/tree?order=asc` et
+// `order=desc` rendent deux listes opposees, mesure le 28/09/2026. Ce que la
+// sonde a trouve, elle, c etait `tri=name` et `ordre=asc` dans l etat affiche,
+// et une liste rangee par nom DECROISSANT — le selecteur designait une chose,
+// l ecran en montrait une autre. Un ecran qui contredit son propre reglage
+// n est pas un detail d affichage, et dans un outil qui supprime il faut savoir
+// sur quoi on a trie avant de cocher.
+//
+// Un jeton par requete : seule la derniere lancee a le droit de peindre. Une
+// reponse perimee ne touche meme pas `cur` — sinon la suivante herite d un etat
+// deja melee, et l erreur devient invisible.
+let requete = 0;
+
 async function load(keepSel) {
   if (!cur.drive) return;
   // Changer de dossier vide la sélection ; re-trier ne doit pas la perdre.
@@ -699,12 +717,17 @@ async function load(keepSel) {
     drive: cur.drive, chemin: cur.chemin,
     sort: cur.sort, order: cur.order, limit: 3000
   });
+  const mien = ++requete;
   beginLoad();
   let res;
   try {
     res = await api('/api/tree?' + qs);
   } catch (e) {
     endLoad();
+    // Une requete plus recente a pris la main pendant celle-ci : c est son
+    // resultat qui decrit l ecran, et son erreur — pas celle-ci. La dire ferait
+    // remonter d un cran un dossier qui n a pas disparu.
+    if (mien !== requete) return;
     // 404 : le dossier demande n'existe plus — supprime pendant qu'on le
     // regardait. Le dire, et remonter d'un cran. NE PAS afficher un autre
     // dossier a sa place : c'est precisement le defaut du 27/09, et dans un
@@ -724,6 +747,10 @@ async function load(keepSel) {
     throw e;
   }
   endLoad();
+  // Meme raisonnement qu au-dessus : la reponse est arrivee, mais une plus
+  // recente a ete lancee depuis. La laisser peindre remplacerait un ordre
+  // frais par un ordre perime.
+  if (mien !== requete) return;
   cur.rows = res.rows;
   cur.gen = res.gen;
   cur.totalSize = res.total_size;
@@ -907,8 +934,12 @@ async function search() {
   // Le tri est demandé au serveur, qui sait désormais trier l'union. Sans ce
   // paramètre, `sort` et `order` étaient ignorés, et la liste
   // revenait toujours par taille — c'était le cas le 27/09.
+  const mien = ++requete;
   const res = await api(`/api/search?drive=${cur.drive}&q=${encodeURIComponent(q)}`
     + `&limit=800&sort=${cur.sort}&order=${cur.order}`);
+  // Meme sequencement que dans `load()` : quitter une recherche puis la relancer
+  // ne doit pas pouvoir laisser ses resultats par-dessus le dossier revenu.
+  if (mien !== requete) return;
   cur.rows = res.rows;
   cur.gen = res.gen;
   cur.parentSize = res.rows.reduce((s, r) => s + r.size, 0) || 1;

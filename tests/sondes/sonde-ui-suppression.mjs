@@ -484,6 +484,14 @@ const nomsLignes = () => page.$$eval('#rows tr .nm',
 // La collation du serveur : comparaison d octets. Voir pourquoi pas
 // `localeCompare` au verdict du re-rendu.
 const comparerNoms = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+// L ORDRE ATTENDU d une liste, pour un reglage donne. Meme collation que le
+// serveur — comparaison d octets — et pour la meme raison qu aux autres
+// verdicts : comparer avec une autre collation ne prouverait pas que le
+// reglage demande est celui qui est applique.
+const ordreAttenduPour = (noms, ordre) => {
+  const s = [...noms].sort(comparerNoms);
+  return ordre === 'desc' ? s.reverse() : s;
+};
 const etatTri = async () => page.evaluate(() => ({
   ordre: cur.order, tri: cur.sort, vue: cur.view, q: document.querySelector('#q').value,
   lignes: Array.from(document.querySelectorAll('#rows tr')).map((tr) => {
@@ -492,6 +500,50 @@ const etatTri = async () => page.evaluate(() => ({
     return `${nm ? nm.textContent : '?'}=${num ? num.textContent.trim() : '?'}`;
   }),
 }));
+// Ce qui a ete PEINT, et QUAND l ecran a cesse de bouger.
+//
+// Une liste peinte est un fait qui dure jusqu au rendu suivant : l ecran
+// affiche un ordre, et il y reste. Or deux gestes de tri coup sur coup — le
+// selecteur de tri, puis celui de sens — lancent DEUX requetes, et la plus
+// ancienne peut se repondre APRES la plus recente. C est alors elle qui peint.
+//
+// Mesure le 28/09/2026, et reproduite en local avec 2 s de latence sur
+// `/api/tree` : `tri=name` et `ordre=asc` dans l etat, une liste rangee par nom
+// DECROISSANT a l ecran, deux secondes apres la bonne. Lire tot evite le
+// defaut au lieu de le voir : la sonde lisait des la premiere peinture, donc son
+// vert ne prouvait rien sur la derniere.
+//
+// D ou deux outils : le recorder, et l attente que l ecran se taise. Le
+// raccord se voit en boucle : le rappel d un observateur de mutations s execute
+// apres la tache ENTIERE, donc la liste qu il lit est celle du rendu fini, et
+// jamais une ligne append par ligne.
+const armerPeints = () => page.evaluate(() => {
+  window.__peints = [];
+  window.__bouge = Date.now();
+  const lire = () => Array.from(document.querySelectorAll('#rows tr .nm'))
+    .map((n) => n.textContent);
+  const noter = () => {
+    window.__bouge = Date.now();
+    const noms = lire();
+    const d = window.__peints[window.__peints.length - 1];
+    if (d && d.tri === cur.sort && d.ordre === cur.order
+      && d.noms.join('|') === noms.join('|')) return;
+    window.__peints.push({ tri: cur.sort, ordre: cur.order, noms });
+  };
+  new MutationObserver(noter).observe(document.querySelector('#rows'),
+    { childList: true, subtree: true });
+  noter();
+});
+// L ecran se tait quand plus rien ne bouge depuis `ms`. La valeur est un
+// CHOIX, et il merite de l etre dit : une reponse perimee peut arriver apres le
+// dernier rendu utile, et une fenetre trop courte ne la verrait pas — son vert
+// ne prouverait alors que la rapidite de la machine, pas la justesse du code.
+// Deux secondes couvrent le service d un `/api/tree` sur un volume analyse, la
+// ou la course a ete mesuree.
+const attendreEcranStable = () => page.waitForFunction(
+  (m) => Date.now() - (window.__bouge || 0) > m, 2000,
+  { timeout: 60000, polling: 100 });
+
 // --- le tri agit-il PENDANT une recherche ? --------------------------------
 //
 // Le 27/09, le serveur IGNORAIT `sort` et `order` sur `/api/search`, et le
@@ -503,13 +555,34 @@ const etatTri = async () => page.evaluate(() => ({
 // resultats, dans l ORDRE DEMANDE. Le nombre de resultats n entre pas — il
 // depend du volume — mais l ordre, si.
 if (fichierTrouve) {
+  await armerPeints();
   await page.fill('#q', 'zztri-');
   await page.press('#q', 'Enter');
+  // On attend un fait LIE A LA RECHERCHE — des lignes qui portent le jeton de
+  // la requete — et non un COMPTE de lignes. Le listing du dossier reste a
+  // l ecran tant que le serveur n a pas repondu, et l interface ne rend les
+  // resultats qu a l arrivee : « au moins trois lignes » y est donc deja vrai,
+  // et l attente passait sur la liste d AVANT.
+  //
+  // C est ce que le runner a mesure le 27/09/2026, et sa mesure etait juste :
+  // huit lignes de diverse natures a « avant », trois noms `zztri-` a « apres ».
+  // Ce n etait pas un volume instable : c etait le dossier compare a sa propre
+  // recherche. Rejoue en local avec 4 s de latence sur `/api/search`, le verdict
+  // rougissait a l octet pres — et il avait raison de rougir.
+  // Le bloc suivant porte la meme lecon, et attend le fil d Ariane.
+  //
+  // Le critere est celui du verdict, donc : des LIGNES DE RESULTAT. Le support
+  // porte `zztri-` et rien d autre ne le porte sur la machine, donc aucune
+  // ligne de dossier ne peut satisfaire ce critere, et l attente ne peut plus
+  // passer trop tot.
   let trouve = true;
   try {
     await page.waitForFunction(
-      () => document.querySelectorAll('#rows tr .nm').length >= 3,
-      null, { timeout: 60000 });
+      (jeton) => {
+        const ns = Array.from(document.querySelectorAll('#rows tr .nm'));
+        return ns.length >= 3 && ns.every((n) => n.textContent.includes(jeton));
+      },
+      'zztri-', { timeout: 60000 });
   } catch { trouve = false; }
   const avantRecherche = await nomsLignes();
   verifier('la recherche de contrôle rend plusieurs lignes à ordonner',
@@ -543,6 +616,7 @@ if (fichierTrouve) {
     rechargée = true;
   } catch { /* rendu plus bas */ }
 
+  await attendreEcranStable();
   const apresRecherche = await nomsLignes();
   const memes = avantRecherche.length === apresRecherche.length
     && avantRecherche.every((n) => apresRecherche.includes(n));
@@ -632,6 +706,32 @@ if (fichierTrouve) {
   // alors que le serveur les range dans l autre sens. Comparer avec une autre
   // collation ne prouverait pas que le reglage demande est celui qui est
   // applique : elle prouverait qu on ne compare pas la meme chose.
+  await attendreEcranStable();
+  // L ORDRE DEMANDE N A JAMAIS ETE CONTRADIT. C est le seul verdict qui voie
+  // les peintures INTERMEDIAIRES : tous les autres lisent l ecran a un instant,
+  // et cet instant peut precedre la derniere reponse — c est exactement ce qui
+  // a laisse passer le defaut du 28/09/2026.
+  //
+  // Seules les peintures `par nom` sont verifiables ici : comparer un ordre par
+  // taille demanderait de relire les tailles, et un support qui ne prouve rien
+  // est pire que pas de support. Le nombre de peintures verifiables est lu et
+  // exige : sans lui, ce verdict pourrait passer sans avoir rien regarde.
+  const peints = await page.evaluate(() => window.__peints);
+  const verifiables = peints.filter((p) => p.tri === 'name');
+  const contradites = verifiables.filter((p) => p.noms.join('|')
+    !== ordreAttenduPour(p.noms, p.ordre).join('|'));
+  const conformes = verifiables
+    .map((p) => `${p.tri}/${p.ordre} ${JSON.stringify(p.noms.slice(0, 3))}`);
+  verifier('l’ordre demandé n’a jamais été contredit à l’écran',
+    verifiables.length > 0 && contradites.length === 0,
+    contradites.length
+      ? `CONTREDIT : l’écran a peint ${contradites[0].tri}/${contradites[0].ordre} `
+        + `en ${JSON.stringify(contradites[0].noms.slice(0, 6))} au lieu de `
+        + `${JSON.stringify(ordreAttenduPour(contradites[0].noms, contradites[0].ordre).slice(0, 6))} `
+        + `· ${peints.length} peinture(s) en tout`
+      : `${verifiables.length} peinture(s) par nom sur ${peints.length} en tout — `
+        + `toutes conformes : ${JSON.stringify(conformes)}`);
+
   const nomsApres = await nomsLignes();
   const memesLignes = avantNoms.length === nomsApres.length
     && avantNoms.every((n) => nomsApres.includes(n));

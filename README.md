@@ -313,6 +313,41 @@ passing. A probe now states its own support ("this folder has several rows to or
 before drawing a conclusion from it, and the UI probe's sort check is measured on four
 files whose names and sizes do not rank alike.
 
+### A wait is not a fact, and a reading is not a measurement either
+
+A browser is always showing *something*, so a wait that requires "at least three rows" is
+satisfied by the list that is **already there** — the folder listing still on screen while
+the server answers the query that is about to replace it. The wait returns, the probe
+captures the list from *before*, and the verdict measures a comparison nobody intended.
+
+The interface probe had this twice, in two blocks of one run. The first was fixed on
+27/09/2026 — the rupture test showed three red verdicts where there should have been one —
+and it now waits for the breadcrumb, since no real folder carries `« ` in its trail. The
+second waited on a row count, and it took a runner to expose it: run `36358128603` went
+red with `avant` holding **eight** rows of assorted names and `après` holding the three
+support files. Not a volume churning under the measurement — the folder, compared against
+its own search. `V:` never showed it: there, the search answers before the capture.
+
+Reproduced locally by putting 4 s of latency on `/api/search`, byte for byte the same
+measurement. The wait is now the verdict's own criterion — every row carries the query's
+token — and it holds at 4 s. With the guard put back, exactly one verdict goes red, and it
+is the right one.
+
+> A wait returns the list that is on screen. If that list is not the one the verdict is
+> about, the wait is the defect, and the red it causes is true.
+
+The same mistake one step later hides a **product** defect instead of causing a false red. The
+probe read the screen at the *first* re-render, so it reported a list that a slower response
+repainted two seconds later — the bug is `SECURITY.md` R11, two reloads that cross and the
+older one paints last. The probe's green proved nothing about the last response, and its red
+came down to chance of load: once in a full local run, never on a fast volume. It now records
+**every** painting and reads only after the screen has held still for two seconds, and the
+verdict that follows is the only one that sees the intermediate states. With the sequencing
+removed, that verdict names the contradiction; with it, 36/36.
+
+> Read the screen after it stops moving, and read it more than once. A probe that samples one
+> instant measures the speed of the machine, not the behaviour of the code.
+
 ### What makes a volume disposable
 
 The harness refuses to start, before opening a server or analysing anything,
