@@ -59,11 +59,20 @@ const ATTENDU = {
     'ui/index.html:1056': 'relancer en administrateur',
     'ui/index.html:1067': 'const cause = dr ?',
     'tests/sondes/lancer.mjs:553': 'const connus',
+    'tests/sondes/lancer.mjs:753': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:801': 'aucun decompte ecrit',
+    'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
+    'tests/sondes/sonde-generation.mjs:131': 'verifs.filter(Boolean).length',
     'tests/sondes/sonde-ui-suppression.mjs:520': 'const armerPeints',
     'tests/sondes/sonde-ui-suppression.mjs:543': 'const attendreEcranStable',
     'tests/sondes/sonde-ui-suppression.mjs:725': 'jamais été contredit',
   },
-  'README.md': {},
+  'README.md': {
+    'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
+    'tests/sondes/sonde-generation.mjs:131': 'verifs.filter(Boolean).length',
+    'tests/sondes/lancer.mjs:753': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:801': 'aucun decompte ecrit',
+  },
 };
 
 const verifs = [], echecs = [];

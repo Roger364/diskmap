@@ -348,6 +348,46 @@ removed, that verdict names the contradiction; with it, 36/36.
 > Read the screen after it stops moving, and read it more than once. A probe that samples one
 > instant measures the speed of the machine, not the behaviour of the code.
 
+### A probe that counts nothing is not green, it is absent
+
+One probe had been printing this on every green run since it was written:
+
+```
+vert   generation      SANS SYNTHESE
+```
+
+`SANS SYNTHESE` — *no summary*. The word was accurate: `sonde-generation.mjs` never wrote a
+count. The other nineteen go through a shared `verifier()` that keeps it. This one kept an
+array of **failures** and never a total: five checks, all performed, all correct, none
+counted.
+
+What made it survive so long is worth more than the bug. `SANS SYNTHESE` had been introduced
+on purpose, to make the symptom visible — and it did its job. It just happened to narrow the
+gap instead of opening it. A missing summary and a **dead** probe then both exited `0`, and
+both printed a dash. The word reported; nothing failed; so nothing could ever be fixed.
+
+> A probe that exits `0` without having written its count has measured nothing. That is a
+> failure, not a score — and it differs from a dead probe only because it had the courtesy
+> to speak.
+
+The fix has to be in two places, or it does not hold. The probe keeps a count
+(`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:131`).
+The harness refuses the silence: no count means the exit code is forced to `1`
+(`tests/sondes/lancer.mjs:753`) and the reason is printed (`tests/sondes/lancer.mjs:801`).
+Without the second half, the first would have prevented nothing — the next summary-less probe
+would have gone green again.
+
+Both directions are measured. Summary deleted, guard in place: `ROUGE generation SANS
+SYNTHESE`, run exits `1`, and the log says *no count written* while displaying the five `ok`
+lines — which is the whole point. One condition falsified instead (`409` → `418`): `4/5
+checks green`, exit `1`, and the measurement it quotes is the real one (`HTTP 409`), so the
+count moves rather than sitting there as a literal. Both restored: `5/5`, then `20/20` with
+not one `SANS SYNTHESE` left in the log.
+
+What it does **not** cover: a probe that writes its count *before* its checks would still
+pass. The two-way reference check has the same blind spot. That is the obvious next step,
+and it is not done.
+
 ### What makes a volume disposable
 
 The harness refuses to start, before opening a server or analysing anything,

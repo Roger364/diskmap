@@ -17,7 +17,7 @@
 // La sonde ne supprime RIEN par l'application : que des `dry`. Un défaut qui se
 // démontre sans rien détruire se démontre plus souvent.
 //
-// Usage : node sonde-id-perime.mjs http://127.0.0.1:8806/ G
+// Usage : node sonde-generation.mjs http://127.0.0.1:8990/ G
 import fs from 'fs';
 
 import { dossier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
@@ -27,7 +27,18 @@ const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
 const NOM = 'perime';
 const DOSSIER = dossier(VOL, NOM);
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
-const rouges = [];
+
+// Chaque vérification passe par ICI. Pas seulement pour la mise en forme : une
+// sonde qui ne tient pas son décompte sort en 0 avec un résumé illisible, et
+// le harnais affiche « SANS SYNTHESE » — la même ligne qu'une sonde MORTE, pour
+// vingt-sept vérifications faites. C'est ce qu'affichait celle-ci depuis son
+// écriture : un vert muet, indiscernable d'un test qui ne tourne pas.
+const verifs = [], echecs = [];
+function verifier(nom, cond, mesure) {
+  const ok = !!cond; verifs.push(ok);
+  if (!ok) echecs.push(`${nom} — mesuré : ${mesure}`);
+  console.log(`${ok ? 'ok   ' : 'ROUGE'} ${nom}${ok ? '' : `\n      mesuré : ${mesure}`}`);
+}
 
 const post = (c, corps) => fetch(BASE + c, { method: 'POST', headers: H, body: JSON.stringify(corps) })
   .then(async r => ({ status: r.status, texte: await r.text() }));
@@ -60,7 +71,7 @@ await repos();
 const A = await listing();
 const idP1 = A.ids.get('p1.txt');
 console.log(`instantané A (génération ${A.gen}) : p1.txt porte le sélecteur ${idP1}`);
-if (typeof A.gen !== 'number') { console.log('ROUGE la réponse /api/tree ne porte aucune génération'); rouges.push('génération absente'); }
+verifier('la réponse /api/tree porte une génération', typeof A.gen === 'number', `gen=${JSON.stringify(A.gen)}`);
 
 // --- Le disque change, et une ré-analyse rebase les positions ---------------
 fs.unlinkSync(`${DOSSIER}/p1.txt`);
@@ -77,24 +88,14 @@ console.log('');
 const r1 = await post('/api/delete', { drive: VOL, items: [idP1], mode: 'dry', gen: A.gen });
 console.log(`1. aperçu avec la génération ${A.gen} (périmée) : HTTP ${r1.status}`);
 console.log(`   ${r1.texte.slice(0, 150)}`);
-if (r1.status === 409) {
-  console.log('ok    refusé, et le motif nomme la cause');
-} else {
-  console.log('ROUGE un aperçu a été produit sur des positions périmées');
-  rouges.push('positions périmées acceptées');
-}
+verifier('un aperçu sur des positions périmées est refusé, et le motif nomme la cause', r1.status === 409, `HTTP ${r1.status}`);
 
 // --- 2. Sans génération du tout : doit être refusé aussi --------------------
 const r2 = await post('/api/delete', { drive: VOL, items: [idP1], mode: 'dry' });
 console.log('');
 console.log(`2. aperçu sans génération : HTTP ${r2.status}`);
 console.log(`   ${r2.texte.slice(0, 120)}`);
-if (r2.status === 400) {
-  console.log('ok    refusé : on ne peut pas supprimer sans dire de quel index on parle');
-} else {
-  console.log('ROUGE un aperçu a été produit sans génération');
-  rouges.push('génération facultative');
-}
+verifier('un aperçu sans génération est refusé : on ne peut pas supprimer sans dire de quel index on parle', r2.status === 400, `HTTP ${r2.status}`);
 
 // --- 3. Génération CORRECTE : l'aperçu doit viser le bon fichier ------------
 const idP2 = B.ids.get('p2.txt');
@@ -104,12 +105,8 @@ const montre = (a3.items || []).map(i => i.path.replace(/\\/g, '/'));
 console.log('');
 console.log(`3. aperçu avec la génération ${B.gen} pour le sélecteur de p2.txt : HTTP ${r3.status}`);
 for (const p of montre) console.log(`   ${p}`);
-if (montre.some(p => p.endsWith('/p2.txt'))) {
-  console.log('ok    l’aperçu vise bien le fichier dont le sélecteur a été lu');
-} else {
-  console.log('ROUGE l’aperçu ne vise pas p2.txt');
-  rouges.push('aperçu hors cible');
-}
+verifier('l’aperçu vise bien le fichier dont le sélecteur a été lu',
+  montre.some(p => p.endsWith('/p2.txt')), montre.join(', ') || '(aucun élément)');
 
 // --- 4. Sélecteur hors bornes : doit être SIGNALÉ, pas oublié --------------
 const nFiles = (await (await fetch(`${BASE}/api/state`)).json()).drives.find(d => d.letter === VOL)?.n_files ?? 0;
@@ -126,13 +123,14 @@ const a4 = JSON.parse(r4.texte);
 console.log('');
 console.log(`4. aperçu demandé pour 2 éléments dont un hors bornes (sel=${trop}) : ${(a4.items || []).length} élément(s)`);
 for (const i of a4.items || []) console.log(`   ${i.path}   blocked=${i.blocked} raison="${i.reason}"`);
-if ((a4.items || []).length === 2 && a4.blocked === 1) {
-  console.log('ok    l’élément hors bornes est présent, marqué bloqué, et compté');
-} else {
-  console.log(`ROUGE l’élément hors bornes a disparu sans un mot (items=${(a4.items || []).length}, blocked=${a4.blocked})`);
-  rouges.push('oubli silencieux');
-}
+verifier('l’élément hors bornes est présent, marqué bloqué, et compté',
+  (a4.items || []).length === 2 && a4.blocked === 1,
+  `items=${(a4.items || []).length}, blocked=${a4.blocked}`);
 
 console.log('');
-console.log(rouges.length === 0 ? 'vert  aucun défaut' : `ROUGE ${rouges.length} défaut(s) : ${rouges.join(', ')}`);
-process.exitCode = rouges.length === 0 ? 0 : 1;
+console.log(`${verifs.filter(Boolean).length}/${verifs.length} vérifications vertes`);
+if (echecs.length) {
+  console.log(`${echecs.length} échec(s)`);
+  for (const e of echecs) console.log(`   - ${e}`);
+  process.exitCode = 1;
+}

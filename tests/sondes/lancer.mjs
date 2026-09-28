@@ -743,10 +743,23 @@ function lireResidus(racines, volume) {
     // qu'elles venaient de faire vingt-sept vérifications. Un résumé qu'on ne
     // sait pas lire ne dit pas ce qu'il a couvert.
     const compte = [...sortie.tout.matchAll(/(\d+)\/(\d+)\s+v[ée]rifications/g)].pop();
+    // Une sonde qui sort en 0 SANS avoir écrit son décompte n'a rien mesuré —
+    // et la laisser verte est le pire des verdicts, parce qu'elle ne se
+    // distingue d'une sonde MORTE que par un mot dans la colonne de droite.
+    // `generation` est restée ainsi depuis son écriture : cinq vérifications,
+    // toutes faites, toutes justes, jamais comptées, jamais lues. Le mot
+    // signalait le symptôme depuis des mois, sans rien faire échouer : rien ne
+    // pouvait donc le corriger. Une sonde muette est un échec, pas une note.
+    const muette = !compte;
+    const code = muette && sortie.code === 0 ? 1 : sortie.code;
     const resume = compte ? `${compte[1]}/${compte[2]}` : 'SANS SYNTHESE';
-    const etatMot = sortie.code === 0 ? 'vert ' : sortie.code === 2 ? 'PAS PU' : 'ROUGE';
+    // Le code forcé NE REMPLACE PAS les deux autres verdicts. Une sonde qui n a
+    // pas pu tourner — volume absent, prérequis manquant — sort en 2 sans
+    // écrire de résumé, et doit rester « PAS PU » : la confondre avec un produit
+    // en défaut enverrait chercher le défaut du mauvais côté.
+    const etatMot = code === 0 ? 'vert ' : code === 2 ? 'PAS PU' : 'ROUGE';
     console.log(`  ${etatMot}  ${s.nom.padEnd(15)} ${resume}`);
-    if (sortie.code !== 0) {
+    if (code !== 0) {
       // Ce que la sonde a DIT, pas seulement les lignes qui ressemblent a un
       // motif. Le filtre d’avant guts le cas le plus difficile : une sonde qui
       // PLANTE n’ecrit aucun motif, elle sort en 1 — et le journal de la CI disait
@@ -779,9 +792,18 @@ function lireResidus(racines, volume) {
         console.log(`           verdicts rouges (${uniques.length > 14 ? '14 premiers' : 'tous'}) :`);
         for (const l of uniques) console.log(`           ${l}`);
       }
+      // Une sonde muette n aura aucun « ROUGE » à montrer : ce qu elle a fait
+      // est justement invisible. Sans ce mot, le journal afficherait un rouge
+      // muet, et le même défaut qu elle est censée signaler. Réservé au cas
+      // forcé : une sonde « PAS PU » n a pas de synthèse parce qu elle n a rien
+      // fait, et son raison est déjà plus haut.
+      if (muette && code === 1) {
+        console.log('           aucun decompte ecrit : la sonde n a rien rapporte, donc rien ne prouve');
+        console.log('           qu elle a verifie quoi que ce soit.');
+      }
       for (const l of lignes.slice(-24)) console.log(`           ${l}`);
     }
-    resultats.push({ nom: s.nom, code: sortie.code, resume });
+    resultats.push({ nom: s.nom, code, resume });
     if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {
       const nouveaux = filet.incidents.slice(incidentsAvant);
       console.log(`           FILET  ${nouveaux.length} incident(s) pendant « ${s.nom} »`);

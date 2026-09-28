@@ -584,6 +584,56 @@ ne prouverait alors que la rapidité de la machine. Deux secondes couvrent le se
 
 ---
 
+### R12 — Une sonde qui ne compte pas ses vérifications passait au vert · **Haute** · *corrigé le 28/09/2026*
+
+Ni l'interface, ni le serveur : **le dispositif de mesure lui-même.** Même famille que R10 et R11 —
+un test qui ne prouve rien vaut moins qu'un test absent — mais vue d'un côté qu'aucune des deux ne
+couvre : ce qu'il advient quand la sonde, et non le produit, ment.
+
+**Mesuré, sur le runner, le 28/09/2026.** Le harnais affichait, sur **tous** les runs verts depuis
+des semaines :
+
+```
+vert   generation      SANS SYNTHESE
+```
+
+Le mot était juste : `sonde-generation.mjs` n'écrivait aucun décompte. Elle ne s'appuyait pas sur
+le helper des dix-neuf autres sondes, mais sur un tableau `rouges` qui comptait les **échecs** —
+et jamais le nombre total. Cinq vérifications, toutes faites, toutes justes, jamais comptées.
+
+**Pourquoi c'est resté vert si longtemps.** Le mot `SANS SYNTHESE` avait été introduit exprès pour
+rendre le symptôme visible — et il rendait service. Le harnais distinguait alors deux cas par un
+tiret : un résumé absent, et une sonde **morte**. Rendre le premier visible avait rapproché les
+deux, sans les séparer : un mort et un muet sortaient tous deux en `0`. Le mot signalait, rien ne
+faisait échouer, donc rien ne pouvait être corrigé.
+
+**La règle :**
+
+> Une sonde qui sort en `0` sans avoir écrit son décompte n'a rien mesuré. C'est un échec, pas une
+> note — et elle ne se distingue d'une sonde morte que parce qu'elle a eu la politesse de parler.
+
+**Le correctif, en deux morceaux qui se répondent.** La sonde passe par un `verifier()` commun
+(`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
+(`tests/sondes/sonde-generation.mjs:131`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
+été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
+(`tests/sondes/lancer.mjs:753`) et le motif est écrit (`tests/sondes/lancer.mjs:801`). Sans ce
+second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
+verte.
+
+**Épreuves, les deux sens.** Résumé supprimé de la sonde, garde en place : `ROUGE generation
+SANS SYNTHESE`, run en `1`, et le journal dit *« aucun décompte écrit »* tout en montrant les cinq
+`ok` — la démonstration même de ce que le mot ne prouvait pas. Une condition faussée (`409` → `418`)
+au lieu du résumé retiré : `4/5 vérifications vertes`, code `1`, et la mesure citée est la vraie
+(`HTTP 409`) — le décompte bouge, ce n'est pas une chaîne en dur. Résumé et garde remis : `5/5`,
+puis `20/20 sondes vertes` sans un seul `SANS SYNTHESE` au journal.
+
+**Ce que cette règle ne couvre pas.** Elle dit qu'une sonde muette est rouge ; elle ne dit pas
+qu'une sonde **muette à moitié** l'est. Une sonde qui écrit son résumé avant ses vérifications
+passerait quand même. Le contrôle à double sens de `verifier-references.mjs` a la même limite, et
+c'est la suite évidente.
+
+---
+
 ## 6. Ce qui est solide
 
 Le travail de durcissement est de bon niveau ; ces points ne doivent pas être perdus.
@@ -603,6 +653,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:753`), pas verte par défaut : le
+  harnais exige un décompte écrit. C'est le seul garde-fou qui couvre la sonde elle-même —
+  R12. Les vingt sondes en tiennent un.
 - **`\\?\` interdit à l'effacement** (`src/win32.rs:242`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
 - **La réversibilité se constate**, elle ne se déduit pas du code de retour : les fiches `$I`
@@ -650,6 +703,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **16** | Le harnais refuse un volume de travail qui n'est pas jetable, mesure avant de demarrer quoi que ce soit | `tests/sondes/config.mjs`, `lancer.mjs` | **fait** — 18/18, test qui echoue si on retire l'appel |
 | **17** | Le binaire emporte sa provenance : commit, etat de l'arbre a la compilation, agent qui compile — parce qu'un binaire du 26/09 etait inexpliquable | `build.rs`, `src/main.rs` | **fait** — `diskmap --version`, arbre sale signale ; absent de git, dit « commit-inconnu » plutot qu'invente |
 | **18** | Un lot qui touche un dossier dont la perte n'est pas anodine — `.git`, `.ssh`, `AppData` comme `Images` ou `Documents` — doit le nommer, dossier par dossier, avant d'agir ; et le harnais annonce les residus qu'il trouve sur le volume de travail | `src/main.rs` (`dossiers_a_nommer`), `ui/index.html`, `tests/sondes/sonde-dossiers-a-nommer.mjs`, `sonde-ui-suppression.mjs` | **fait** — 27/27 en sonde, 21/21 dans un vrai navigateur, 14/19 (rouge) quand on neutralise la garde |
+| **19** | Une sonde qui sort en 0 sans avoir ecrit son decompte est un echec, pas un vert : elle ne se distingue d'une sonde morte que par une etiquette | `tests/sondes/sonde-generation.mjs`, `tests/sondes/lancer.mjs` | **fait** — 5/5 et lisible au journal ; resume retire, ROUGE et run en 1 |
 
 **Ce que les runs sur GitHub ont révélé — et qui ne concerne pas
 l'application.** Cinq échecs successifs, tous dans le harnais, tous masqués
