@@ -38,6 +38,7 @@ const ATTENDU = {
     'src/main.rs:898': 'X-Diskmap absent',
     'src/main.rs:1078': 'fn dossier_de',
     'src/main.rs:198': 'fn decider_le_navigateur',
+    'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'src/main.rs:326': 'decider_le_navigateur(&args, std::io::stdin().is_terminal())',
     'src/main.rs:331': 'Navigateur  : non ouvert',
     'tests/sondes/lancer.mjs:336': "'--port', String(port), '--no-browser'",
@@ -74,6 +75,7 @@ const ATTENDU = {
     'tests/sondes/sonde-ui-suppression.mjs:725': 'jamais été contredit',
   },
   'README.md': {
+    'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:131': 'verifs.filter(Boolean).length',
     'tests/sondes/lancer.mjs:753': 'const muette = !compte',

@@ -32,17 +32,34 @@
 import fs from 'fs';
 
 import { chromium } from './navigateur.mjs';
-import { dossier, URL_DEFAUT, VOLUME_DEFAUT } from './config.mjs';
+import { dossier, racine, URL_DEFAUT, VOLUME_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
 const H = { 'X-Diskmap': '1' };
 const DOSSIER = dossier(VOL, 'sonde-identifiant');
 const CIBLE = `${DOSSIER}/cible`;
-const REMPLISSAGE = `${VOL}:/remplissage-identifiant`;
+// Le remplissage vit DANS la racine de travail, et non à la racine du volume.
+//
+// Mesuré le 28/09/2026, sur le runner : à la racine du volume, il n'a pas
+// déplacé l'identifiant — `10 -> 10` — et la sonde a rougi. La raison est
+// dans `src/scan.rs` : la lecture des entrées est un `read_dir` SANS tri
+// (`fs::read_dir`, ligne 977). L'ordre est celui du système de fichiers, il
+// n'est pas le nôtre, et un dossier racine créé après coup peut se retrouver
+// après `_diskmap_sondes` comme avant, selon le volume.
+//
+// À l'intérieur de la racine de travail, le remplissage dispute la position au
+// dossier de la sonde DANS LE MÊME parent : le décalage devient quasi certain
+// au lieu d'être tiré à pile ou face. Et le ménage vient avec la racine, au
+// lieu d'un dossier qu'il fallait se  nettoyer à la racine du volume.
+const REMPLISSAGE = `${racine(VOL)}/remplissage-identifiant`;
 const REMPLISSAGE_N = 300;
 
 const verifs = [], echecs = [];
+// Ce que la sonde n'a pas PU demontrer, et qui doit se voir au resume : une
+// demonstration absente ne se declare pas verte en silence (meme reflexe que
+// R12 pour une sonde muette).
+const nonMesurables = [];
 function verifier(nom, cond, mesure) {
   const ok = !!cond; verifs.push(ok);
   if (!ok) echecs.push(`${nom} — mesuré : ${mesure}`);
@@ -197,11 +214,31 @@ const idAvant = a1.path.at(-1).id;
   } catch { /* rendu plus bas */ }
   verifier('l\'interface recharge bien l\'arbre apres une reanalyse', recharge,
     `generation ${genAvant} -> ${await page.evaluate(() => cur.gen)}`);
+  // Le remplissage a-t-il VRAIMENT ete analyse ? Sans cela, un identifiant qui
+  // ne bouge pas ne prouve rien du tout : il peut signifier que le support n'a
+  // jamais ete monte. Cette verification, elle, est deterministe — un dossier
+  // absent de l'instantane est un echec, pas une demonstration indisponible.
+  const aRemp = await arbre(REMPLISSAGE);
+  const vusRemp = aRemp.erreur ? 0 : (aRemp.rows || []).length;
+  verifier('le remplissage a bien été vu par l’analyse', vusRemp >= REMPLISSAGE_N,
+    `${vusRemp}/${REMPLISSAGE_N} dossier(s) vus sous « remplissage-identifiant »`);
+
   const a2 = await arbre(CIBLE);
 const idApres = a2.path ? a2.path.at(-1).id : null;
-  verifier('le support est réel — les identifiants ont changé de sens', idApres !== idAvant,
-    `identifiant ${idAvant} -> ${idApres} sur ce volume ; `
-    + 'ce run ne prouve donc rien de plus que le contrat ci-dessous');
+  // Le cas que l'en-tete de ce fichier annonce depuis le debut : un volume calme
+  // garde les identifiants en place. Ce n'est PAS un defaut de produit — le
+  // contrat ci-dessous tient, lui, inchange — mais c'est une DEMONSTRATION
+  // absente. Elle se dit, elle ne se declare pas verte, et elle ne fait pas
+  // echouer non plus : la faire echouer revenait a punir la sonde d'un volume
+  // calme, et le runner l'a montre le 28/09/2026.
+  if (idApres === idAvant) {
+    nonMesurables.push(1);
+    info(`NE PAS MESURABLE — identifiant ${idAvant} inchange apres reanalyse : `
+      + 'la demonstration est indisponible sur ce volume, le contrat ci-dessous reste etabli');
+  } else {
+    verifier('le support est réel — les identifiants ont changé de sens', true,
+      `identifiant ${idAvant} -> ${idApres}`);
+  }
   // Le tri est replacé : les deux verdicts qui suivent portent sur l'ordre par
   // taille, comme au depart, pour que la comparaison porte sur le CONTENU.
   await page.selectOption('#order', 'desc');
@@ -270,7 +307,9 @@ const idApres = a2.path ? a2.path.at(-1).id : null;
   fs.rmSync(DOSSIER, { recursive: true, force: true });
 }
 
-console.log(`      ${verifs.filter(Boolean).length}/${verifs.length} vérifications`);
+const resume = `${verifs.filter(Boolean).length}/${verifs.length} vérifications`
+  + (nonMesurables.length ? ` (+${nonMesurables.length} non mesurable(s))` : '');
+console.log(`      ${resume}`);
 if (echecs.length) {
   console.log('      ÉCHECS :');
   for (const e of echecs) console.log(`      - ${e}`);

@@ -526,7 +526,37 @@ silence par la racine : les deux verdicts « dossier disparu » rougissent, et l
 montre l'application à la racine, sans un mot. Tests Rust : `dossier_de` retrouve le même
 dossier dans deux instantanés dont les numéros sont redistribués, refuse un chemin absent
 au lieu de désigner un autre, ignore la casse et les deux séparateurs. Sonde bout en bout :
-`sonde-identifiant.mjs`, 12/12 sur le runner comme en local.
+`sonde-identifiant.mjs`, 13/13 sur le runner comme en local.
+
+**Ce que la sonde de R10 a coûté au run suivant, et qui vaut autant.** Le 28/09/2026, le
+runner a rendu `identifiant` **rouge** : `identifiant 10 -> 10 sur ce volume`. Ce n'était pas un
+retour en arrière de R10 — les onze autres verdicts passaient, dont « un dossier disparu est
+DIT, pas remplacé » — mais une **démonstration** devenue impossible. La sonde prétend ne pas que
+l'identifiant bouge : elle exige que son support soit réel, parce qu'une preuve qui ne se prouve
+pas n'est pas une preuve.
+
+**La cause est dans le scanneur, et elle est irréductible.** `src/scan.rs` lit les entrées par
+`fs::read_dir` **sans les trier** (`src/scan.rs:977`). L'ordre est celui du système de fichiers, il n'est
+pas le nôtre. Le remplissage de la sonde vivait à la racine du volume, donc en frère de la racine
+de travail : NTFS pouvait l'énumérer avant ou après, et ce jour-là c'était après — les
+identifiants ne bougeaient pas. Sur un volume calme, cette sonde ne pouvait donc pas prouver
+ce qu'elle prétend, et le runner l'a montré en la faisant **rouge** — punir la sonde d'un volume
+calme n'est pas un test, c'est un tirage à pile ou face.
+
+**Le correctif, en deux temps.** Le remplissage passe **dans** la racine de travail, où il dispute
+la position au dossier de la sonde dans le même parent : le décalage devient quasi certain, et le
+ménage vient avec la racine. Puis le support est **vérifié** avant toute conclusion — le
+remplissage a-t-il été vu par l'analyse ? Cette vérification-là est déterministe : un dossier
+absent de l'instantané est un **échec**, pas une démonstration indisponible. Enfin, si le support
+est bien là et que l'identifiant ne bouge quand même pas, la sonde **le dit** et le porte à son
+résumé (`+1 non mesurable`), au lieu de rougir. Elle ne se déclare pas verte en silence non plus :
+c'est le même refus que R12, appliqué à une démonstration.
+
+**Épreuves.** Remplissage supprimé avant la réanalyse : `ROUGE le remplissage a bien été vu par
+l'analyse`, mesuré `0/300`, run en `1` — et la note de démonstration indisponible sort **en même
+temps**, ce qui prouve les deux chemins d'un coup. Tout remis : `13/13`. Le principe est celui
+qu'un test doit honorer dans les deux sens : ne pas passer toujours, et ne pas échouer pour une
+raison qui n'est pas celle qu'il mesure.
 
 **Un détail que la mesure a refusé, et qui vaut d'être écrit.** Sur le volume jetable de
 511 Mio, l'analyse est finie avant que la veille de quatre secondes ne la voie :

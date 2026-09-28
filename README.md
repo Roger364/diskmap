@@ -434,6 +434,37 @@ counted, and the count would call it false when it is true. That is a refusal in
 direction: a verdict the harness cannot read is a verdict it cannot check. But it has to be
 known, and said. The two-way reference check has the same blind spot, and is next on the list.
 
+### A verdict that depends on something you do not control is not a verdict
+
+On 28/09/2026 the runner came back with `identifiant` **red**: `identifiant 10 -> 10 on this
+volume`. Eleven other verdicts passed, including the one that mattered — *a folder that is gone is
+said, not replaced*. What failed was a **demonstration**, not the contract.
+
+`sonde-identifiant.mjs` does not merely claim that an identifier is a position; it insists its
+support is real, because a proof that does not prove itself is not a proof. The support was 300
+folders created to push the numbers around. The root cause is in the scanner: it reads directory
+entries with `fs::read_dir` and **does not sort them** (`src/scan.rs:977`). The order belongs to
+the filesystem, not to us, and the filler sat at the volume root as a sibling of the working root
+— so NTFS could enumerate it before or after, and that day it came after. The numbers did not
+move. On a calm volume the probe could not demonstrate what it claimed, and the runner showed it
+by failing: punishing a probe for a calm volume is not a test, it is a coin toss.
+
+Two changes, in this order. The filler moved **inside** the working root, where it competes for a
+position with the probe's own folder in the *same parent* — the shift becomes near-certain instead
+of drawn, and the cleanup comes with the root. Then the support is **verified** before anything is
+concluded: *was the filler seen by the scan?* That check is deterministic, and a folder missing
+from the snapshot is a genuine **red**, not an unavailable demonstration. And if the support is
+there and the number still does not move, the probe **says so** and carries it in its summary
+(`+1 not measurable`) instead of going red — without claiming a green it did not earn either. Same
+refusal as the silence guard, applied to a demonstration.
+
+The rupture test removed the filler just before the rescan: `the filler was seen by the scan`
+went red, measured `0/300`, run exited `1` — and the unavailable-demonstration note fired **at the
+same time**, which proved both paths at once. Restored: `13/13`.
+
+> Do not write a verdict whose outcome is up to the volume, the clock, or the filesystem. Verify
+> its support, and when the support is missing, say so out loud instead of guessing.
+
 ### What makes a volume disposable
 
 The harness refuses to start, before opening a server or analysing anything,
