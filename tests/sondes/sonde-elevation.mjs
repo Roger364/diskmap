@@ -86,9 +86,9 @@ fs.rmSync(DOSSIER, { recursive: true, force: true });
 fs.mkdirSync(DOSSIER, { recursive: true });
 fs.writeFileSync(`${DOSSIER}/cible.txt`, `cible-elevee-${Date.now()}\n`);
 await post(`/api/scan/${VOL}`, {});
-const indexe = await attendreFichier(BASE, VOL, 'cible.txt');
+const indexe = await attendreFichier(BASE, VOL, DOSSIER, 'cible.txt');
 verifier('le lot d’essai est dans l’instantané', indexe,
-  `« cible.txt » n’apparaît pas dans l’index de ${VOL}`);
+  `« cible.txt » absent de « ${DOSSIER} » : rien n’a été indexé, donc rien n’a été éprouvé`);
 
 // La descente par l'API, pour un SECOND avis indépendant de ce que l'interface a
 // reçu. C'est la seule façon de mesurer l'accord entre les deux : l'interface

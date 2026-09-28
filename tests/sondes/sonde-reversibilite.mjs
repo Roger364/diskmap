@@ -25,7 +25,7 @@
 //         node sonde-reversibilite.mjs http://127.0.0.1:9004/ G   (doit tenir aussi)
 import fs from 'fs';
 
-import { dossier, corbeille, journal, estEleve, aTaper,
+import { dossier, corbeille, journal, estEleve, aTaper, attendreFichier,
   VOLUME_SANS_CORBEILLE, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
@@ -66,14 +66,6 @@ const post = (chemin, corps) => fetch(BASE + chemin, {
   method: 'POST', headers: H, body: JSON.stringify(corps),
 }).then(async r => ({ status: r.status, texte: await r.text() }));
 
-async function attendreParcours() {
-  for (let i = 0; i < 300; i++) {
-    const s = await (await fetch(`${BASE}/api/state`)).json();
-    if (!s.scanning) return;
-    await new Promise(r => setTimeout(r, 300));
-  }
-}
-
 // L'état du disque, établi SANS l'application : on cherche le sceau par son
 // contenu. Un décompte ne dirait pas que c'est bien CE fichier.
 function chercherSceau(racine, profondeur = 0) {
@@ -100,19 +92,29 @@ fs.writeFileSync(FICHIER, CONTENU);
 verifier('le fichier est créé', fs.existsSync(FICHIER), 'absent');
 
 await post(`/api/scan/${VOL}`, {});
-await attendreParcours();
 
-const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json())
-  .rows.find(r => r.name === NOM);
-const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=100`)).json();
+// Cette sonde gardait sa propre attente : après `POST /api/scan`, `scanning`
+// peut encore être faux avant le départ du travail (R15). La boucle retournait
+// alors sur l'ancien instantané et cherchait le dossier par nom. Le run complet
+// `run-r16` l'a mesuré sur E: : `sans-corbeille` sort en `SANS SYNTHESE`,
+// `sel=null`, tandis que la même sonde sur G: passe. Cela incrimine l'attente,
+// pas le produit ; le nom n'était pas non plus une adresse aussi forte qu'un
+// chemin. On ne prétend pas avoir isolé la cause de chaque `null` : on retire
+// les deux hypothèses et attend notre fichier dans notre dossier.
+//
+// Après cette migration, `sans-corbeille` passe 10/10 dans `run-r16b` et dans
+// le run complet `run-r16e` (21/21 sondes vertes) ; `reversibilite` passe 8/8.
+const publication = await attendreFichier(BASE, VOL, DOSSIER, 'cible.txt');
 // `sel`, pas `id` : le sélecteur porte le type (bit de type — voir
 // `scan::BIT_FICHIER`), et c'est lui que l'interface renvoie.
-const sel = t.rows.find(r => r.name === 'cible.txt')?.sel ?? null;
+const sel = publication?.ligne.sel ?? null;
 // La génération accompagne toujours le sélecteur : un sélecteur est une
 // position, et `dry` refuse désormais une liste qui ne dit pas de quel
 // instantané elle vient (mesuré le 26/09/2026 — voir `Snapshot::gen`).
-const gen = t.gen;
-verifier('la cible est dans l’instantané', sel != null, `sel=${sel}`);
+const gen = publication?.arbre.gen ?? null;
+verifier('la cible est dans l’instantané', sel != null,
+  publication ? `sel=${sel}`
+    : `« cible.txt » absent de « ${DOSSIER} » : rien n’a été indexé, donc rien n’a été éprouvé`);
 if (sel == null) process.exit(1);
 
 // -------------------------------------------------- l'aperçu, puis la corbeille

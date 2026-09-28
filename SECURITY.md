@@ -1019,9 +1019,12 @@ la sonde le dit. Elle ne lève plus de `TypeError`. C'est la même famille que R
 bout : une sonde qui plante n'écrit pas de résumé, donc elle sort en `SANS SYNTHESE` — la ligne
 exactement identique à celle d'une sonde morte.
 
-`attendreFichier`, dans `config.mjs`, attendait déjà par le fait. L attente par le fait est devenue
-`attendreEntree`, et `attendreFichier` n'en est plus qu'un cas particulier : un seul endroit où
-la règle est écrite, au lieu de deux.
+À l'étape R15, l'attente par le fait avait été factorisée entre une recherche par nom
+(`attendreEntree`) et deux helpers de fichier (`attendreFichier`, `attendreFichierDans`). R16 a
+supprimé `attendreEntree` et `attendreFichierDans`, et changé la signature d'`attendreFichier`
+(de volume + nom à volume + chemin du dossier + nom). L'API actuelle garde `attendreDossier` et
+`attendreFichier`, toutes deux adressées par le chemin du dossier ; le nom du fichier n'est
+recherché qu'à l'intérieur du dossier ciblé.
 
 **Mesuré, sur le run complet, avant et après.**
 
@@ -1046,12 +1049,64 @@ chemin, qui est unique par construction.
 
 Un nom n'est une adresse que tant qu'il est rare. Un chemin en est une.
 
-**Ce que cette famille de règles ne couvre toujours pas.** Un nom n'est une adresse que tant
-qu'il est rare : `attendreEntree` — qui cherche par nom — reste en place pour les cas où la
-sonde ne connaît que le nom, et elle garde le risque de la première page. Les trois sondes
-concernées ici n'utilisent plus que `attendreDossier` et `attendreFichierDans`, qui adressent
-par chemin. `attendreFichier` n'a plus d'appelant en dehors de `csrf`, et devrait disparaître
-avec lui.
+**Limite restante.** `attendreDossier` et `attendreFichier` vérifient le fait dans l'instantané,
+mais utilisent encore `!scanning` comme porte avant la requête à `/api/tree`. À l'inverse,
+`attendreAnalyse` peut, avec son argument par défaut, conclure sur le seul état `!scanning` ;
+c'est une attente indirecte et elle reste utilisée pour les rescan/retry de `lot`. Cette limite
+n'est pas corrigée par R16 : les sondes qui attendent un dossier ou un fichier doivent continuer
+à vérifier ce fait directement, sans remplacer cette preuve par un drapeau.
+
+---
+
+### R16 — Un plafond négatif invalide le verdict sur les coûts positifs · **Moyenne, harness** · *corrigé le 28/09/2026*
+
+**Ce qui a été trouvé.** En nettoyant l'API des attentes du harnais, un run complet a
+sorti `lot` en ROUGE sur son verdict « pas de terme quadratique ». Mesuré : marginal
+1→25 à **−1,8 ms/fichier**, 25→100 à **54,5**. Le seuil du verdict étant
+`pente1 * 1,5 + 2`, il valait environ **−0,7** (calculé sur les mesures arrondies).
+
+Avec ce plafond, le verdict rejetait toute pente marginale non négative, de 0 à 10⁶ : il ne
+pouvait donc pas confirmer une pente nulle, et sa rougeur ne démontrait pas à elle seule un
+terme quadratique. C'est la famille de R12, vue du côté du seuil au lieu du résumé : dans les
+deux cas, un instrument annonçait une couleur sans établir une mesure valable.
+
+**La cause de l'écart n'est pas établie.** Au run `r16b`, les temps corbeille étaient 1835 ms
+(N=1), 1792 ms (N=25) et 5883 ms (N=100) : 25 fichiers ont pris moins de temps qu'un seul.
+Dans un essai distinct après amorçage, ce lot d'amorçage a pris 62 ms, puis les lots comparés
+50, 906 et 2438 ms — pentes positives, 35,7 puis 20,4 ms/fichier. Cela montre que cette
+séquence a produit un plafond positif ; cela n'identifie pas la cause du 1835 ms du run
+précédent et ne prouve pas que toutes les exécutions seront stables.
+
+**Le correctif change ce qui est mesuré.** Une requête d'amorçage en mode corbeille est
+exécutée avant les lots comparés ; son temps est exclu. On compare ainsi deux intervalles
+mesurés après cette première requête, sans prétendre avoir identifié la cause de l'écart
+antérieur. Un garde-fou vérifie `seuil > 0` **avant** la comparaison : si le plafond calculé
+n'est pas positif, le test le signale au lieu de présenter sa rougeur comme une preuve de
+complexité quadratique.
+
+**Contre-épreuve exploratoire, par modèle, pas par mesure du produit.** Le modèle
+`T(N) = f + c·N + I·[N=1]` a trois paramètres ajustés sur les trois durées corbeille de
+`r16b` : les reproduire exactement est donc tautologique, et n'explique pas l'écart. Sur les
+deux durées « permanent », le modèle linéaire a un résidu maximal de 4,5 ms.
+
+En extrapolant ce modèle après suppression de `I`, le critère passe pour `q=0` et rougit pour
+`q=0,6`. Il laisse toutefois passer `q=0,1` et `q=0,2` pour les paramètres essayés : le
+verdict ne prouve pas l'absence de toute courbure. Dans six combinaisons synthétiques de coût fixe et de coût linéaire, tous les cas `q=0`
+passent ; deux autres cas `q=0,6` rougissent. Ce balayage borné vérifie le comportement de ces
+exemples, pas la robustesse à toutes les machines ni à toutes les courbes.
+
+**La même famille, trouvée dans le même passage.** `sonde-reversibilite.mjs` gardait une
+attente locale par `!scanning`, puis cherchait son dossier par nom. Le run `r16` a montré
+`sel=null` et `SANS SYNTHESE` pour `sans-corbeille` sur `E:`. La sonde attend maintenant le
+fichier dans son dossier par chemin et utilise le même helper que les autres. Le run suivant,
+`r16b`, donne `sans-corbeille` 10/10 ; après le correctif du verdict `lot`, le run complet
+`r16e` donne 21/21, avec `lot` à 9/9, `sans-corbeille` à 10/10 et `reversibilite` à 8/8.
+Ces mesures valident ces exécutions, pas toutes les conditions possibles.
+
+**Ce que ça ne couvre toujours pas.** La cause de l'écart reste inconnue. Le garde-fou
+`seuil > 0` rend invalide une calibration non positive, sans expliquer pourquoi elle l'est.
+`attendreAnalyse` peut encore retourner sur `!scanning` seul quand `attendus=0`, et plusieurs
+sondes ont leurs propres boucles d'attente : ces usages ne sont pas couverts par R16.
 
 ---
 

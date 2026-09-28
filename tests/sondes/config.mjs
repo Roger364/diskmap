@@ -424,45 +424,13 @@ export async function attendreAnalyse(base, vol, attendus = 0, tours = 600) {
 }
 
 /**
- * Attend qu'une ENTREE APPARAISSE dans l'instantane d'un volume.
+ * Attend qu'un DOSSIER soit PUBLIE, adresse par son CHEMIN.
  *
- * C'est le critere de FAIT, et il est meilleur qu'un compte de fichiers : le
- * volume perd des fichiers en cours de run -- les sondes en suppriment, c'est
- * leur raison d'etre -- donc un plancher sur `n_files` peut etre franchi meme
- * quand l'instantane n'a pas encore le fichier qu'on cherche. Compter, c'est
- * constater une consequence ; chercher le nom, c'est constater le fait.
- *
- * Attendre la FIN d'une analyse ne suffit plus, depuis le 28/09/2026 : le
- * serveur accepte une demande pendant une analyse et l'empile, donc le drapeau
- * `scanning` retombe dans l'intervalle entre les deux, et `finished_ms` change
- * a la fin de celle qui tournait deja. Dans les deux cas on lit un instantane
- * anterieur a ses propres ecritures, et on conclut qu'un fichier qu'on vient
- * d'ecrire n'existe pas. L'attente par le fait est plus lente, et c'est la
- * seule exacte.
- *
- * La recherche passe par `/api/search`, qui cherche dans le nom, et l'attente
- * est bornee : au pire, la sonde appelante constate l'absence et le dit.
+ * C'est le fait minimal : `/api/tree` le rend, donc il fait partie de
+ * l'instantane. Le CONTENU du dossier, lui, change -- une sonde qui supprime un
+ * de ses fichiers pour prouver qu'un identifiant designe une position
+ * s'attacherait sinon a attendre un fait devenu faux.
  */
-export async function attendreEntree(base, vol, nom, tours = 600) {
-  const cible = encodeURIComponent(nom);
-  for (let i = 0; i < tours; i++) {
-    const s = await (await fetch(`${base}/api/state`)).json();
-    if (s && !s.scanning) {
-      const r = await (await fetch(`${base}/api/search?drive=${vol}&q=${cible}`)).json();
-      const trouve = (r.rows || []).find((x) => x.name === nom);
-      if (trouve) return trouve;
-    }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return null;
-}
-
-// Attendre qu'un DOSSIER soit PUBLIE, adresse par son CHEMIN.
-//
-// C'est le fait minimal : `/api/tree` le rend, donc il fait partie de
-// l'instantane. Le CONTENU du dossier, lui, change -- une sonde qui supprime un
-// de ses fichiers pour prouver qu'un identifiant designe une position
-// s'attacherait sinon a attendre un fait devenu faux.
 export async function attendreDossier(base, vol, chemin, tours = 600) {
   const c = encodeURIComponent(chemin);
   for (let i = 0; i < tours; i++) {
@@ -476,13 +444,34 @@ export async function attendreDossier(base, vol, chemin, tours = 600) {
   return null;
 }
 
-// Attendre qu'un NOM apparaisse dans un DOSSIER adresse par son CHEMIN.
-//
-// La variante par nom (`attendreEntree`) est sujette d'un plafond de resultats : un
-// nom commun sort de la premiere page, et l'absence devient un fait de tri. Un
-// chemin, lui, est unique par construction -- c'est la seule adresse qui ne
-// depende pas du contenu du volume.
-export async function attendreFichierDans(base, vol, chemin, nom, tours = 600) {
+/**
+ * Attend qu'un NOM apparaisse dans un DOSSIER, adresse par son CHEMIN.
+ *
+ * C'est le critere de FAIT, et il est meilleur qu'un compte de fichiers : le
+ * volume perd des fichiers en cours de run -- les sondes en suppriment, c'est
+ * leur raison d'etre -- donc un plancher sur `n_files` peut etre franchi meme
+ * quand l'instantane n'a pas encore le fichier qu'on cherche. Compter, c'est
+ * constater une consequence ; chercher le nom, c'est constater le fait.
+ *
+ * L'attente porte sur le CONTENU DU DOSSIER, jamais sur la fin d'une analyse.
+ * Les deux sont des faits INDIRECTS, et la mesure a montre qu'ils mentent tous
+ * les deux. Juste apres `POST /api/scan`, l'analyse n'est pas encore lancee,
+ * donc `scanning` est encore faux : une attente sur le drapeau passe aussitot
+ * et l'on mesure l'instantane du run precedent. Puis, depuis que le serveur
+ * accepte une demande d'analyse pendant une analyse (28/09/2026), attendre un
+ * changement de `finished_ms` n'ameliore rien : le changement peut etre celui de
+ * l'analyse deja en cours au moment ou la sonde a ecrit. L'attente par le fait
+ * est plus lente, et c'est la seule exacte.
+ *
+ * Le chemin, et non le nom du dossier, parce qu'un nom n'est une adresse que
+ * tant qu'il est rare. `perime` se perdait parmi 356 `experimental`, et `csrf`
+ * parmi tous les `node_modules` du disque : la recherche est plafonnee, et le
+ * dossier sortait de la premiere page. Un chemin est unique par construction.
+ *
+ * L'attente est bornee : au pire, la sonde appelante constate l'absence et le
+ * dit. C'est un RESULTAT, jamais une ligne de trop.
+ */
+export async function attendreFichier(base, vol, chemin, nom, tours = 600) {
   const c = encodeURIComponent(chemin);
   for (let i = 0; i < tours; i++) {
     const s = await (await fetch(`${base}/api/state`)).json();
@@ -500,8 +489,4 @@ export async function attendreFichierDans(base, vol, chemin, nom, tours = 600) {
     await new Promise((r) => setTimeout(r, 300));
   }
   return null;
-}
-
-export async function attendreFichier(base, vol, nom, tours = 600) {
-  return !!(await attendreEntree(base, vol, nom, tours));
 }

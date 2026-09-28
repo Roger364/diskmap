@@ -29,7 +29,7 @@
 //    Corrigé par une lecture unique après la boucle. La section 2 ne mesure donc
 //    plus « est-ce réparé » mais « le terme quadratique est-il revenu » : trois
 //    tailles, un marginal comparé de 1→25 puis de 25→100, et un témoin en mode
-//    définitif qui donne le plancher de l'API système.
+//    définitif qui donne un point de comparaison, pas un plancher exact.
 //
 // La sonde ne touche qu'à ses propres fichiers, et reprend dans la corbeille
 // ce qu'elle y a laissé.
@@ -64,7 +64,7 @@ const confirmation = (mode) => aTaper({
 });
 const CORBEILLE = corbeille(VOL);
 const H = { 'Content-Type': 'application/json', 'X-Diskmap': '1' };
-const N_A = 240;   // fichiers du dossier de coût (227 consommés par la section 2)
+const N_A = 240;   // fichiers du dossier de coût (228 consommés par la section 2)
 const N_B = 60;    // fichiers du dossier de cohérence
 
 const verifs = [], echecs = [];
@@ -107,12 +107,14 @@ function monter(dossier, n) {
 // Renvoie les sélecteurs ET la génération de l'instantané qui les porte.
 // Les séparer était le moyen le plus sûr de les désaccorder : un sélecteur est
 // une position, et `dry` refuse désormais une liste qui ne dit pas de quel
-// instantané elle vient (mesuré le 26/09/2026 — voir `Snapshot::gen`).
-async function idsDuDossier(nomDossier) {
-  const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${nomDossier}`)).json())
-    .rows.find(r => r.name === nomDossier);
-  if (!dir) return null;
-  const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=1000`)).json();
+// instantané elle vient (mesuré le 26/09/2026 — voir `Snapshot::gen`). Le
+// chemin, et non le nom du dossier : un nom commun peut sortir de la première
+// page de `/api/search`, alors que `chemin` désigne cette entrée précise.
+async function idsDuDossier(cheminDossier) {
+  const chemin = encodeURIComponent(cheminDossier);
+  const r = await fetch(`${BASE}/api/tree?drive=${VOL}&chemin=${chemin}&limit=1000`);
+  if (!r.ok) return null;
+  const t = await r.json();
   const m = new Map();
   for (const r of t.rows) if (/^f\d+\.txt$/.test(r.name)) m.set(r.name, r.sel);
   return { ids: m, gen: t.gen };
@@ -131,10 +133,10 @@ await post(`/api/scan/${VOL}`, {});
 // depart, alors que notre dossier est complet. C'est un plancher qui mesure
 // l'activite des autres, pas la nôtre. Voir `attendreFichier`.
 verifier('le volume est analysé et porte le dernier fichier créé',
-  await attendreFichier(BASE, VOL, nom(N_A)),
-  `« ${nom(N_A)} » n’apparaît pas dans l’index de ${VOL}`);
-const vA = await idsDuDossier(path.basename(DOSSIER_A));
-const vB = await idsDuDossier(path.basename(DOSSIER_B));
+  await attendreFichier(BASE, VOL, DOSSIER_A, nom(N_A)),
+  `« ${nom(N_A)} » absent de « ${DOSSIER_A} » : rien n’a été indexé, donc rien n’a été éprouvé`);
+const vA = await idsDuDossier(DOSSIER_A);
+const vB = await idsDuDossier(DOSSIER_B);
 verifier('les deux dossiers d’essai sont dans l’instantané',
   vA && vA.ids.size === N_A && vB && vB.ids.size === N_B,
   `coût ${vA ? vA.ids.size : 'absent'}/${N_A}, cohérence ${vB ? vB.ids.size : 'absent'}/${N_B}`);
@@ -177,18 +179,19 @@ verifier('le chemin rapporté est celui qui a été montré',
 // ------------------------------------------------------------ 2. le coût
 console.log('\n--- 2. le coût d’une suppression en lot ---');
 
-// Ce qu'on cherche : un TERME QUADRATIQUE. Le défaut corrigé était N × M —
-// relire toutes les fiches de la corbeille pour chaque élément. Un coût
-// « fixe + N × constante » est linéaire et acceptable ; une pente qui s'aggrave
-// avec N signale que le défaut est revenu.
+// Ce qu'on cherche : une forte accélération du coût avec la taille du lot. Le
+// défaut corrigé était N × M — relire toutes les fiches de la corbeille pour
+// chaque élément. Un coût « fixe + N × constante » est linéaire et acceptable ;
+// une pente qui s'aggrave nettement peut signaler le retour de ce défaut. Ce
+// test ne peut toutefois exclure toute courbure : il compare trois tailles.
 //
 // D'où trois tailles, et non deux : avec deux points, n'importe quelle courbe
 // passe par une droite. On mesure donc le marginal 1->25 et le marginal
 // 25->100, et on les compare.
 //
-// Le mode « permanent » sert de TÉMOIN : il ne touche pas à la corbeille et
-// n'exécute aucun de nos traitements de réversibilité. Le coût par fichier qu'il
-// affiche est donc celui de l'API système, et il donne le plancher incompressible.
+// Le mode « permanent » sert de TÉMOIN approximatif : il ne touche pas à la
+// corbeille et n'exécute pas nos traitements de réversibilité. Il donne un
+// point de comparaison du coût système, pas une décomposition exacte des coûts.
 async function supprimer(noms, mode) {
   // Relire la liste AVANT chaque lot : le lot précédent a déclenché une
   // réanalyse, donc la génération a changé et les positions ont pu bouger. Un
@@ -203,7 +206,7 @@ async function supprimer(noms, mode) {
   let dry = null;
   let dryRep = null;
   for (let essai = 0; essai < 8; essai++) {
-    const v = await idsDuDossier(path.basename(DOSSIER_A));
+    const v = await idsDuDossier(DOSSIER_A);
     if (!v) {
       await repos();
       continue;
@@ -246,8 +249,53 @@ async function supprimer(noms, mode) {
 
 // Chaque lot a ses propres fichiers : un lot ne doit pas mesurer le coût d'un
 // autre. Découpage dans `nom(1..N_A)`.
+//
+// Une requête d'amorçage précède les mesures ; son temps est exclu.
+//
+// Au run `r16b` du 28/09/2026, les durées corbeille étaient 1835 ms (N=1),
+// 1792 ms (N=25) et 5883 ms (N=100) : 25 fichiers ont pris moins de temps
+// qu'un seul. La pente 1→25 était −1,8 ms/fichier ; celle de 25→100, 54,5.
+// Le plafond `pente1 * 1.5 + 2` valait environ −0,7. Il rejetait donc ces
+// mesures et ne pouvait pas attester une pente marginale nulle ; sa rougeur
+// ne démontrait pas à elle seule un terme quadratique.
+//
+// La cause de l'écart n'est pas établie. Dans un essai distinct après
+// amorçage, celui-ci a pris 62 ms, puis les lots comparés 50, 906 et 2438 ms
+// (pentes +35,7 puis +20,4 ms/fichier). Cette séquence a produit un plafond
+// positif ; elle n'identifie pas la cause du 1835 ms précédent et ne prouve
+// pas que toutes les exécutions seront stables. L'amorçage met le même mode
+// de suppression en régime avant comparaison ; la garde `seuil > 0` signale
+// encore une calibration qui produit un plafond non positif.
+//
+// Contre-épreuve exploratoire, hors de la sonde : `T(N)=f+c·N+I·[N=1]` a
+// trois paramètres ajustés sur les trois durées corbeille de `r16b`; reproduire
+// ces points exactement est tautologique et n'explique pas l'écart. En
+// extrapolant après retrait de I, il laisse passer q=0,1 et q=0,2 : il ne prouve
+// donc pas l'absence de toute courbure et ne remplace pas des mesures répétées.
+const amorcage = await supprimer([nom(1)], 'recycle');
+let amorcageReussi = false;
+let amorcageCheminCorrect = false;
+if (amorcage.r?.status === 200) {
+  try {
+    const resultat = JSON.parse(amorcage.r.texte);
+    const lignes = Array.isArray(resultat.results) ? resultat.results : [];
+    amorcageReussi = resultat.done === 1 && resultat.failed === 0 && lignes.length === 1;
+    const attendu = path.win32.normalize(`${DOSSIER_A}/${nom(1)}`).toLowerCase();
+    amorcageCheminCorrect = path.win32.normalize(lignes[0]?.path || '').toLowerCase() === attendu;
+  } catch { /* la vérification ci-dessous rend l'échec visible */ }
+}
+const amorcageDisparu = !fs.existsSync(`${DOSSIER_A}/${nom(1)}`);
+const autresFichiersIntacts = Array.from({ length: N_A - 1 }, (_, i) => nom(i + 2))
+  .every(n => fs.existsSync(`${DOSSIER_A}/${n}`));
+verifier('l’amorçage a supprimé exactement son fichier',
+  amorcageReussi && amorcageCheminCorrect && amorcageDisparu && autresFichiersIntacts,
+  amorcage.refuse || `HTTP ${amorcage.r?.status ?? 'aucune réponse'}, done=${amorcageReussi}, chemin=${amorcageCheminCorrect}, cible présente=${!amorcageDisparu}, autres intacts=${autresFichiersIntacts}`);
+console.log(`      amorçage   1 fichier  : ${String(amorcage.ms).padStart(6)} ms  (exclu des mesures)`);
+
 const T = {};
-let curseur = 1;
+// Le curseur part de 2 : `f001` est le fichier de l’amorçage, il est déjà
+// supprimé. Le budget tient toujours — 228 fichiers consommés sur 240.
+let curseur = 2;
 for (const [mode, taille] of [['recycle', 1], ['recycle', 25], ['recycle', 100], ['permanent', 1], ['permanent', 100]]) {
   const noms = Array.from({ length: taille }, () => nom(curseur++));
   const m = await supprimer(noms, mode);
@@ -268,24 +316,25 @@ const pente2 = (T['recycle/100'] - T['recycle/25']) / 75;
 const pentePerm = (T['permanent/100'] - T['permanent/1']) / 99;
 constater(`marginal corbeille : ${pente1.toFixed(1)} ms/fichier de 1 à 25, ${pente2.toFixed(1)} ms/fichier de 25 à 100`);
 constater(`marginal définitif (témoin, sans corbeille) : ${pentePerm.toFixed(1)} ms/fichier`);
-constater(`coût fixe par requête (un balayage des fiches) : ${T['recycle/1'] - T['permanent/1']} ms`);
+constater(`écart recycle/permanent à N=1 (approximation du coût fixe) : ${T['recycle/1'] - T['permanent/1']} ms`);
 
-verifier('le coût par fichier ne s’aggrave pas avec N — pas de terme quadratique',
-  pente2 <= pente1 * 1.5 + 2,
-  `marginal 1->25 : ${pente1.toFixed(1)} ms/fichier · 25->100 : ${pente2.toFixed(1)} ms/fichier`);
+// Un seuil NÉGATIF rejette tout marginal NON NÉGATIF, y compris zéro : cela
+// n'établit pas qu'un coût quadratique est présent. La garde le signale à part
+// — même famille que R12, vue du côté du seuil plutôt que du résumé — pour que
+// le verdict de pente ne soit pas pris seul pour une mesure valide.
+const seuil = pente1 * 1.5 + 2;
+const amortiValide = amorcageReussi && amorcageCheminCorrect && amorcageDisparu && autresFichiersIntacts;
+verifier('le plafond n’est pas négatif — un plafond négatif rejette tout marginal positif',
+  seuil > 0,
+  `seuil = ${seuil.toFixed(1)} ms/fichier (pente 1→25 : ${pente1.toFixed(1)})`);
 
-// Si le mode témoin coûte déjà plus de quelques ms par fichier, alors le coût
-// par fichier n'est pas le nôtre : c'est celui de `SHFileOperationW`.
-//
-// Le seuil est bas (3 ms) et NON une constante de machine. Il en était 10, et le
-// premier run sur GitHub l'a franchi de justesse à 7,1 ms/fichier : un runner
-// sans corbeille, un disque rapide, et `SHFileOperationW` qui rend la main
-// plus vite que sur un poste de travail. Le test échouait alors que sa
-// conclusion — que le coût vient de l'API et pas de nous — restait vraie. Un
-// seuil serré sur la machine de l'auteur ne prouve rien ailleurs ; il ne prouve
-// que la vitesse de l'auteur. Ce qu'on veut vérifier, c'est l'ORDRE DE
-// GRANDEUR : quelques millisecondes par fichier, pas centaines.
-verifier('le coût par fichier est celui de l’API système, et non le nôtre',
+verifier('la pente reste sous le plafond annoncé — pas d’accélération forte détectée',
+  amortiValide && seuil > 0 && pente2 <= seuil,
+  `amorçage valide=${amortiValide} · marginal 1->25 : ${pente1.toFixed(1)} ms/fichier · 25->100 : ${pente2.toFixed(1)} ms/fichier`);
+
+// Ce seuil historique de 3 ms/fichier n'identifie pas à lui seul l'origine
+// du coût : il valide uniquement la valeur observée sur ce témoin.
+verifier('le coût observé en mode permanent dépasse le seuil historique de 3 ms/fichier',
   pentePerm > 3,
   `en mode définitif, sans corbeille ni réversibilité : ${pentePerm.toFixed(1)} ms/fichier`);
 

@@ -101,9 +101,9 @@ for (const [nom, ko] of [['zztri-3', 1], ['zztri-1', 2], ['zztri-2', 3]]) {
 fs.writeFileSync(DOSSIER + '/Documents/zztaille-z.txt', 'x'.repeat(2000));
 fs.writeFileSync(DOSSIER + '/Documents/zztaille-a.txt', 'x'.repeat(2000));
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
-const indexe = await attendreFichier(BASE, VOL, 'cible.txt');
+const indexe = await attendreFichier(BASE, VOL, DOSSIER, 'cible.txt');
 verifier('le fichier d’essai est dans l’instantané', indexe,
-  `« cible.txt » n’apparaît pas dans l’index de ${VOL}`);
+  `« cible.txt » absent de « ${DOSSIER} » : rien n’a été indexé, donc rien n’a été éprouvé`);
 
 const navig = await chromium.launch();
 const page = await navig.newPage();
@@ -284,9 +284,9 @@ if (titre !== null) {
 // `reelle` s'en charge sur le meme volume.
 console.log('--- la regle des dossiers à nommer, dans un vrai navigateur ---');
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
-const indexePerso = await attendreFichier(BASE, VOL, 'photo.jpg');
+const indexePerso = await attendreFichier(BASE, VOL, `${DOSSIER}/Documents`, 'photo.jpg');
 verifier('le fichier sous « Documents » est dans l’instantané', indexePerso,
-  '« photo.jpg » n’apparaît pas dans l’index de ' + VOL);
+  `« photo.jpg » absent de « ${DOSSIER}/Documents » : rien n’a été indexé, donc rien n’a été éprouvé`);
 
 // `docsTrouve` est déclaré ICI et pas dans le `if` : une `let` déclarée dans
 // un bloc n'existe que dans ce bloc, et la vérification suivante — celle qui

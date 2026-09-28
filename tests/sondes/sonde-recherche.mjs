@@ -39,7 +39,7 @@
 // Usage : node sonde-recherche.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { URL_DEFAUT, attendreFichierDans, dossier, racine } from './config.mjs';
+import { URL_DEFAUT, attendreFichier, dossier, racine } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || 'V').toUpperCase();
@@ -132,7 +132,7 @@ console.log('');
 // son chemin : un nom, meme unique, depend du contenu du volume. Et l'absence
 // est un resultat, pas une ligne de trop.
 await post(`/api/scan/${VOL}`);
-const publication = await attendreFichierDans(BASE, VOL, DOSSIER, `${JETON}_a.txt`);
+const publication = await attendreFichier(BASE, VOL, DOSSIER, `${JETON}_a.txt`);
 verifier('les fichiers de la sonde entrent dans l\'instantane', !!publication,
   publication ? '' : `« ${JETON}_a.txt » absent de « ${DOSSIER} » apres ecriture et re-analyse : l'instantane ne contient pas ce que la sonde vient d'ecrire`);
 

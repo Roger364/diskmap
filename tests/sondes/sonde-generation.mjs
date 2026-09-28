@@ -65,7 +65,7 @@ async function repos() {
 // une sonde n'est pas un echec de produit : c'est `SANS SYNTHESE`, donc
 // impossible a distinguer d'une sonde morte.
 //
-// L'attente se fait donc sur le fait, par `attendreEntree`, et l'absence est
+// L'attente se fait donc sur le fait, par `attendreDossier`, et l'absence est
 // un resultat : elle revient `null` et la sonde la dit.
 async function listing() {
   // Le dossier, adresse par son CHEMIN. Par son NOM il se perdait parmi 356

@@ -699,9 +699,11 @@ probe says so. It no longer raises a `TypeError`. Same family as R12 seen from t
 probe that crashes writes no summary, so it exits on `SANS SYNTHESE` — the exact line a *dead*
 probe produces.
 
-`attendreFichier` in `config.mjs` already waited by the fact. That wait is now
-`attendreEntree`, and `attendreFichier` is one case of it: one place where the rule is written
-instead of two.
+At the R15 stage, waiting for the fact had been factored into a by-name search
+(`attendreEntree`) and two file helpers (`attendreFichier`, `attendreFichierDans`). R16 removed
+`attendreEntree` and `attendreFichierDans`, and changed `attendreFichier` from volume + name
+to volume + directory path + name. The current API keeps `attendreDossier` and
+`attendreFichier`, both addressed by directory path; the filename is searched only inside it.
 
 **Measured, on the full run, before and after.**
 
@@ -725,11 +727,53 @@ addresses the folder by path, which is unique by construction.
 
 A name is an address only while it is rare. A path is one.
 
-**What is still red, and why it is not R15.** `csrf` (`sel=null`) and `sans-corbeille`
-(`sel=null`) locate their target by a folder-then-file search without waiting by the fact: the
-same signature, one step further. It is the natural next step of the same work — probe fixes,
-not product fixes — and it is not done. Said here rather than left to look like a fresh
-regression: the product is sound on this point, the instrument is not yet.
+**Remaining limit.** `attendreDossier` and `attendreFichier` check the fact in the snapshot,
+but still use `!scanning` as the gate before requesting `/api/tree`. `attendreAnalyse` may,
+with its default argument, return on `!scanning` alone; some probes also keep their own
+`!scanning` loops. R16 does not fix those indirect waits: each use still needs review, and when
+a specific fact exists, the probe should wait for that fact rather than treating the flag as proof.
+
+### R16 — A negative ceiling invalidates the positive-cost verdict
+
+**What was found.** While cleaning the harness wait API, a full run turned `lot` RED on its
+“no quadratic term” verdict. In run `r16b`, the marginal was **−1.8 ms/file** from 1→25 and
+**54.5 ms/file** from 25→100. The verdict's limit, `slope1 * 1.5 + 2`, was about **−0.7**.
+It therefore rejected every non-negative marginal slope, including zero: its RED result alone
+did not prove quadratic complexity. Same family as R12, seen from the threshold rather than
+the summary: in both cases the instrument reported a color without establishing a valid
+measurement.
+
+**The cause of the discrepancy is unknown.** In `r16b`, the recycle durations were 1835 ms
+(N=1), 1792 ms (N=25) and 5883 ms (N=100): 25 files took less time than one. In a separate
+run after a warm-up, the warm-up took 62 ms and the measured lots took 50, 906 and 2438 ms
+(marginals +35.7 then +20.4 ms/file). That sequence produced a positive limit; it neither
+identifies the earlier 1835 ms nor proves all runs will be stable.
+
+**The fix changes what is measured.** A recycle-mode warm-up request runs before the measured
+lots and its time is excluded. A guard checks `threshold > 0` before comparing slopes; if the
+calculated limit is not positive, the probe reports invalid calibration instead of presenting
+its RED result as proof of quadratic complexity.
+
+**Exploratory counter-proof by model, not a product measurement.** The model
+`T(N) = f + c·N + I·[N=1]` has three parameters fitted to the three `r16b` recycle durations:
+reproducing them exactly is therefore tautological and does not explain the discrepancy.
+Extrapolating the model after removing `I`, the criterion passes at `q=0` and fails at `q=0.6`,
+but lets `q=0.1` and `q=0.2` pass for the parameters tried. It therefore does not prove absence
+of all curvature. In six synthetic combinations of fixed and per-file costs, all linear (`q=0`) cases passed;
+two additional `q=0.6` cases failed. This bounded sweep checks these examples, not every
+machine or curve.
+
+**The same family found in the same pass.** `sonde-reversibilite.mjs` had its own local
+`!scanning` wait, then looked up its folder by name. Run `r16` showed `sel=null` and
+`SANS SYNTHESE` for `sans-corbeille` on `E:`. The probe now waits for its file by directory
+path through the shared helper. `r16b` recorded 10/10 for `sans-corbeille`; after the `lot`
+verdict change, full run `r16e` recorded 21/21 probes: `lot` 9/9, `sans-corbeille` 10/10 and
+`reversibilite` 8/8. These runs validate those executions, not every possible condition.
+
+**Still not covered.** The discrepancy's cause remains unknown. The `threshold > 0` guard
+rejects a non-positive calibration but does not explain it. `attendreAnalyse` can still return
+on `!scanning` alone when `expected=0`, and several probes have their own wait loops; R16 does
+not cover those uses.
 
 ### A verdict that depends on something you do not control is not a verdict
 

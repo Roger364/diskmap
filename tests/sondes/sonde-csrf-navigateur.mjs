@@ -30,7 +30,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { chromium } from './navigateur.mjs';
-import { URL_DEFAUT, VOLUME_DEFAUT, attendreFichier, attendreFichierDans, dossier } from './config.mjs';
+import { URL_DEFAUT, VOLUME_DEFAUT, attendreFichier, dossier } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -156,8 +156,8 @@ async function idVictime() {
   // mesure.
   //
   // Un chemin est unique par construction. L'attente se fait sur le FAIT, dans
-  // ce dossier-la : `attendreFichierDans`.
-  const r = await attendreFichierDans(BASE, VOL, DOSSIER, 'victime.txt');
+  // ce dossier-la : `attendreFichier`.
+  const r = await attendreFichier(BASE, VOL, DOSSIER, 'victime.txt');
   return r ? r.ligne.sel : null;
 }
 const journal = () => fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean);
