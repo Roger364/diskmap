@@ -616,21 +616,57 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:131`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:753`) et le motif est écrit (`tests/sondes/lancer.mjs:801`). Sans ce
+(`tests/sondes/lancer.mjs:753`) et le motif est écrit (`tests/sondes/lancer.mjs:827`). Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
-**Épreuves, les deux sens.** Résumé supprimé de la sonde, garde en place : `ROUGE generation
-SANS SYNTHESE`, run en `1`, et le journal dit *« aucun décompte écrit »* tout en montrant les cinq
-`ok` — la démonstration même de ce que le mot ne prouvait pas. Une condition faussée (`409` → `418`)
-au lieu du résumé retiré : `4/5 vérifications vertes`, code `1`, et la mesure citée est la vraie
-(`HTTP 409`) — le décompte bouge, ce n'est pas une chaîne en dur. Résumé et garde remis : `5/5`,
-puis `20/20 sondes vertes` sans un seul `SANS SYNTHESE` au journal.
+**La deuxième garde, trouvée en cherchant la limite de la première.** Ce qui précède
+n'interdisait que le silence. Or une sonde écrivant son résumé **avant** ses vérifications
+continuait de passer : le mot était là, juste, et faux. Le harnais ne recomptait rien — il
+croyait la sonde sur parole.
 
-**Ce que cette règle ne couvre pas.** Elle dit qu'une sonde muette est rouge ; elle ne dit pas
-qu'une sonde **muette à moitié** l'est. Une sonde qui écrit son résumé avant ses vérifications
-passerait quand même. Le contrôle à double sens de `verifier-references.mjs` a la même limite, et
-c'est la suite évidente.
+**La règle, alors complétée :**
+
+> Un résumé doit être un compte fidèle des verdicts écrits, **les deux termes**. Le
+> numérateur dit ce qui a passé, le dénominateur dit ce qui a été vérifié — et un seul des deux
+> laisse passer l'autre moitié du mensonge.
+
+Le harnais compte donc les lignes de verdict réellement écrites et compare
+(`tests/sondes/lancer.mjs:776`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:830`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
+rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
+
+**Mesuré avant d'écrire, jamais après.** Les vingt sondes d'un run complet ont été
+déchargées une à une : les vingt numérateurs égalaient le nombre de lignes `ok`, les vingt
+dénominateurs le nombre de `ok` + `ROUGE`. Aucun `vert` en tête de ligne, donc ni l'un ni
+l'autre n'entre dans le compte. La règle **ne sépare rien aujourd'hui** — elle interdit
+seulement ce qui passerait désormais. C'était le point à vérifier avant d'écrire : un
+contrôle « décompte égale totaux », plus grossier, aurait produit trois rouges sur
+`aNommer`, `recherche` et `rechercheGrande`, qui écrivent du texte après leur résumé.
+
+**Épreuves, dans les deux sens, et sur les deux termes.**
+
+| Sonde falsifiée | Ce que le harnais dit | Sortie |
+|---|---|---|
+| résumé supprimé | `aucun décompte écrit : la sonde n'a rien rapporté` | `1` |
+| une condition fausse (`409` → `418`) | `4/5 vérifications vertes`, mesure `HTTP 409` | `1` |
+| résumé écrit **d'avance**, un verdict rouge, **sortie 0** | `annonce 5/5, et a écrit 4 ok et 1 ROUGE` | `1` |
+| un verdict écrit **après** le résumé | `annonce 5/5, et a écrit 6 ok et 0 ROUGE` | `1` |
+
+Les deux dernières sont les cas que la seule garde muette laissait passer, y compris le plus
+grave des quatre : une sonde qui **ment sur son numérateur et sort en 0 quand même**. Le
+journal affiche alors son `5/5 vérifications vertes` à côté du diagnostic qui le dément — la
+preuve, à une ligne d'écart, que le mot ne disait rien.
+
+Tout remis : `5/5`, puis `20/20 sondes vertes`, sans un seul `SANS SYNTHESE` au journal.
+
+**Ce que cette règle ne couvre toujours pas.** Elle compte des lignes de verdict à un
+préfixe donné (`ok`, `ROUGE`). Une sonde qui écrirait son verdict ailleurs — en fin de ligne,
+dans un tableau — ne serait pas comptée, et le décompte la déclarerait fausse à juste. C'est
+un refus dans le bon sens : un verdict que le harnais ne sait pas lire est un verdict qu'il ne
+peut pas vérifier. Mais il faut le savoir, et le dire. Le contrôle à double sens de
+`verifier-references.mjs` a la même limite, et reste le suivant à traiter.
 
 ---
 

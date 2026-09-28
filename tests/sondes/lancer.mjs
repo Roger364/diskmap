@@ -751,7 +751,32 @@ function lireResidus(racines, volume) {
     // signalait le symptôme depuis des mois, sans rien faire échouer : rien ne
     // pouvait donc le corriger. Une sonde muette est un échec, pas une note.
     const muette = !compte;
-    const code = muette && sortie.code === 0 ? 1 : sortie.code;
+    // Le resume doit etre un COMPTE FIDE des verdicts ecrits — les DEUX termes.
+    // Sans cette arithmetique, la garde ci-dessus se laisse passer le cas qu elle
+    // ne visait pas : une sonde qui ecrit son resume AVANT ses verifications
+    // affiche un compte juste sur le papier et faux sur l ecran.
+    //
+    // Les deux termes, parce qu un seul ne suffit pas. Un resume ecrit d avance
+    // et jamais repris donnerait « 5/5 » juste, tant que tout passe : le seul
+    // denominateur ne voit rien. C est le numerateur qui revele qu un verdict a
+    // rouge apres coup, et c est le denominateur qui revele qu on a ajoute une
+    // verification sans la compter.
+    //
+    // Mesure avant d ecrire la regle, sur les vingt sondes d un run complet :
+    // les vingt numerateurs egalaient le nombre de lignes `ok`, et les vingt
+    // denominateurs le nombre de lignes `ok` + `ROUGE`. Aucun `vert` en tete
+    // de ligne, donc ni l un ni l autre n entre dans le compte. La regle ne
+    // separe rien aujourd hui — elle interdit seulement ce qui passerait
+    // desormais.
+    const lignesVerdict = sortie.tout.split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => /^(ok|ROUGE)\b\s/.test(l));
+    const nOk = lignesVerdict.filter((l) => l.startsWith('ok')).length;
+    const verdictsEcrits = lignesVerdict.length;
+    const descompteFaux = !!compte
+      && (Number(compte[1]) !== nOk || Number(compte[2]) !== verdictsEcrits);
+    const descompte = muette || descompteFaux;
+    const code = descompte && sortie.code === 0 ? 1 : sortie.code;
     const resume = compte ? `${compte[1]}/${compte[2]}` : 'SANS SYNTHESE';
     // Le code forcé NE REMPLACE PAS les deux autres verdicts. Une sonde qui n a
     // pas pu tourner — volume absent, prérequis manquant — sort en 2 sans
@@ -797,9 +822,15 @@ function lireResidus(racines, volume) {
       // muet, et le même défaut qu elle est censée signaler. Réservé au cas
       // forcé : une sonde « PAS PU » n a pas de synthèse parce qu elle n a rien
       // fait, et son raison est déjà plus haut.
-      if (muette && code === 1) {
-        console.log('           aucun decompte ecrit : la sonde n a rien rapporte, donc rien ne prouve');
-        console.log('           qu elle a verifie quoi que ce soit.');
+      if (descompte && code === 1) {
+        if (muette) {
+          console.log('           aucun decompte ecrit : la sonde n a rien rapporte, donc rien ne prouve');
+          console.log('           qu elle a verifie quoi que ce soit.');
+        } else {
+          console.log(`           decompte incoherent : la sonde annonce ${compte[1]}/${compte[2]},`);
+          console.log(`           et a ecrit ${nOk} ok et ${verdictsEcrits - nOk} ROUGE. Un resume`);
+          console.log('           ecrit avant les verifications, ou jamais repris apres un echec, se lit ici.');
+        }
       }
       for (const l of lignes.slice(-24)) console.log(`           ${l}`);
     }

@@ -60,7 +60,9 @@ const ATTENDU = {
     'ui/index.html:1067': 'const cause = dr ?',
     'tests/sondes/lancer.mjs:553': 'const connus',
     'tests/sondes/lancer.mjs:753': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:801': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:776': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:827': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:830': 'decompte incoherent : la sonde annonce',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:131': 'verifs.filter(Boolean).length',
     'tests/sondes/sonde-ui-suppression.mjs:520': 'const armerPeints',
@@ -71,7 +73,9 @@ const ATTENDU = {
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:131': 'verifs.filter(Boolean).length',
     'tests/sondes/lancer.mjs:753': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:801': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:776': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:827': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:830': 'decompte incoherent : la sonde annonce',
   },
 };
 

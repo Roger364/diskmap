@@ -373,7 +373,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:131`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:753`) and the reason is printed (`tests/sondes/lancer.mjs:801`).
+(`tests/sondes/lancer.mjs:753`) and the reason is printed (`tests/sondes/lancer.mjs:827`).
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -384,9 +384,47 @@ checks green`, exit `1`, and the measurement it quotes is the real one (`HTTP 40
 count moves rather than sitting there as a literal. Both restored: `5/5`, then `20/20` with
 not one `SANS SYNTHESE` left in the log.
 
-What it does **not** cover: a probe that writes its count *before* its checks would still
-pass. The two-way reference check has the same blind spot. That is the obvious next step,
-and it is not done.
+**The second guard, found by looking for the first one's limit.** What precedes only
+forbids silence. A probe writing its count *before* its checks still passed: the word
+was there, correct, and wrong. The harness recounted nothing — it took the probe at its word.
+
+> A count has to be a faithful account of the verdicts written, **both terms**. The numerator
+> says what passed, the denominator says what was checked — and either one alone lets the other
+> half of the lie through.
+
+So the harness counts the verdict lines actually written and compares
+(`tests/sondes/lancer.mjs:776`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:830`). One term would not have been enough: a count written in
+advance reads `5/5` and is right for as long as everything passes. It is the numerator that
+shows a verdict went red afterwards, and the denominator that shows a check was added without
+being counted.
+
+Measured before written, never after. All twenty probes of a full run were dumped one by one:
+all twenty numerators equalled the number of `ok` lines, all twenty denominators the number of
+`ok` + `ROUGE`. No `vert` starts a line, so neither enters the count. The rule **separates
+nothing today** — it only forbids what would now slip through. Checking first mattered: a
+coarser « count equals totals » rule would have raised three false reds, on `aNommer`,
+`recherche` and `rechercheGrande`, which print text after their summary.
+
+Four probes falsified, one per hole:
+
+| Probe falsified | What the harness says | Exit |
+|---|---|---|
+| summary deleted | `no count written: the probe reported nothing` | `1` |
+| one condition falsified (`409` → `418`) | `4/5 checks green`, measurement `HTTP 409` | `1` |
+| summary written **in advance**, one verdict red, **exit 0** | `announces 5/5, and wrote 4 ok and 1 ROUGE` | `1` |
+| a verdict written **after** the summary | `announces 5/5, and wrote 6 ok and 0 ROUGE` | `1` |
+
+The last two are what the silence guard alone let through, including the worst of the four: a
+probe that **lies about its numerator and exits 0 anyway**. The log then shows its own
+`5/5 checks green` one line away from the diagnosis that denies it — the proof, at one line of
+gap, that the word said nothing.
+
+What it still does **not** cover: it counts verdict lines by a given prefix (`ok`, `ROUGE`). A
+probe writing its verdict anywhere else — at the end of a line, inside a table — would not be
+counted, and the count would call it false when it is true. That is a refusal in the right
+direction: a verdict the harness cannot read is a verdict it cannot check. But it has to be
+known, and said. The two-way reference check has the same blind spot, and is next on the list.
 
 ### What makes a volume disposable
 
