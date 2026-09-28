@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:131`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:753`) and the reason is printed (`tests/sondes/lancer.mjs:827`).
+(`tests/sondes/lancer.mjs:753`) and the reason is printed (`tests/sondes/lancer.mjs:853`).
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -402,7 +402,7 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 
 So the harness counts the verdict lines actually written and compares
 (`tests/sondes/lancer.mjs:776`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:830`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:856`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -464,6 +464,46 @@ same time**, which proved both paths at once. Restored: `13/13`.
 
 > Do not write a verdict whose outcome is up to the volume, the clock, or the filesystem. Verify
 > its support, and when the support is missing, say so out loud instead of guessing.
+
+### A note nobody can read is not a note
+
+The harness used to print a probe's own output **only when it failed**. On a green run, whatever
+that probe had to say went nowhere — which turns out to matter more than it sounds, because
+probes are written to *say* things.
+
+Four of them do, on purpose. They measure what they can, note what they could not, and exit `0`
+like everybody else. That is a probe behaving correctly. But its note was invisible on every
+successful run, so it was impossible to see — and, worse, impossible to count.
+
+**Measured on the first line of the new code: eight notes per run, across four probes, invisible
+since forever.** The best of the eight said, in as many words:
+
+```
+erreurs : branch "negligible gap" NOT exercised — 5 volume(s), all above the threshold.
+          That green proves nothing.
+```
+
+A probe stating that its own green proves nothing — and nobody could read that, for months. The
+same shape as the silence guard, seen from the other end: the thing that reported could not fail,
+so nothing could act on it.
+
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:806`) and
+prints them at the end of the run **with their text**, not just a count
+(`tests/sondes/lancer.mjs:898`). A count that does not say what it counts teaches nothing.
+
+Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
+**five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,
+*working folder removed*. A signal that is three-quarters noise teaches you to ignore it, and the
+thing that gets ignored is the part that mattered. Two probes got a separate `info()` channel, and
+`noter()` now means only *you need to know this*. Three notes survive on a local run, and all
+three carry weight: a search **truncated at 800** (`exact=false, tronque=true`) and the unexercised
+branch above.
+
+> A note exists to say what a green does not prove. Print it on every run, and keep the ones that
+> are actually warnings — the rest is noise wearing the same mask.
+
+A note still does **not** fail the run. That would be the same mistake as 28/09: punishing a probe
+for a calm volume. It is a fact to know, not a product defect — and it can no longer be missed.
 
 ### What makes a volume disposable
 

@@ -646,7 +646,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:131`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:753`) et le motif est écrit (`tests/sondes/lancer.mjs:827`). Sans ce
+(`tests/sondes/lancer.mjs:753`) et le motif est écrit (`tests/sondes/lancer.mjs:853`). Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -663,7 +663,7 @@ croyait la sonde sur parole.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
 (`tests/sondes/lancer.mjs:776`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:830`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:856`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -690,6 +690,46 @@ journal affiche alors son `5/5 vérifications vertes` à côté du diagnostic qu
 preuve, à une ligne d'écart, que le mot ne disait rien.
 
 Tout remis : `5/5`, puis `20/20 sondes vertes`, sans un seul `SANS SYNTHESE` au journal.
+
+
+**La troisième garde, et ce qu'elle a révélé tout de suite.** Les deux premières interdisent
+qu'une sonde **muette** ou qu'elle **mente sur son décompte**. Restait le cas le plus discret : une
+sonde qui mesure ce qu'elle peut, **note** ce qu'elle n'a pas pu, et sort quand même en `0`. Le
+harnais n'affiche la sortie d'une sonde **qu'en cas d'échec** — donc, sur un run **vert**, une note
+n'atteignait jamais le journal. Non pas rare : impossible à voir.
+
+**La règle :**
+
+> Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
+> elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
+
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:806`) et les imprime
+au résumé du run avec leur **texte**, pas seulement leur nombre
+(`tests/sondes/lancer.mjs:898`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+par l'outil censé l'afficher est un diagnostic absent.
+
+**Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
+toujours.** Et la plus importante des huit disait, noir sur blanc :
+
+```
+erreurs : branche « écart négligeable » NON exercée — 5 volume(s), tous au-dessus
+          du seuil. Ce vert-là ne prouve rien.
+```
+
+Une sonde qui reconnaît que son vert ne prouve rien, et que personne ne pouvait lire depuis des
+mois. C'est exactement ce que la règle précédente faisait d'exister.
+
+**Puis il a fallu nettoyer le signal, sinon il s'éteindrait de lui-même.** Sur ces huit notes,
+**cinq étaient de l'avancement** — « corbeille : 1 sous-dossier lisible », « génération 32 -> 33 »,
+« dossier de travail retiré » — et non un avertissement. Un signal dont trois quarts sont du bruit
+s'apprend à être ignoré, et c'est lui qui disparaît en premier. Deux sondes ont donc reçu un canal
+`info()` distinct, et `noter()` ne sert plus que pour ce qu'il faut savoir. Les trois notes qui
+restent, sur un run local, sont toutes porteuses : une recherche **tronquée à 800**
+(`exact=false, tronque=true`) et la branche non exercée ci-dessus.
+
+**Ce que cela ne change pas.** Une note ne fait **pas** échouer le run. Ce serait la même erreur que
+celle du 28/09 : punir la sonde d'un volume calme. La note est un fait à connaître, pas un défaut
+de produit — et elle est désormais impossible à manquer.
 
 **Ce que cette règle ne couvre toujours pas.** Elle compte des lignes de verdict à un
 préfixe donné (`ok`, `ROUGE`). Une sonde qui écrirait son verdict ailleurs — en fin de ligne,

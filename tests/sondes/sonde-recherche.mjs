@@ -67,6 +67,10 @@ function noter(texte) {
   notes.push(texte);
   console.log(`      note : ${texte}`);
 }
+// L'avancement n'est PAS une note : meme raison que dans sonde-reelle, et la
+// seule ligne `PAS PU NETTOYER` reste une note, parce qu elle dit qu une autre
+// sonde peut ne pas etre nette.
+const info = (texte) => console.log(`      ${texte}`);
 const post = (c, corps) => fetch(BASE + c, {
   method: 'POST', headers: H, body: JSON.stringify(corps || {}),
 }).then(async (r) => ({ status: r.status, j: await r.json().catch(() => null) }));
@@ -132,7 +136,7 @@ verifier('l instantane observe est celui qui contient les fichiers de la sonde',
   generationApres !== generationAvant,
   `generation ${generationAvant} -> ${generationApres} : l analyse n a pas change `
   + 'd instantane, et la sonde mesurerait le volume du run precedent');
-noter(`generation : ${generationAvant} -> ${generationApres}`);
+info(`generation : ${generationAvant} -> ${generationApres}`);
 
 // ------------------------------------------------------------------ le contrat
 const ATTENDU = DOSSIERS.length + FICHIERS.length;
@@ -307,7 +311,7 @@ if (notes.length) {
 // pose des poids arbitraires.
 try {
   fs.rmSync(DOSSIER, { recursive: true, force: true });
-  noter(`dossier de travail retire : ${DOSSIER}`);
+  info(`dossier de travail retire : ${DOSSIER}`);
 } catch (e) {
   noter(`PAS PU NETTOYER ${DOSSIER} : ${e.code || e.message} — `
     + 'les residus peuvent faire echouer une sonde qui passe apres');

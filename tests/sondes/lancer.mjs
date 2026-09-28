@@ -778,12 +778,38 @@ function lireResidus(racines, volume) {
     const descompte = muette || descompteFaux;
     const code = descompte && sortie.code === 0 ? 1 : sortie.code;
     const resume = compte ? `${compte[1]}/${compte[2]}` : 'SANS SYNTHESE';
+    // Ce que les sondes NOTENT, et qui n'apparait sur aucun run vert.
+    //
+    // Le 28/09/2026, une sonde a porte « (+1 non mesurable) » a son resume, et
+    // personne ne l'a su : le harnais n'affiche la sortie d une sonde qu en cas
+    // d echec. Sur un run VERT, une note est donc invisible — ce qui rend le
+    // « vert » indecent, et pire : on ne peut meme pas mesurer combien il y en
+    // a. C est le meme angle mort que R12, vu par l autre bout. Mesure a la
+    // premiere ligne qui compte : HUIT notes par run, reparties sur quatre
+    // sondes, invisibles depuis toujours.
+    //
+    // Deux formes, parce que deux sondes ecrivent deja ainsi : le marqueur du
+    // resume (`(+N non mesurable(s))`) et la ligne `note :` — une convention
+    // etablie dans quatre sondes, qui dit parfois « rien a mesurer ici » et
+    // parfois « le contrat lui-meme est une note ». D'ou le mot `note` plutot
+    // que « non mesurable » : on ne.resize pas ce que la sonde a dit.
+    //
+    // Le TEXTE est retenu, pas seulement le nombre : un compteur seul dit
+    // qu il y a un probleme sans dire lequel, et un diagnostic jete par l outil
+    // cense l afficher est un diagnostic absent.
+    const notes = sortie.tout.split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => /^note\s*:/i.test(l)
+        || /^NE PAS MESURABLE/.test(l)
+        || /\+\d+ non mesurable/.test(l))
+      .map((l) => l.replace(/^note\s*:\s*/i, '').slice(0, 120));
+    const mention = notes.length ? `  [!] ${notes.length} note(s)` : '';
     // Le code forcé NE REMPLACE PAS les deux autres verdicts. Une sonde qui n a
     // pas pu tourner — volume absent, prérequis manquant — sort en 2 sans
     // écrire de résumé, et doit rester « PAS PU » : la confondre avec un produit
     // en défaut enverrait chercher le défaut du mauvais côté.
     const etatMot = code === 0 ? 'vert ' : code === 2 ? 'PAS PU' : 'ROUGE';
-    console.log(`  ${etatMot}  ${s.nom.padEnd(15)} ${resume}`);
+    console.log(`  ${etatMot}  ${s.nom.padEnd(15)} ${resume}${mention}`);
     if (code !== 0) {
       // Ce que la sonde a DIT, pas seulement les lignes qui ressemblent a un
       // motif. Le filtre d’avant guts le cas le plus difficile : une sonde qui
@@ -834,7 +860,7 @@ function lireResidus(racines, volume) {
       }
       for (const l of lignes.slice(-24)) console.log(`           ${l}`);
     }
-    resultats.push({ nom: s.nom, code, resume });
+    resultats.push({ nom: s.nom, code, resume, notes });
     if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {
       const nouveaux = filet.incidents.slice(incidentsAvant);
       console.log(`           FILET  ${nouveaux.length} incident(s) pendant « ${s.nom} »`);
@@ -863,6 +889,17 @@ const pasPu = resultats.filter((r) => r.code !== 0 && r.code !== 1);
 console.log('');
 console.log(`  ${verts}/${resultats.length} sondes vertes`);
 if (rouges.length) console.log(`  ROUGES : ${rouges.map((r) => r.nom).join(', ')}`);
+// Les notes, meme vertes. Une ligne de plus, qui ne disparait jamais : tant
+// qu elle n existe pas, on ne sait pas si le probleme existe. Et le texte
+// suit, parce qu'un compte sans dire de quoi n'apprend rien.
+const notees = resultats.filter((r) => r.notes && r.notes.length);
+if (notees.length) {
+  const total = notees.reduce((n, r) => n + r.notes.length, 0);
+  console.log(`  ${total} note(s) de ${notees.length} sonde(s) — rien n'est masque derriere un vert :`);
+  for (const r of notees) for (const n of r.notes) console.log(`           ${r.nom} : ${n}`);
+} else {
+  console.log('  aucune note');
+}
 if (pasPu.length) console.log(`  PAS PU EPROUVER : ${pasPu.map((r) => r.nom).join(', ')}`);
 
 // Le filet a la parole. Un incident rend la run ROUGE même si toutes les sondes

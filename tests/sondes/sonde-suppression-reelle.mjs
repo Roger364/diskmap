@@ -63,6 +63,16 @@ function noter(texte) {
   notes.push(texte);
   console.log(`      note : ${texte}`);
 }
+// L'avancement n'est PAS une note. Le harnais affiche desormais les notes sur
+// tous les runs, vert compris ; si le mot voulait dire « regarde », il faudrait
+// le dire partout, et il ne voudrait plus rien dire nulle part. Une seule
+// convention : `noter` pour ce qu'il faut savoir, `info` pour ce qui s'est
+// passe.
+const info = (texte) => console.log(`      ${texte}`);
+// Les trois `noter` qui restent disent chacune qu'un cas n'a PAS pu etre
+// couvert : corbeille illisible, SID illisible, retrait impossible. Toutes
+// sont conditionnelles, doncmuettes sur un volume cooperative — ce qui est
+// exactement le genre de note qu'on ne veut pas perdre.
 
 async function post(chemin, corps) {
   const r = await fetch(BASE + chemin, {
@@ -145,7 +155,7 @@ const sids = sidsDeCorbeille(CORBEILLE);
 if (sids.erreur) {
   noter(`corbeille de G: inaccessible (${sids.erreur}) — l'oracle de la corbeille ne vaut rien`);
 } else {
-  noter(`corbeille de G: : ${sids.lisibles.length} sous-dossier(s) de SID lisible(s), ` +
+  info(`corbeille de G: : ${sids.lisibles.length} sous-dossier(s) de SID lisible(s), ` +
     `${sids.illisibles.length} illisible(s)`);
   if (sids.illisibles.length) {
     // Ce n'est pas une faille du test : nos fichiers sont créés par l'utilisateur
@@ -209,7 +219,7 @@ const dansCorbeille = fouillerCorbeille(CORBEILLE, CONTENU_A);
 verifier('a.txt est dans la corbeille du volume, retrouvé par son contenu',
   dansCorbeille.length === 1,
   `${dansCorbeille.length} fichier(s) au contenu attendu — ${JSON.stringify(dansCorbeille)}`);
-if (dansCorbeille.length === 1) noter(`recyclé sous : ${dansCorbeille[0]}`);
+if (dansCorbeille.length === 1) info(`recyclé sous : ${dansCorbeille[0]}`);
 
 const rApres = compterR();
 verifier('le compte de $R lisibles a augmenté d’exactement 1',
@@ -340,7 +350,7 @@ for (const r of fouillerCorbeille(CORBEILLE, CONTENU_A)) {
 }
 verifier('le test n’a rien laissé dans la corbeille', fouillerCorbeille(CORBEILLE, CONTENU_A).length === 0,
   'résidu présent');
-noter(`${rendus} fichier(s) d’essai retiré(s) de la corbeille`);
+info(`${rendus} fichier(s) d’essai retiré(s) de la corbeille`);
 
 console.log('');
 console.log(`${verifs.filter(Boolean).length}/${verifs.length} vérifications vertes`);
