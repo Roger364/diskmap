@@ -424,26 +424,39 @@ export async function attendreAnalyse(base, vol, attendus = 0, tours = 600) {
 }
 
 /**
- * Attend qu'un fichier APPARAISSE dans l'instantane d'un volume.
+ * Attend qu'une ENTREE APPARAISSE dans l'instantane d'un volume.
  *
  * C'est le critere de FAIT, et il est meilleur qu'un compte de fichiers : le
- * volume perd des fichiers en cours de run — les sondes en suppriment, c'est
- * leur raison d'être — donc un plancher sur `n_files` peut être franchi même
- * quand l'instantané n'a pas encore le fichier qu'on cherche. Compter, c'est
- * constater une conséquence ; chercher le nom, c'est constater le fait.
+ * volume perd des fichiers en cours de run -- les sondes en suppriment, c'est
+ * leur raison d'etre -- donc un plancher sur `n_files` peut etre franchi meme
+ * quand l'instantane n'a pas encore le fichier qu'on cherche. Compter, c'est
+ * constater une consequence ; chercher le nom, c'est constater le fait.
+ *
+ * Attendre la FIN d'une analyse ne suffit plus, depuis le 28/09/2026 : le
+ * serveur accepte une demande pendant une analyse et l'empile, donc le drapeau
+ * `scanning` retombe dans l'intervalle entre les deux, et `finished_ms` change
+ * a la fin de celle qui tournait deja. Dans les deux cas on lit un instantane
+ * anterieur a ses propres ecritures, et on conclut qu'un fichier qu'on vient
+ * d'ecrire n'existe pas. L'attente par le fait est plus lente, et c'est la
+ * seule exacte.
  *
  * La recherche passe par `/api/search`, qui cherche dans le nom, et l'attente
  * est bornee : au pire, la sonde appelante constate l'absence et le dit.
  */
-export async function attendreFichier(base, vol, nom, tours = 600) {
+export async function attendreEntree(base, vol, nom, tours = 600) {
   const cible = encodeURIComponent(nom);
   for (let i = 0; i < tours; i++) {
     const s = await (await fetch(`${base}/api/state`)).json();
     if (s && !s.scanning) {
       const r = await (await fetch(`${base}/api/search?drive=${vol}&q=${cible}`)).json();
-      if ((r.rows || []).some((x) => x.name === nom)) return true;
+      const trouve = (r.rows || []).find((x) => x.name === nom);
+      if (trouve) return trouve;
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  return false;
+  return null;
+}
+
+export async function attendreFichier(base, vol, nom, tours = 600) {
+  return !!(await attendreEntree(base, vol, nom, tours));
 }

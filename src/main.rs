@@ -585,18 +585,29 @@ fn count_files(app: &Arc<App>, l: char) -> usize {
         .unwrap_or(0)
 }
 
+// La demande est-elle DÉJÀ COUVERTE par une analyse qui vient après elle ?
+//
+// Pure, pour être testée. Elle ne prend que la file : ce n'est pas une copie
+// de l'état, c'est la liste de ce qui s'exécutera. Une analyse EN COURS ne
+// couvre rien -- elle a commencé avant que la demande existe, donc son
+// instantané ne peut pas contenir ce que la demande voulait voir. C'est
+// exactement le défaut du 28/09/2026, et c'est pour cela que la fonction ne
+// prend pas `scanning` en paramètre : l'oublier est impossible.
+fn demande_couverte(en_attente: &[char], letter: char) -> bool {
+    en_attente.contains(&letter)
+}
+
 fn start_scan(app: &Arc<App>, letter: char) {
     // Ordre de verrouillage imposé partout : `scanning` puis `queue`.
-    // L'inverse (queue -> scanning) risquerait l'interblocage avec `pump`.
-    if *app.scanning.lock().unwrap() == Some(letter) {
+    // L'inverse (queue -> scanning) risquerait l'interblocage avec `pump`. Le
+    // verrou de `queue` est seul ici, et `pump` le prend apres `scanning` :
+    // même ordre, donc pas d'interblocage possible.
+    let mut q = app.queue.lock().unwrap();
+    if demande_couverte(&q, letter) {
         return;
     }
-    {
-        let mut q = app.queue.lock().unwrap();
-        if !q.contains(&letter) {
-            q.push(letter);
-        }
-    }
+    q.push(letter);
+    drop(q);
     pump(app);
 }
 
@@ -2183,6 +2194,49 @@ fn mots_avec_raison(taille: u64, to_trash: bool, corbeille: bool, eleve: bool) -
 /// passer outre tape le mot. C'est le but — pas un mur.
 fn eleve_change_le_geste(eleve: bool) -> bool {
     eleve
+}
+
+#[cfg(test)]
+mod tests_scan_redemande {
+    use super::demande_couverte;
+
+    #[test]
+    fn une_file_vide_ne_couvre_rien() {
+        assert!(!demande_couverte(&[], 'G'));
+    }
+
+    #[test]
+    fn un_autre_volume_en_attente_ne_couvre_pas() {
+        assert!(!demande_couverte(&['C'], 'G'));
+    }
+
+    #[test]
+    fn un_volume_deja_en_attente_est_couvert() {
+        // La borne : dix demandes pendant la même analyse ne doivent pas
+        // devenir dix passages de plus sur le disque.
+        assert!(demande_couverte(&['C', 'G'], 'G'));
+    }
+
+    #[test]
+    fn deux_demandes_pendant_une_analyse_donnent_une_seule_Analyse() {
+        // La séquence que l'ancien code exécutait, et le résultat qu'il
+        // produisait : la demande absorbée, la file toujours vide, donc rien.
+        // Mesuré le 28/09/2026 sur `generation` -- le dossier créé, la demande
+        // répondue `ok`, et un instantané pris AVANT sa création.
+        //
+        // Un instantané antérieur à la création d'un dossier ne peut pas
+        // contenir ce dossier : la seule chose qui couvre la demande, c'est une
+        // analyse d'après elle. Deux demandes, une analyse de plus -- ni zéro,
+        // ni deux.
+        let mut file: Vec<char> = Vec::new();
+        if !demande_couverte(&file, 'G') {
+            file.push('G');
+        }
+        if !demande_couverte(&file, 'G') {
+            file.push('G');
+        }
+        assert_eq!(file, vec!['G']);
+    }
 }
 
 #[cfg(test)]

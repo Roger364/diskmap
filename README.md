@@ -379,7 +379,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 > to speak.
 
 The fix has to be in two places, or it does not hold. The probe keeps a count
-(`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:131`).
+(`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:146`).
 The harness refuses the silence: no count means the exit code is forced to `1`
 (`tests/sondes/lancer.mjs:781`) and the reason is printed (`tests/sondes/lancer.mjs:885`). A zero summary has its own door: `tests/sondes/lancer.mjs:780`, reason `tests/sondes/lancer.mjs:881`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
@@ -633,6 +633,95 @@ dropped. It is the first defect in this project that only shows up on a slow mac
 scan **ends**. A change made between two scans does not move the landmark — the screen is then
 legitimately behind, which is the intended behaviour. And it says nothing about a second
 window: the rule assumes there is only one, which is already the binary's model.
+
+### A scan request during a running scan was accepted, then lost
+
+`POST /api/scan/<volume>` answered `{"ok":true}` unconditionally. The function carrying the
+request did:
+
+```rust
+if *app.scanning.lock().unwrap() == Some(letter) {
+    return;
+}
+```
+
+A silent return inside the one function whose entire contract is to **accept**. The client gets
+`ok`, believes it got a scan, and got nothing.
+
+Measured on the author's machine, 28/09/2026. The `generation` probe creates its folder, asks
+for the scan, waits for it to end, then looks the folder up through `/api/search`. It is not
+there:
+
+```
+[listing] nothing named “perime” — total=356 rendered=356 truncated=false exact=true
+[listing] expected folder : G:/_diskmap_sondes/perime — exists : true
+```
+
+Three facts in two lines. The folder **exists**. The search answers `exact=true,
+truncated=false` — the server claims it gave everything. And all 356 results contain
+`experimental`: the server searched for `perime` and did **not** find the folder it had just
+created. This is not a truncated search, it is a **snapshot taken before the folder was
+created**: the request was swallowed by the scan already running, which had started before the
+folder existed.
+
+Why the runner never saw it: a 511 MiB `D:` is scanned in under a second, so two requests never
+cross. On `G:` — 476 GB, 180 708 folders, 1 097 990 files — a scan lasts long enough for the
+window to open. Like R14, the defect depends on the **duration of a scan**, not on the version.
+
+> What covers a scan request is a scan **later** than the request. A scan in progress does not
+> cover it: its snapshot was taken before the request existed.
+
+The question is lifted out of the locks and made pure (`src/main.rs:596`): it takes only the
+queue, because the queue is the list of what will run. A volume already waiting is not queued
+twice (`src/main.rs:609`) — so the bound holds: ten requests during one scan give **one** extra
+scan, not ten.
+
+The `scanning` parameter was removed from the function on purpose, after a first version kept it
+without using it. A parameter that does not change the answer is a lie the tests eventually
+show; forgetting it becomes impossible, and the test that explains why ignores it.
+
+**Counter-proof, same probe sequence:** with the old behaviour restored, `generation` goes
+back to `SANS SYNTHESE` with the same `TypeError`. What `recherche` does is unchanged — which
+is what stops it taking the credit.
+
+**What the fix alone did not settle, and which is not a product defect.** On a full run,
+`generation` still raised its `TypeError`. The cause is the same, one step lower: the server no
+longer loses the request, but **the client still has no way to know when its own will have run**.
+Three waits turned out to be false, and none of them by accident:
+
+- `!scanning` is **true** in the gap between the running scan ending and the queued one starting;
+- `finished_ms` moves at the end of the first, not the second — waiting for "a change" is not
+  waiting for "*my* change";
+- only the **fact** does not lie: does the entry the probe just wrote appear in the snapshot?
+
+`generation` now waits for the entry, and absence is a **result**: it returns `null` and the
+probe says so. It no longer raises a `TypeError`. Same family as R12 seen from the other end: a
+probe that crashes writes no summary, so it exits on `SANS SYNTHESE` — the exact line a *dead*
+probe produces.
+
+`attendreFichier` in `config.mjs` already waited by the fact. That wait is now
+`attendreEntree`, and `attendreFichier` is one case of it: one place where the rule is written
+instead of two.
+
+**Measured, on the full run, before and after.**
+
+| | before | after |
+|---|---|---|
+| `generation` | `SANS SYNTHESE` — `TypeError` | `6/6` |
+| `recherche` | `20/25` | `25/25` |
+| `identifiant` | `12/13` | `13/13` |
+| `ui` | `25/27` | `37/37` |
+| `sans-corbeille` | `10/10` or `SANS SYNTHESE`, run to run | `10/10`, then `SANS SYNTHESE` |
+| total | 17/21 | **19/21** then **20/21** |
+
+Two consecutive full runs, rather than announcing the better one: `sans-corbeille` still
+alternates, and `csrf` is red in both.
+
+**What is still red, and why it is not R15.** `csrf` (`sel=null`) and `sans-corbeille`
+(`sel=null`) locate their target by a folder-then-file search without waiting by the fact: the
+same signature, one step further. It is the natural next step of the same work — probe fixes,
+not product fixes — and it is not done. Said here rather than left to look like a fresh
+regression: the product is sound on this point, the instrument is not yet.
 
 ### A verdict that depends on something you do not control is not a verdict
 

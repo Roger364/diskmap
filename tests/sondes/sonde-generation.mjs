@@ -20,7 +20,7 @@
 // Usage : node sonde-generation.mjs http://127.0.0.1:8990/ G
 import fs from 'fs';
 
-import { dossier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
+import { URL_DEFAUT, VOLUME_DEFAUT, attendreEntree, dossier } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -54,11 +54,24 @@ async function repos() {
 // Le nom ET la génération : c'est l'ensemble que le client détient. On retient
 // le `sel` et non le `id` brut : c'est lui que l'interface renvoie, et lui seul
 // porte le type (voir `scan::BIT_FICHIER`).
+//
+// Attendre le DOSSIER, pas la fin d'une analyse.
+//
+// Le 28/09/2026, cette fonction lisait l'instantane des que `repos()` rendait
+// la main, puis levait `TypeError: Cannot read properties of undefined` quand le
+// dossier n'y etait pas. Deux defauts dans les six caracteres de `.id` : elle
+// mesurait le mauvais instantane -- celui d'avant ses propres ecritures -- et
+// elle CRASAIT au lieu de nommer ce qu'elle ne voyait pas. Un `TypeError` dans
+// une sonde n'est pas un echec de produit : c'est `SANS SYNTHESE`, donc
+// impossible a distinguer d'une sonde morte.
+//
+// L'attente se fait donc sur le fait, par `attendreEntree`, et l'absence est
+// un resultat : elle revient `null` et la sonde la dit.
 async function listing() {
-  const dir = (await (await fetch(`${BASE}/api/search?drive=${VOL}&q=${NOM}`)).json())
-    .rows.find(r => r.name === NOM);
+  const dir = await attendreEntree(BASE, VOL, NOM);
+  if (!dir) return { ids: new Map(), gen: null, absent: true };
   const t = await (await fetch(`${BASE}/api/tree?drive=${VOL}&id=${dir.id}&limit=200`)).json();
-  return { ids: new Map(t.rows.filter(r => r.name.endsWith('.txt')).map(r => [r.name, r.sel])), gen: t.gen };
+  return { ids: new Map(t.rows.filter(r => r.name.endsWith('.txt')).map(r => [r.name, r.sel])), gen: t.gen, absent: false };
 }
 
 fs.mkdirSync(DOSSIER, { recursive: true });
@@ -71,6 +84,8 @@ await repos();
 const A = await listing();
 const idP1 = A.ids.get('p1.txt');
 console.log(`instantané A (génération ${A.gen}) : p1.txt porte le sélecteur ${idP1}`);
+verifier('le dossier de la sonde est dans l’instantané', !A.absent,
+  `« ${NOM} » absent après écriture et ré-analyse : l’instantané ne contient pas ce que la sonde vient d’écrire`);
 verifier('la réponse /api/tree porte une génération', typeof A.gen === 'number', `gen=${JSON.stringify(A.gen)}`);
 
 // --- Le disque change, et une ré-analyse rebase les positions ---------------

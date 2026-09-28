@@ -89,7 +89,7 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1557`) ; `execute` ne résout plus rien et ne supprime que les chemins
+(`src/main.rs:1568`) ; `execute` ne résout plus rien et ne supprime que les chemins
 figés par l'aperçu (`struct Montre`, `src/main.rs:101`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
@@ -224,12 +224,12 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
 |---|---|
-| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:898`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:820`) |
+| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:909`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:831`) |
 | DNS rebinding | Rien, pour la même raison |
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1422`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1433`) — voir R5 |
 
 ---
 
@@ -271,7 +271,7 @@ l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1422`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1433`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -402,7 +402,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2676`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2730`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -427,11 +427,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1693` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1698`) n'était
-appelé que dans `execute` (`src/main.rs:1742`). Des aperçus répétés sans confirmation
+`src/main.rs:1704` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1709`) n'était
+appelé que dans `execute` (`src/main.rs:1753`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1694`).
+endroit (`src/main.rs:1705`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -500,7 +500,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = done > 0` (`src/main.rs:2019`) et l'interface part en `poll()` ;
+le serveur pose `rescan = done > 0` (`src/main.rs:2030`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -644,7 +644,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 
 **Le correctif, en deux morceaux qui se répondent.** La sonde passe par un `verifier()` commun
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
-(`tests/sondes/sonde-generation.mjs:131`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
+(`tests/sondes/sonde-generation.mjs:146`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
 (`tests/sondes/lancer.mjs:781`) et le motif est écrit (`tests/sondes/lancer.mjs:885`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:881`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
@@ -940,9 +940,109 @@ projet-ci n'apparaît que sur une machine lente.
 
 **Ce que cette règle ne couvre pas.** Elle dépend de `finished_ms`, que le serveur écrit quand
 l'analyse **se termine**. Une analyse qui n'a pas encore commencé — un fichier créé entre deux
-analyses — ne fait pas bouger le repère : l'écran reste alors legitimately en retard, et c'est
+analyses — ne fait pas bouger le repère : l'écran reste alors légitimement en retard, et c'est
 le comportement voulu. Elle ne dit rien non plus d'un second écran, et la règle suppose qu'il n'y en a qu'un. Une seule instance,
 et c'est déjà le modèle du binaire.
+
+---
+
+### R15 — Une demande d'analyse pendant une analyse en cours était acceptée, puis perdue · **Haute** · *corrigé le 28/09/2026*
+
+Même famille que R14 et que le 404 du 27/09 : **une réponse qui contredit ce qui s'est passé.**
+Ici la réponse disait `{"ok":true}` à une demande que le serveur avait jetée sans la regarder.
+
+**Le code, avant le correctif.** `POST /api/scan/<volume>` répond `ok` sans condition. La fonction
+qui porte la demande faisait :
+
+```rust
+if *app.scanning.lock().unwrap() == Some(letter) {
+    return;
+}
+```
+
+Un retour muet, dans une fonction dont le seul contrat est d'**accepter**. Le client reçoit `ok`,
+croit avoir obtenu une analyse, et n'a rien obtenu.
+
+**Mesuré, le 28/09/2026, sur le poste de l'auteur.** La sonde `generation` crée son dossier,
+demande l'analyse, attend la fin, puis va chercher le dossier par `/api/search`. Il n'y est pas :
+
+```
+[listing] rien nommé « perime » — total=356 rendu=356 tronque=false exact=true
+[listing] dossier attendu : G:/_diskmap_sondes/perime — existe : true
+```
+
+Trois faits dans ces deux lignes. Le dossier **existe** sur le disque. La recherche répond
+`exact=true, tronque=false` — le serveur affirme avoir tout donné. Et parmi les 356 réponses,
+chacune contient `experimental` : le serveur a cherché `perime` et n'a **pas** trouvé le dossier
+qu'il vient de créer. Ce n'est pas une recherche tronquée, c'est un **instantané pris avant sa
+création** : la demande avait été absorbée par l'analyse déjà en cours, laquelle avait commencé
+avant que le dossier existe.
+
+**Pourquoi le runner ne le voyait pas.** Un `D:` de 511 Mio s'analyse en moins d'une seconde :
+deux demandes ne se croisent jamais. Sur `G:` — 476 Go, 180 708 dossiers, 1 097 990 fichiers —
+une analyse dure assez pour que la fenêtre s'ouvre. Le défaut ne dépend pas de la version mais
+de la **durée d'une analyse**, comme R14.
+
+**La règle :**
+
+> Ce qui couvre une demande d'analyse, c'est une analyse **postérieure** à la demande. Une
+> analyse en cours ne la couvre pas : son instantané a été pris avant qu'elle existe.
+
+**Le correctif.** La question est séparée des verrous et rendue pure (`src/main.rs:596`) : elle
+ne prend que la file, parce que la file est la liste de ce qui s'exécutera. Un volume déjà en
+attente n'est pas empilé deux fois (`src/main.rs:609`) — la borne est donc respectée : dix
+demandes pendant la même analyse donnent **une** analyse de plus, pas dix.
+
+Le paramètre `scanning` a été retiré de la fonction délibérément, après qu'une première version
+l'ait gardé sans l'utiliser. Un paramètre qui ne change pas la réponse est un mensonge que les
+tests finissent par montrer ; l'oubli devient impossible, et le test qui dit pourquoi l'ignore.
+
+**Contre-épreuve, sur la même séquence de sondes :** ancien comportement remis,
+`generation` retombe en `SANS SYNTHESE` avec le même `TypeError`. Ce que `recherche` en fait
+n'a pas bougé — la contre-épreuve est ce qui empêche de lui attribuer le mérite.
+
+**Ce que le correctif n'a pas suffi à régler, et qui n'est pas un défaut produit.** En run
+complet, `generation` levait toujours son `TypeError`. La cause est la même, un cran plus bas :
+le serveur ne perd plus la demande, mais **le client n'a toujours pas de raison de savoir quand
+la sienne aura eu lieu**. Trois attentes se sont révélées fausses, et elles ne l'étaient pas par
+hasard :
+
+- `!scanning` est **vrai** dans l'intervalle entre la fin de l'analyse en vol et le début de celle
+  qu'on vient de demander ;
+- `finished_ms` change à la fin de la première, pas de la seconde — attendre « un changement »
+  n'attend pas « *mon* changement » ;
+- seul le **fait** ne ment pas : l'entrée que la sonde vient d'écrire apparaît-elle dans
+  l'instantané ?
+
+`generation` attend désormais l'entrée, et l'absence est un **résultat** : elle revient `null` et
+la sonde le dit. Elle ne lève plus de `TypeError`. C'est la même famille que R12 vue par l'autre
+bout : une sonde qui plante n'écrit pas de résumé, donc elle sort en `SANS SYNTHESE` — la ligne
+exactement identique à celle d'une sonde morte.
+
+`attendreFichier`, dans `config.mjs`, attendait déjà par le fait. L attente par le fait est devenue
+`attendreEntree`, et `attendreFichier` n'en est plus qu'un cas particulier : un seul endroit où
+la règle est écrite, au lieu de deux.
+
+**Mesuré, sur le run complet, avant et après.**
+
+| | avant | après |
+|---|---|---|
+| `generation` | `SANS SYNTHESE` — `TypeError` | `6/6` |
+| `recherche` | `20/25` | `25/25` |
+| `identifiant` | `12/13` | `13/13` |
+| `ui` | `25/27` | `37/37` |
+| `sans-corbeille` | `10/10` ou `SANS SYNTHESE`, d'un run à l'autre | `10/10`, `SANS SYNTHESE` |
+| total | 17/21 | **19/21** puis **20/21** |
+
+Deux runs complets consécutifs, pour ne pas annoncer le meilleur : `sans-corbeille` alterne
+encore, et `csrf` est rouge dans les deux.
+
+**Ce qui reste rouge, et pourquoi ce n'est pas R15.** `csrf` (`sel=null`) et `sans-corbeille`
+(`sel=null`) cherchent leur cible par une recherche dossier-puis-fichier, sans attendre par le
+fait : même signature que les quatre lignes ci-dessus, une étape plus loin. C'est la suite
+naturelle du même travail — les corrections de sondes, pas du produit — et elle n'est pas faite. Le dire
+ici plutôt que de le laisser apparaître comme une nouvelle régression : le produit est sain sur
+ce point, l'instrument ne l'est pas encore.
 
 ---
 
@@ -981,6 +1081,13 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   (`tests/sondes/sonde-ui-suppression.mjs:711`) exige alors qu'à taille égale les noms soient
   croissants — invariant **indépendant du serveur** : comparer l'écran à l'interface ne
   prouverait que leur accord, y compris s'ils ont tort ensemble.
+- **Une demande d'analyse n'est acceptée que si elle sera honorée.** `POST /api/scan`
+  répondait `ok` à une demande que `start_scan` jetait sans un mot quand le volume était déjà en
+  cours — or un instantané pris **avant** la demande ne peut pas contenir ce qu'elle voulait
+  voir. Mesuré : un dossier créé, la demande répondue `ok`, et `/api/search` qui le déclare
+  introuvable tout en répondant `exact=true, tronque=false` sur 356 résultats. Ce qui couvre une
+  demande, c'est une analyse **postérieure** à elle — donc la file, et jamais l'analyse en cours
+  (`src/main.rs:596`) — R15.
 - **L'écran se recharge quand le disque a bougé depuis qu'il a été peint.** La veille de fond
   suivait l'état d'un volume analysé ailleurs, jamais l'arbre : le rechargement n'existait que
   dans `poll()`, qui ne démarre que sur un geste local et s'éteint après un tour. Une analyse
@@ -1003,7 +1110,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
   (`tests/sondes/lancer.mjs:553`) : `rm -rf` y serait un bug, et le code le dit.
-- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1078`). Un
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1089`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
   serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
