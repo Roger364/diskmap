@@ -237,7 +237,7 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 
 ### R1 — XSS stockée via le nom de volume → effacement arbitraire · **Haute** · *corrigé*
 
-`ui/index.html:513-514` :
+`ui/index.html:519-520` :
 
 ```js
 <span class="lbl">${d.label || ''}</span>
@@ -261,12 +261,12 @@ aucun nœud texte cassé.
 
 ### R2 — L'aperçu montre 25 chemins, l'exécution en supprime N · **Haute** · *corrigé*
 
-`ui/index.html:1067` : `for (const it of d.items.slice(0, 25))`, suivi de
+`ui/index.html:1087` : `for (const it of d.items.slice(0, 25))`, suivi de
 `… et ${d.items.length - 25} autre(s)`. Rien n'empêche l'exécution de traiter les N.
 
 « Tout sélectionner » dans un dossier de 200 entrées affiche donc 175 chemins que
 l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
-(`ui/index.html:1056`) est lui aussi purement client, et ne couvre pas le *nombre*.
+(`ui/index.html:1076`) est lui aussi purement client, et ne couvre pas le *nombre*.
 
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
@@ -586,11 +586,11 @@ arrivée**.
 > Une seule réponse a le droit de peindre : la dernière demandée. Une réponse périmée ne touche
 > même pas l'état — sinon la suivante hérite d'un état déjà mêlé.
 
-**Le correctif.** Un jeton par requête (`ui/index.html:694`), incrémenté au départ de `load()` et
-de `search()`, comparé à l'arrivée (`ui/index.html:753` et `ui/index.html:942`). La réponse
+**Le correctif.** Un jeton par requête (`ui/index.html:704`), incrémenté au départ de `load()` et
+de `search()`, comparé à l'arrivée (`ui/index.html:763` et `ui/index.html:957`). La réponse
 périmée rend la main sans rien écrire. Son **erreur** non plus n'est pas dite : la parler ferait
 remonter d'un cran un dossier qui n'a pas disparu, puisque le chemin à remonter serait celui de la
-requête périmée (`ui/index.html:730`).
+requête périmée (`ui/index.html:740`).
 
 **Épreuves, les deux sens.** Jeton retiré, 2 s de latence injectée sur `/api/tree` : deux verdicts
 rougissent, et le nouveau — « l'ordre demandé n'a jamais été contredit à l'écran » — nomme la
@@ -856,6 +856,96 @@ standard redirigée verra le message qui explique pourquoi, et `--browser` sera 
 
 ---
 
+### R14 — La veille de fond suivait l'état, jamais l'écran · **Haute** · *corrigé le 28/09/2026*
+
+Même famille que le 404 du 27/09 et que R11 : **un écran ne doit pas contredire ce que le
+serveur dit.** Ici le contreditement était silencieux, durable, et ne se voyait pas — parce
+qu'aucune sonde ne le cherchait, et parce qu'il ne se voyait que sur un volume assez lent pour
+qu'une analyse dure plus de quelques secondes.
+
+**Le code annonçait le contraire de ce qu'il faisait.** Sa propre documentation, à deux lignes
+de l'endroit :
+
+> Veille de fond : elle ne sert qu'à suivre un volume analysé depuis une autre fenêtre.
+
+Une analyse déclenchée **ailleurs** — depuis une seconde fenêtre, ou par une sonde — laissait
+cette fenêtre afficher l'instantané précédent. Le rechargement de l'arbre n'existait que dans
+`poll()`, or `poll()` n'est lancé que par deux gestes locaux : « Analyser », et le démarrage
+si une analyse est déjà en cours. Il **s'éteint** après un tour. Une analyse étrangère ne le
+déclenche donc jamais.
+
+**Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Trois lectures de l'état
+client prises au moment du geste, puis soixante secondes plus tard :
+
+```
+avant    {gen 9, statut scanning, scanning true,  veille vive, requete 6}
+immediat {gen 9, statut scanning, scanning true,  veille vive, requete 6}
+final    {gen 9, statut ready,     scanning false, veille vive, requete 6}
+```
+
+`requete` ne bouge pas : **la requête n'est jamais partie.** Le geste de l'utilisateur — changer
+le tri — appelle `load(true)`, qui rend la main quand le volume affiché n'est pas prêt. Le
+geste est perdu, silencieusement. Et la veille voit bien l'analyse se terminer (`scanning: false`
+à `final`) : elle **voit**, et ne recharge rien. Le compteur de requêtes le prouve mieux qu'une
+lecture de code : après soixante secondes et un cycle complet de veille, l'écran portait encore
+exactement le même instantané.
+
+**L'hypothèse que j'ai vérifiée avant de l'écrire, et qui était fausse.** Ma première idée
+était une course entre l'annonce de fin d'analyse et la publication du nouvel instantané : le
+serveur dirait « terminé » avant de servir l'arbre nouveau. Falsifiée par la mesure — en
+interrogeant `/api/state` et `/api/tree` toutes les 100 ms pendant une reanalyse de `G:`
+(180 708 dossiers, 1 097 990 fichiers) :
+
+```
+13.511 s  finished_ms -> 1790584764505  (gen servi : 6)
+13.511 s  gen -> 6
+  ECART : finished_ms a +10392 ms, gen a +10392 ms  ->  0 ms
+```
+
+Les deux changent dans le **même échantillon**. La fenêtre est sous les 100 ms, et elle n'est
+pas la cause. Écrire la règle sur cette hypothèse aurait produit un correctif pour un défaut
+qui n'existait pas — et un écran « corrigé » qui resterait faux.
+
+**La règle :**
+
+> Un écran affiche un instantané du disque. Si le disque a été réanalysé depuis, l'écran ment,
+> et il doit se recharger — même si l'analyse vient d'ailleurs, et même si le dernier geste de
+> l'utilisateur a été perdu en route.
+
+**Le correctif.** Un repère unique : l'écran note, à chaque peinture, le `finished_ms` du volume
+qu'il montre (`ui/index.html:422`). La veille compare (`ui/index.html:1833`) : tant que le
+repère vaut celui de l'état, elle ne fait rien ; dès qu'il diffère, elle recharge
+(`ui/index.html:1838`). Le rechargement passe par `rechargerTri()` et non `load()` : la
+**sélection** se garde — c'est une cible de suppression, et un rechargement de fond n'a pas le
+droit de la déplacer — et une recherche en cours reste une recherche.
+
+Un second morceau, sans lequel le premier ne tiendrait pas : `poll()` rendait son drapeau. Il
+faisait `clearInterval(pollTimer)` en s'éteignant, sans remettre la variable à zéro — le
+drapeau restait donc vrai pour toujours après la première analyse lancée depuis cette fenêtre, et
+la veille n'aurait plus jamais rien fait. Le nom du drapeau est le contrat : il vaut « une
+analyse lancée d'ici est en cours », donc il est faux quand il n'y en a pas.
+
+**Épreuves, dans les deux sens, sur un run complet.**
+
+| | `identifiant` | `ui` |
+|---|---|---|
+| avant | `12/13`, `generation 8 -> 8` | `25/27`, *« le clic n'a pas navigué »* |
+| après | `13/13` | `37/37` |
+
+Les deux sondes étaient rouges **sur le même code** que le runner, où elles sont vertes : la
+différence n'est pas la version, c'est la **durée**. Sur le `D:` du runner une analyse dure
+moins d'une seconde et l'interface ne peut pas manquer le moment ; sur `G:` elle dure assez
+pour qu'un geste tombe dedans et soit perdu. C'est la première fois qu'un défaut de ce
+projet-ci n'apparaît que sur une machine lente.
+
+**Ce que cette règle ne couvre pas.** Elle dépend de `finished_ms`, que le serveur écrit quand
+l'analyse **se termine**. Une analyse qui n'a pas encore commencé — un fichier créé entre deux
+analyses — ne fait pas bouger le repère : l'écran reste alors legitimately en retard, et c'est
+le comportement voulu. Elle ne dit rien non plus d'un second écran, et la règle suppose qu'il n'y en a qu'un. Une seule instance,
+et c'est déjà le modèle du binaire.
+
+---
+
 ## 6. Ce qui est solide
 
 Le travail de durcissement est de bon niveau ; ces points ne doivent pas être perdus.
@@ -863,7 +953,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **La cible est figée à l'aperçu.** `Montre` porte le chemin résolu ; `execute` ne résout
   plus rien. C'est la bonne architecture : la seule façon de supprimer reste de décider ce
   qu'on supprime.
-- **Une seule réponse peint** (`ui/index.html:694`). Une requête périmée rend la main sans
+- **Une seule réponse peint** (`ui/index.html:704`). Une requête périmée rend la main sans
   toucher l'état, et son erreur non plus n'est pas dite — R11. Le même refus que pour la cible :
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
@@ -891,6 +981,13 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   (`tests/sondes/sonde-ui-suppression.mjs:711`) exige alors qu'à taille égale les noms soient
   croissants — invariant **indépendant du serveur** : comparer l'écran à l'interface ne
   prouverait que leur accord, y compris s'ils ont tort ensemble.
+- **L'écran se recharge quand le disque a bougé depuis qu'il a été peint.** La veille de fond
+  suivait l'état d'un volume analysé ailleurs, jamais l'arbre : le rechargement n'existait que
+  dans `poll()`, qui ne démarre que sur un geste local et s'éteint après un tour. Une analyse
+  étrangère laissait donc l'écran afficher un instantané que le serveur ne servait plus, sans un
+  mot — et un geste de l'utilisateur survenu **pendant** l'analyse était perdu sans bruit,
+  mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
+  chaque peinture (`ui/index.html:422`), comparé par la veille (`ui/index.html:1833`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
   (`src/main.rs:198`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment

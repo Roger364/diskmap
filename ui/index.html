@@ -414,6 +414,12 @@ let pendingDry = null;
 // les erreurs réseau qui en résulteraient masqueraient l'écran d'arrêt.
 let arrete = false;
 let veilleTimer = null;
+// L'instantané que l'écran affiche. `/api/state` donne déjà le
+// `finished_ms` du volume — la seule mesure de « le disque a bougé depuis ce
+// que je montre ». Tant que ce repère vaut celui de l'état, l'écran est à
+// jour ; dès qu'il diffère, l'écran ment, et c'est le SEUL moment où un
+// rechargement de fond se justifie.
+let peintMs = null;
 
 // ---------- formatage ----------
 const nf = new Intl.NumberFormat('fr-FR');
@@ -669,6 +675,10 @@ function poll() {
     await refreshState();
     if (!state.scanning) {
       clearInterval(pollTimer);
+      // Le drapeau vaut « une analyse lancée d'ici est en cours ». Le laisser
+      // vrai après l'arrêt ferait croire à la veille qu'une analyse suit, et
+      // elle ne rechargerait plus jamais l'écran.
+      pollTimer = null;
       await load();
     }
   }, 700);
@@ -753,6 +763,11 @@ async function load(keepSel) {
   if (mien !== requete) return;
   cur.rows = res.rows;
   cur.gen = res.gen;
+  // L'écran est désormais celui de cet instantané-là. `state` peut encore
+  // être en retard d'un battement : au pire la veille rechargera une fois de
+  // trop, ce qui est sans conséquence, alors que ne pas le noter laisserait
+  // l'écran faux sans que rien ne le sache.
+  peintMs = (state.drives.find((x) => x.letter === cur.drive) || {}).finished_ms || 0;
   cur.totalSize = res.total_size;
   cur.parentSize = res.parent_size;
   cur.truncated = res.truncated;
@@ -942,6 +957,11 @@ async function search() {
   if (mien !== requete) return;
   cur.rows = res.rows;
   cur.gen = res.gen;
+  // L'écran est désormais celui de cet instantané-là. `state` peut encore
+  // être en retard d'un battement : au pire la veille rechargera une fois de
+  // trop, ce qui est sans conséquence, alors que ne pas le noter laisserait
+  // l'écran faux sans que rien ne le sache.
+  peintMs = (state.drives.find((x) => x.letter === cur.drive) || {}).finished_ms || 0;
   cur.parentSize = res.rows.reduce((s, r) => s + r.size, 0) || 1;
   cur.truncated = res.truncated;
   // `total` est le compte RÉEL des correspondances, et `exact` dit s'il est
@@ -1793,9 +1813,30 @@ window.addEventListener('resize', () => { if (cur.view === 'map') renderMap(); }
     const first = state.drives[0];
     if (first) $('#count').textContent = `Clique sur « Analyser » pour ${first.letter}:`;
   }
-  // Veille de fond : elle ne sert qu'à suivre un volume analysé depuis une autre
-  // fenêtre. Nommée, pour pouvoir l'éteindre à l'arrêt.
-  veilleTimer = setInterval(() => { if (!arrete) refreshState(); }, 4000);
+  // Veille de fond : elle suit un volume analysé depuis une autre fenêtre.
+  // Nommée, pour pouvoir l'éteindre à l'arrêt.
+  // Elle suit l'état — et, depuis le 28/09/2026, l'ÉCRAN aussi. Elle ne
+  // suivait que le premier : une analyse déclenchée ailleurs laissait cette
+  // fenêtre afficher un instantané que le serveur ne servait plus, sans un mot.
+  // C'est faux dans un outil qui supprime : la ligne cochée n'est plus ce que
+  // l'utilisateur voit.
+  //
+  // `poll()` n'a pas à être appelé : il s'éteint après un tour et n'existe que
+  // pour une analyse lancée d'ici. Son drapeau distingue les deux, et il n'est
+  // vrai que pour un `poll()` vivant — voir le `pollTimer = null` plus haut.
+  veilleTimer = setInterval(async () => {
+    if (arrete) return;
+    await refreshState();
+    if (arrete || !cur.drive || pollTimer) return;
+    const d = state.drives.find((x) => x.letter === cur.drive);
+    if (!d || d.status !== 'ready') return;
+    if (peintMs === null || (d.finished_ms || 0) === peintMs) return;
+    // La sélection se garde : c'est une cible de suppression, et un
+    // rechargement de fond n'a pas le droit de la déplacer. `rechargerTri`
+    // plutôt que `load` : une recherche en cours reste une recherche, pas un
+    // retour brutal à la liste du dossier.
+    rechargerTri();
+  }, 4000);
 })();
 </script>
 </body>

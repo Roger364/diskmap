@@ -484,6 +484,156 @@ absence stays visible.
 count, so a `verifier()` that wrote nothing would be seen. But it cannot tell a renamed
 `verifier()` from an absent one, and that is next on the list.
 
+### The background watch followed the state, never the screen
+
+The code said the opposite of what it did, two lines away from the code:
+
+> Background watch: it only exists to follow a volume being analysed from another window.
+
+A scan triggered **elsewhere** — from a second window, or from a probe — left this window
+displaying the previous snapshot. Reloading the tree existed only in `poll()`, and `poll()` is
+started by exactly two local gestures, then **switches itself off** after one turn. A foreign
+scan never reaches it.
+
+Measured on the author's machine, 28/09/2026: three readings of the client at the moment of
+the gesture, then sixty seconds later.
+
+```
+avant    {gen 9, statut scanning, scanning true,  veille vive, requete 6}
+immediat {gen 9, statut scanning, scanning true,  veille vive, requete 6}
+final    {gen 9, statut ready,     scanning false, veille vive, requete 6}
+```
+
+`requete` does not move: **the request never went out.** The user's gesture — changing the
+sort — calls `load(true)`, which returns without painting while the displayed volume is not
+ready. The gesture is lost, silently. And the watch *does* see the scan end (`scanning: false`
+at `final`): it sees, and reloads nothing. The request counter proves it better than reading
+code would: after sixty seconds and a full watch cycle, the screen still held exactly the same
+snapshot.
+
+**The hypothesis I checked before writing it, which was wrong.** My first idea was a race
+between the end-of-scan announcement and the publication of the new snapshot — the server
+saying *done* before it serves the new tree. Falsified by measurement, polling `/api/state`
+and `/api/tree` every 100 ms across a rescan of `G:` (180 708 folders, 1 097 990 files):
+
+```
+13.511 s  finished_ms -> 1790584764505  (gen served : 6)
+13.511 s  gen -> 6
+  GAP : finished_ms at +10392 ms, gen at +10392 ms  ->  0 ms
+```
+
+Both change in the **same sample**. The window is under 100 ms and it is not the cause. Writing
+the rule on that hypothesis would have produced a fix for a defect that does not exist — and a
+"fixed" screen that stays wrong.
+
+> A screen displays a snapshot of the disk. If the disk has been analysed since, the screen is
+> lying, and it must reload — even if the scan came from elsewhere, and even if the user's last
+> gesture was lost on the way.
+
+The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
+shows (`ui/index.html:422`). The watch compares (`ui/index.html:1833`) and reloads
+(`ui/index.html:1838`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+**selection** is kept. It is a deletion target, and a background reload has no right to move
+it; a search in progress stays a search.
+
+A second piece, without which the first would not hold: `poll()` was not clearing its flag. It
+called `clearInterval(pollTimer)` on the way out without resetting the variable, so the flag
+stayed true for good after the first locally-started scan, and the watch would have stopped
+doing anything, ever. The name of the flag is the contract: it means *a scan started from here
+is running*, so it is false when there is none.
+
+Both directions, on a full run:
+
+| | `identifiant` | `ui` |
+|---|---|---|
+| before | `12/13`, `generation 8 -> 8` | `25/27`, *the click did not navigate* |
+| after | `13/13` | `37/37` |
+
+Both probes were red **on the same code** the runner passes: the difference is not the version,
+it is the **duration**. A rescan of the runner's `D:` takes under a second and the interface
+cannot miss the moment; on `G:` it lasts long enough for a gesture to land inside it and be
+dropped. It is the first defect in this project that only shows up on a slow machine.
+
+**What the rule does not cover.** It rests on `finished_ms`, which the server writes when the
+scan **ends**. A change made between two scans does not move the landmark — the screen is then
+legitimately behind, which is the intended behaviour. And it says nothing about a second
+window: the rule assumes there is only one, which is already the binary's model.
+
+### The background watch followed the state, never the screen
+
+The code said the opposite of what it did, two lines away from the code:
+
+> Background watch: it only exists to follow a volume being analysed from another window.
+
+A scan triggered **elsewhere** — from a second window, or from a probe — left this window
+displaying the previous snapshot. Reloading the tree existed only in `poll()`, and `poll()` is
+started by exactly two local gestures, then **switches itself off** after one turn. A foreign
+scan never reaches it.
+
+Measured on the author's machine, 28/09/2026: three readings of the client at the moment of
+the gesture, then sixty seconds later.
+
+```
+avant    {gen 9, statut scanning, scanning true,  veille vive, requete 6}
+immediat {gen 9, statut scanning, scanning true,  veille vive, requete 6}
+final    {gen 9, statut ready,     scanning false, veille vive, requete 6}
+```
+
+`requete` does not move: **the request never went out.** The user's gesture — changing the
+sort — calls `load(true)`, which returns without painting while the displayed volume is not
+ready. The gesture is lost, silently. And the watch *does* see the scan end (`scanning: false`
+at `final`): it sees, and reloads nothing. The request counter proves it better than reading
+code would: after sixty seconds and a full watch cycle, the screen still held exactly the same
+snapshot.
+
+**The hypothesis I checked before writing it, which was wrong.** My first idea was a race
+between the end-of-scan announcement and the publication of the new snapshot — the server
+saying *done* before it serves the new tree. Falsified by measurement, polling `/api/state`
+and `/api/tree` every 100 ms across a rescan of `G:` (180 708 folders, 1 097 990 files):
+
+```
+13.511 s  finished_ms -> 1790584764505  (gen served : 6)
+13.511 s  gen -> 6
+  GAP : finished_ms at +10392 ms, gen at +10392 ms  ->  0 ms
+```
+
+Both change in the **same sample**. The window is under 100 ms and it is not the cause. Writing
+the rule on that hypothesis would have produced a fix for a defect that does not exist — and a
+"fixed" screen that stays wrong.
+
+> A screen displays a snapshot of the disk. If the disk has been analysed since, the screen is
+> lying, and it must reload — even if the scan came from elsewhere, and even if the user's last
+> gesture was lost on the way.
+
+The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
+shows (`ui/index.html:422`). The watch compares (`ui/index.html:1833`) and reloads
+(`ui/index.html:1838`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+**selection** is kept. It is a deletion target, and a background reload has no right to move
+it; a search in progress stays a search.
+
+A second piece, without which the first would not hold: `poll()` was not clearing its flag. It
+called `clearInterval(pollTimer)` on the way out without resetting the variable, so the flag
+stayed true for good after the first locally-started scan, and the watch would have stopped
+doing anything, ever. The name of the flag is the contract: it means *a scan started from here
+is running*, so it is false when there is none.
+
+Both directions, on a full run:
+
+| | `identifiant` | `ui` |
+|---|---|---|
+| before | `12/13`, `generation 8 -> 8` | `25/27`, *the click did not navigate* |
+| after | `13/13` | `37/37` |
+
+Both probes were red **on the same code** the runner passes: the difference is not the version,
+it is the **duration**. A rescan of the runner's `D:` takes under a second and the interface
+cannot miss the moment; on `G:` it lasts long enough for a gesture to land inside it and be
+dropped. It is the first defect in this project that only shows up on a slow machine.
+
+**What the rule does not cover.** It rests on `finished_ms`, which the server writes when the
+scan **ends**. A change made between two scans does not move the landmark — the screen is then
+legitimately behind, which is the intended behaviour. And it says nothing about a second
+window: the rule assumes there is only one, which is already the binary's model.
+
 ### A verdict that depends on something you do not control is not a verdict
 
 On 28/09/2026 the runner came back with `identifiant` **red**: `identifiant 10 -> 10 on this
