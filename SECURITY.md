@@ -601,9 +601,9 @@ peintures ne contient plus que les deux situations attendues.
 la **première** peinture. Le défaut se jouait deux secondes plus tard : son vert ne prouvait rien
 sur la dernière réponse, et son rouge ne tombait que par hasard de charge — une fois sur un run
 complet, jamais sur un volume rapide. Elle enregistre donc chaque peinture
-(`tests/sondes/sonde-ui-suppression.mjs:520`) et attend que l'écran se taise
-(`tests/sondes/sonde-ui-suppression.mjs:543`) avant de lire quoi que ce soit. Le verdict qui en
-découle (`tests/sondes/sonde-ui-suppression.mjs:725`) est le seul qui voie les peintures
+(`tests/sondes/sonde-ui-suppression.mjs:530`) et attend que l'écran se taise
+(`tests/sondes/sonde-ui-suppression.mjs:553`) avant de lire quoi que ce soit. Le verdict qui en
+découle (`tests/sondes/sonde-ui-suppression.mjs:773`) est le seul qui voie les peintures
 intermédiaires ; tous les autres lisent un instant, et cet instant peut précéder la dernière
 réponse.
 
@@ -814,6 +814,16 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:753`), pas verte par défaut : le
   harnais exige un décompte écrit. C'est le seul garde-fou qui couvre la sonde elle-même —
   R12. Les vingt sondes en tiennent un.
+- **À taille égale, l'écran range par nom croissant** — et c'est **mesuré à l'écran**, pas
+  déduit du code. Le départage du serveur (`src/scan.rs`, `.then_with(|| a.name.cmp(&b.name))`)
+  tient dans les deux sens, et un test Rust le vérifie côté serveur ; mais l'écran montrait
+  l'égalité sans jamais la trancher, faute de support. Le support existe
+  (`tests/sondes/sonde-ui-suppression.mjs:101`) : deux fichiers de **même taille**, créés dans
+  l'ordre **inverse** de l'ordre alphabétique, donc un serveur sans départage les afficherait
+  `zztaille-z` avant `zztaille-a`. Le verdict
+  (`tests/sondes/sonde-ui-suppression.mjs:711`) exige alors qu'à taille égale les noms soient
+  croissants — invariant **indépendant du serveur** : comparer l'écran à l'interface ne
+  prouverait que leur accord, y compris s'ils ont tort ensemble.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
   (`src/main.rs:198`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment

@@ -90,6 +90,16 @@ for (const [nom, ko] of [['delta', 1], ['alpha', 2], ['charlie', 3], ['bravo', 4
 for (const [nom, ko] of [['zztri-3', 1], ['zztri-1', 2], ['zztri-2', 3]]) {
   fs.writeFileSync(DOSSIER + '/Documents/' + nom + '.txt', 'x'.repeat(ko * 100));
 }
+// Deux fichiers de MEME TAILLE, crees dans l ordre INVERSE de l ordre
+// alphabetique. C est le support du verdict de departage, et il est construit
+// pour que le serveur SANS departage se trahisse : il les rendrait dans l ordre
+// du systeme de fichiers, donc `zztaille-z` avant `zztaille-a`, et le verdict
+// rougirait. Avec le departage, ils sont ranges par nom croissant — meme en tri
+// DECROISSANT, parce que le serveur garde le departage dans le sens demande
+// (`.then_with(|| a.name.cmp(&b.name))`). C est un choix, et il tient pour les
+// deux sens : un departage qui suivrait le sens rendrait l ordre illisible.
+fs.writeFileSync(DOSSIER + '/Documents/zztaille-z.txt', 'x'.repeat(2000));
+fs.writeFileSync(DOSSIER + '/Documents/zztaille-a.txt', 'x'.repeat(2000));
 await fetch(`${BASE}/api/scan/${VOL}`, { method: 'POST', headers: H });
 const indexe = await attendreFichier(BASE, VOL, 'cible.txt');
 verifier('le fichier d’essai est dans l’instantané', indexe,
@@ -668,6 +678,43 @@ if (fichierTrouve) {
   // Le support doit etre la, sinon le verdict qui suit ne mesure rien. Le dire
   // est mieux que le decouvrir en rouge : une verification sans support est un
   // succes qui ne prouve rien.
+  // LE DÉPARTAGE DES TAILLES ÉGALES, MESURÉ À L'ÉCRAN.
+  //
+  // Ce que la sonde disait d elle-meme, et qu elle ne mesurait pas : « comparer
+  // un ordre par taille demanderait de relire les tailles, et un support qui ne
+  // prouve rien est pire que pas de support ». Le support existe desormais, donc
+  // l excuse non plus.
+  //
+  // L invariant est volontairement INDEPENDANT du serveur : on ne demande pas
+  // « l ecran montre-t-il ce que le serveur a dit », mais « a taille egale, les
+  // noms sont-ils croissants ». Comparer l ecran au serveur ne prouverait que
+  // qu ils sont d accord, y compris s ils ont tort ensemble ; l invariant, lui,
+  // tient sans reference et ne peut etre vrai que si le serveur departage.
+  //
+  // Aucune conversion d unite : on regroupe par TEXTE de taille affiche, ce
+  // qui suffit — deux lignes sont a egale taille si l interface ecrit la meme
+  // chose pour les deux. Une conversion ici serait une source de faux rouges
+  // pour rien : la question n est pas « combien d octets », c est « quelles
+  // lignes sont egales ».
+  const etatTaille = await etatTri();
+  const groupes = new Map();
+  for (const l of etatTaille.lignes) {
+    const i = l.lastIndexOf('=');
+    if (i < 0) continue;
+    const taille = l.slice(i + 1);
+    if (!groupes.has(taille)) groupes.set(taille, []);
+    groupes.get(taille).push(l.slice(0, i));
+  }
+  const exaequos = [...groupes.entries()].filter(([, noms]) => noms.length >= 2);
+  const desordre = exaequos.filter(([, noms]) =>
+    noms.some((n, k) => k > 0 && comparerNoms(noms[k - 1], n) > 0));
+  verifier('à taille égale, l’écran range par nom croissant — même en tri décroissant',
+    etatTaille.tri === 'size' && exaequos.length > 0 && desordre.length === 0,
+    `tri=${etatTaille.tri}/${etatTaille.ordre} · `
+    + `${exaequos.length} groupe(s) de taille egale : `
+    + `${JSON.stringify(exaequos.slice(0, 3))}`
+    + (desordre.length ? ` · EN DESORDRE : ${JSON.stringify(desordre[0][1])}` : ''));
+
   const supportLignes = await nomsLignes();
   verifier('le dossier affiché a plusieurs lignes à ordonner', supportLignes.length >= 5,
     `${supportLignes.length} ligne(s) : ${JSON.stringify(supportLignes)}`);
@@ -712,10 +759,11 @@ if (fichierTrouve) {
   // et cet instant peut precedre la derniere reponse — c est exactement ce qui
   // a laisse passer le defaut du 28/09/2026.
   //
-  // Seules les peintures `par nom` sont verifiables ici : comparer un ordre par
-  // taille demanderait de relire les tailles, et un support qui ne prouve rien
-  // est pire que pas de support. Le nombre de peintures verifiables est lu et
-  // exige : sans lui, ce verdict pourrait passer sans avoir rien regarde.
+  // Seules les peintures `par nom` sont verifiables ICI : comparer un ordre par
+  // taille a cet endroit demanderait de relire les tailles sur chaque peinture
+  // intermediaire, et le departage se mesure plus bas, sur un support fait pour.
+  // Le nombre de peintures verifiables est lu et exige : sans lui, ce verdict
+  // pourrait passer sans avoir rien regarde.
   const peints = await page.evaluate(() => window.__peints);
   const verifiables = peints.filter((p) => p.tri === 'name');
   const contradites = verifiables.filter((p) => p.noms.join('|')

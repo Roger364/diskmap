@@ -502,6 +502,45 @@ branch above.
 > A note exists to say what a green does not prove. Print it on every run, and keep the ones that
 > are actually warnings — the rest is noise wearing the same mask.
 
+### Two files of the same size, and the order the user actually sees
+
+Sorting by size has a tie, and the tie is the whole point: without a tiebreak, two files of the
+same size land in whatever order the filesystem hands them over. The server breaks the tie by
+name, always ascending, in **both** directions — a deliberate choice, because a tiebreak that
+followed the sort direction would make the list unreadable — and a Rust test checks it. But all
+of that is server-side. **On screen, the equality was never resolved**: the probe compared
+rendered order for `by name` only, and said so in a comment, blaming the support.
+
+The excuse was a good one — *a support that proves nothing is worse than no support* — and it
+was wrong. The support simply did not exist yet, so it could be made.
+
+Two files of the **same size**, written in the **reverse** of alphabetical order
+(`tests/sondes/sonde-ui-suppression.mjs:101`). A server without a tiebreak renders them
+`zztaille-z` before `zztaille-a`, because that is the order they were created in. The verdict
+(`tests/sondes/sonde-ui-suppression.mjs:711`) requires names to ascend within every group of
+identical displayed sizes, and goes red.
+
+The check is deliberately **independent of the server**. Asking "does the screen show what the
+server said" only proves the two agree, including when they are wrong together. "At equal size,
+are the names ascending" needs no reference, and can only be true if the tiebreak exists.
+
+No unit conversion either: rows are grouped by the **size text the interface rendered**. Two
+rows are equal-sized if the UI writes the same thing for both. Parsing `2,0 Ko` into bytes would
+add a source of false reds for nothing — the question is never *how many bytes*, only *which rows
+are equal*.
+
+Rupture test, tiebreak removed from the server:
+
+```
+ROUGE  at equal size, the screen sorts by ascending name — even in descending order
+mesure : tri=size/desc · 4 equal-size groups :
+  [["2 Ko",["zztaille-z.txt","zztaille-a.txt"]], …] · OUT OF ORDER: ["zztaille-z.txt","zztaille-a.txt"]
+```
+
+One red out of 37, and the right one. It also turned out the existing support files had ties all
+along — `zztri-2` and `charlie` are both 300 bytes — nobody had just named them.
+
+
 A note still does **not** fail the run. That would be the same mistake as 28/09: punishing a probe
 for a calm volume. It is a fact to know, not a product defect — and it can no longer be missed.
 
