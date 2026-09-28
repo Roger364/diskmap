@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:131`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:753`) and the reason is printed (`tests/sondes/lancer.mjs:853`).
+(`tests/sondes/lancer.mjs:781`) and the reason is printed (`tests/sondes/lancer.mjs:885`). A zero summary has its own door: `tests/sondes/lancer.mjs:780`, reason `tests/sondes/lancer.mjs:881`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -401,8 +401,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:776`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:856`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:804`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:888`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -428,11 +428,61 @@ probe that **lies about its numerator and exits 0 anyway**. The log then shows i
 `5/5 checks green` one line away from the diagnosis that denies it — the proof, at one line of
 gap, that the word said nothing.
 
-What it still does **not** cover: it counts verdict lines by a given prefix (`ok`, `ROUGE`). A
-probe writing its verdict anywhere else — at the end of a line, inside a table — would not be
-counted, and the count would call it false when it is true. That is a refusal in the right
-direction: a verdict the harness cannot read is a verdict it cannot check. But it has to be
-known, and said. The two-way reference check has the same blind spot, and is next on the list.
+**The limit that was supposed to be there — and what measuring it actually says.** The rule
+counts verdict lines by a given prefix (`ok`, `ROUGE`). A probe writing its verdict anywhere
+else — at the end of a line, inside a table — would not be counted, and the count would call it
+false when it is true. That was written here as a risk of a **false green**. Falsified before
+touching it, because a supposed risk does not deserve a rule:
+
+| Falsification, one change only | What the harness said |
+|---|---|
+| the prefix becomes `vert` (the summary itself stays honest) | `count inconsistent: the probe announces 5/5, and wrote 0 ok and 0 ROUGE` |
+| the summary is pinned to `0/0`, verdicts intact | `count inconsistent: the probe announces 0/0, and wrote 5 ok and 0 ROUGE` |
+
+**Neither passes, and neither can pass alone.** The two-term count makes the convention
+self-checking: moving the prefix without touching the summary goes red, and pinning the summary
+without moving the prefix goes red too. Reaching a false green would take moving both
+**together** — a coordinated edit, so a decision, not a drift. The limit is real, but it is a
+refusal in the right direction, and it says so.
+
+**The fourth guard, found by looking for that hole: a `0/0` summary.** Looking for the false
+green above turned up one that took a **single** change — and it passed. A probe whose set of
+cases is empty writes no verdict, and its summary, computed like every other, reads `0/0`. The
+harness saw a summary, so the silence guard could not bite. Measured, on `generation` returning
+before its first `verifier()`:
+
+```
+vert   generation      0/0
+  1/1 probes green
+  no note
+```
+
+The very same line as a probe that had done thirty-eight checks. And the harness's own tally
+certified the silence: `1/1 probes green`, `no note`. The worst part was not the `0/0` — it is
+that **nothing in the log could tell it apart** from work really done.
+
+> A `0/0` summary is not a summary. *I had nothing to test* is not a measurement: it is a defect
+> of the probe, not a property of the volume, and it gets fixed.
+
+Red, not a note. A note means *this volume cannot show me that*, which is legitimate — it is
+what `identifiant` has done since 28/09. Here the volume is not deciding anything: the probe
+has no set of cases, or its set of cases is empty. A probe that really has nothing to test on a
+given volume must **check that it has nothing to test**: the absence is a measurement, exactly
+as R10 already says for the support of a demonstration.
+
+Measured before writing the rule, over three full runs (28/09/2026, twice locally and once on
+the runner): the smallest of the twenty-one probes announces `1/1` — `palier` — and the rest run
+from `3/3` to `38/38`. None announces `0`. The rule **separates nothing today**; it only forbids
+what would now slip through.
+
+The falsified probe exits `1`, the reason is written, and its own output stays under the
+diagnosis — `no case to test on this volume`, then `0/0 checks green` — so what it did with its
+absence stays visible.
+
+**Still open:** the two-way reference check has exactly the same limit — it reads its own `ok` /
+`ROUGE` lines to count them. Its refusal is in the right direction too: it announces its own
+count, so a `verifier()` that wrote nothing would be seen. But it cannot tell a renamed
+`verifier()` from an absent one, and that is next on the list.
 
 ### A verdict that depends on something you do not control is not a verdict
 
@@ -487,9 +537,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:806`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:834`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:898`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:930`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

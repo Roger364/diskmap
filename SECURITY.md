@@ -646,7 +646,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:131`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:753`) et le motif est écrit (`tests/sondes/lancer.mjs:853`). Sans ce
+(`tests/sondes/lancer.mjs:781`) et le motif est écrit (`tests/sondes/lancer.mjs:885`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:881`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -662,8 +662,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:776`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:856`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:804`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:888`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -703,9 +703,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:806`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:834`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:898`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:930`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -731,12 +731,76 @@ restent, sur un run local, sont toutes porteuses : une recherche **tronquée à 
 celle du 28/09 : punir la sonde d'un volume calme. La note est un fait à connaître, pas un défaut
 de produit — et elle est désormais impossible à manquer.
 
-**Ce que cette règle ne couvre toujours pas.** Elle compte des lignes de verdict à un
-préfixe donné (`ok`, `ROUGE`). Une sonde qui écrirait son verdict ailleurs — en fin de ligne,
-dans un tableau — ne serait pas comptée, et le décompte la déclarerait fausse à juste. C'est
-un refus dans le bon sens : un verdict que le harnais ne sait pas lire est un verdict qu'il ne
-peut pas vérifier. Mais il faut le savoir, et le dire. Le contrôle à double sens de
-`verifier-references.mjs` a la même limite, et reste le suivant à traiter.
+**La limite qu'on croyaitataloguée — et ce que la mesure dit vraiment.** La règle compte des lignes
+de verdict à un préfixe donné (`ok`, `ROUGE`). Une sonde qui écrirait son verdict ailleurs — en
+fin de ligne, dans un tableau — ne serait pas comptée, et le décompte la déclarerait fausse à
+juste. C'était écrit ici comme un risque de **faux vert**. Falsifié avant d'y toucher, parce
+qu'un risque supposé ne mérite pas une règle :
+
+| Falsification, une seule modification | Ce que le harnais a dit |
+|---|---|
+| le préfixe devient `vert` (le résumé, lui, reste honnête) | `décompte incohérent : la sonde annonce 5/5, et a écrit 0 ok et 0 ROUGE` |
+| le résumé est figé à `0/0`, verdicts intacts | `décompte incohérent : la sonde annonce 0/0, et a écrit 5 ok et 0 ROUGE` |
+
+**Aucun des deux ne passe, et aucun ne peut passer seul.** Le décompte à double terme rend la
+convention auto-vérifiante : déplacer le préfixe sans toucher au résumé produit un rouge, et
+figer le résumé sans déplacer le préfixe en produit un autre. Pour atteindre un faux vert, il
+faudrait déplacer les deux **ensemble** — une édition coordonnée, donc une décision, pas une
+dérive. La limite est réelle, mais c'est un **refus dans le bon sens** : un verdict que le
+harnais ne sait pas lire est un verdict qu'il ne peut pas vérifier, et il le dit.
+
+**La quatrième garde, trouvée en cherchant ce trou-là : un résumé de `0/0`.** En cherchant le
+faux vert ci-dessus, il y en a un qui ne demandait **qu'une** modification — et il est passé.
+Une sonde dont le jeu de cas est vide n'écrit aucun verdict, et son résumé, calculé comme les
+autres, vaut `0/0`. Le harnais y voyait un résumé : la garde muette ne pouvait donc pas mordre.
+La mesure, sur `generation` sortie avant son premier `verifier()` :
+
+```
+vert   generation      0/0
+  1/1 sondes vertes
+  aucune note
+```
+
+Exactement la même ligne qu'une sonde de trente-huit vérifications. Et le bilan du harnais
+certifiait le silence : `1/1 sondes vertes`, `aucune note`. Le pire n'était pas le `0/0` — c'est
+que **rien dans le journal ne pouvait le distinguer** d'un travail réellement fait.
+
+**La règle :**
+
+> Un résumé de `0/0` n'est pas un résumé. « Je n'avais rien à tester » n'est pas une mesure :
+> c'est un défaut de la sonde, pas une propriété du volume, et cela se corrige.
+
+**Pourquoi rouge, et non une note.** Une note, c'est « ce volume ne peut pas me montrer cela »,
+et c'est légitime — c'est même ce que fait `identifiant` depuis le 28/09. Ici ce n'est pas le
+volume qui décide : une sonde n'a pas de jeu de cas, ou son jeu de cas est vide. Si une sonde
+n'a réellement rien à tester sur un volume donné, elle doit **vérifier qu'elle n'a rien à
+tester** : l'absence est une mesure, comme le dit déjà R10 pour le support d'une démonstration.
+
+**Mesuré avant d'écrire la règle, sur trois runs complets** (le 28/09/2026, deux fois en local
+et une fois sur le runner) : la plus petite des vingt-et-une sondes annonce `1/1` — `palier` —
+et les autres entre `3/3` et `38/38`. Aucune n'annonce `0`. La règle **ne sépare rien
+aujourd'hui** ; elle interdit seulement ce qui passerait désormais.
+
+**L'épreuve, dans le sens qui compte.** La sonde falsifiée sort en `1`, le motif est écrit, et
+sa propre sortie reste sous le diagnostic — `aucun cas a tester sur ce volume`, puis
+`0/0 vérifications vertes` — pour qu'on voie ce qu'elle a fait de son absence :
+
+```
+ROUGE  generation      0/0
+         résumé vide : la sonde annonce 0/0 vérification, donc elle n en a
+         fait aucune. « Je n avais rien à tester » n'est pas une mesure :
+         sur un volume qui ne donne rien, c est cela qu il faut vérifier.
+         aucun cas a tester sur ce volume
+         0/0 vérifications vertes
+  0/1 sondes vertes
+  ROUGES : generation
+```
+
+**Ce qui reste ouvert.** Le contrôle à double sens de `verifier-references.mjs` a exactement la
+même limite — il lit ses propres lignes `ok` / `ROUGE` pour les compter. Pour lui, le refus est
+dans le bon sens aussi : il annonce lui-même un compte, donc un `verifier()` qui n'écrirait rien
+serait vu. Mais il ne distingue pas un `verifier()` renommé d'un `verifier()` absent, et c'est
+le suivant à traiter.
 
 
 ### R13 — Tout lancement scripté ouvrait une fenêtre du navigateur à l'écran · **Moyenne** · *corrigé le 28/09/2026*
@@ -811,9 +875,12 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:753`), pas verte par défaut : le
-  harnais exige un décompte écrit. C'est le seul garde-fou qui couvre la sonde elle-même —
-  R12. Les vingt sondes en tiennent un.
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:781`), pas verte par défaut : le
+  harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
+  (`tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:881`) : « je n'avais rien à
+  tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
+  garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
+  n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
 - **À taille égale, l'écran range par nom croissant** — et c'est **mesuré à l'écran**, pas
   déduit du code. Le départage du serveur (`src/scan.rs`, `.then_with(|| a.name.cmp(&b.name))`)
   tient dans les deux sens, et un test Rust le vérifie côté serveur ; mais l'écran montrait

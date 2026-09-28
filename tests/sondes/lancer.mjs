@@ -750,7 +750,35 @@ function lireResidus(racines, volume) {
     // toutes faites, toutes justes, jamais comptées, jamais lues. Le mot
     // signalait le symptôme depuis des mois, sans rien faire échouer : rien ne
     // pouvait donc le corriger. Une sonde muette est un échec, pas une note.
-    const muette = !compte;
+    //
+    // Un resume « 0/0 » n est pas un resume : c'est le meme silence, dans
+    // la seule ecriture que la garde ci-dessus laisse passer. La sonde a
+    // annonce un compte — elle n a donc pas ete muette au sens de `SANS
+    // SYNTHESE` — et ce compte vaut zero.
+    //
+    // Mesure avant d ecrire la regle, sur les vingt sondes d un run complet du
+    // runner et les vingt-et-une du run local `--tout` (le 28/09/2026) : la
+    // plus petite annonce 1/1 — `palier` — et les autres entre 3/3 et 38/38.
+    // Aucune n annonce 0. La regle ne separe rien aujourd'hui — elle interdit
+    // seulement ce qui passerait desormais.
+    //
+    // Et elle mord. Son epreuve : `generation` sort avant son premier
+    // `verifier()`, en ecrivant « aucun cas a tester sur ce volume », puis
+    // « 0/0 verifications vertes », puis sort en 0. Le harnais affichait
+    // « vert generation 0/0 », « 1/1 sondes vertes », « aucune note » :
+    // exactement la meme ligne qu une sonde de trente-huit verifications,
+    // et son propre bilan certifiait le silence.
+    //
+    // Pourquoi rouge et non note. Une note, c est « ce volume ne peut pas me
+    // montrer cela » — et c est legitime, c est meme ce que la sonde
+    // `identifiant` fait depuis le 28/09. Ici ce n est pas le volume qui
+    // decide : une sonde n a pas de jeu de cas, ou son jeu de cas est vide.
+    // Cela se verifie, et cela se corrige. Si une sonde n a reellement rien a
+    // tester sur un volume donne, elle doit VERIFIER qu elle n a rien a
+    // tester — l absence est une mesure, comme le dit deja R10 pour le
+    // support d une demonstration.
+    const vide = !!compte && Number(compte[2]) === 0;
+    const muette = !compte || vide;
     // Le resume doit etre un COMPTE FIDE des verdicts ecrits — les DEUX termes.
     // Sans cette arithmetique, la garde ci-dessus se laisse passer le cas qu elle
     // ne visait pas : une sonde qui ecrit son resume AVANT ses verifications
@@ -849,7 +877,11 @@ function lireResidus(racines, volume) {
       // forcé : une sonde « PAS PU » n a pas de synthèse parce qu elle n a rien
       // fait, et son raison est déjà plus haut.
       if (descompte && code === 1) {
-        if (muette) {
+        if (vide) {
+          console.log('           resume vide : la sonde annonce 0/0 verification, donc elle n en a');
+          console.log('           fait aucune. « Je n avais rien a tester » n est pas une mesure :');
+          console.log('           sur un volume qui ne donne rien, c est cela qu il faut verifier.');
+        } else if (muette) {
           console.log('           aucun decompte ecrit : la sonde n a rien rapporte, donc rien ne prouve');
           console.log('           qu elle a verifie quoi que ce soit.');
         } else {
