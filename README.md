@@ -212,13 +212,21 @@ cargo build --release
 diskmap.bat
 ```
 
-The binary opens `http://127.0.0.1:8756/` automatically. Options: `--port 9000`,
+The binary opens `http://127.0.0.1:8756/` **when you launched it yourself** —
+by double-clicking, or from a terminal. A launch with no console, which is what a
+script or an agent does, does **not** open anything, and the server says so
+rather than leaving you to guess. Options: `--port 9000`, `--browser`,
 `--no-browser`.
 
 Two cases are handled rather than failing silently: if an instance is already
 running, a browser is opened onto it instead of starting a second one (two
 instances would scan the same disks twice); if the port is taken by something
 else, the next free port is used and the address is printed.
+
+> The browser opens for an interactive launch only. A script that starts the
+> server does not get a window on your desktop, and `--browser` forces one
+> anyway. Opening a window nobody asked for is an intrusion, however innocent
+> the code.
 
 `diskmap bench <LETTER>` times the walk of a single volume with no server and no
 interface — useful to check performance on another machine instead of assuming it.

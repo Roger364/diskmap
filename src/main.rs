@@ -9,7 +9,7 @@ mod win32;
 
 use scan::{trier_lignes, Progress, Row, Snapshot, Tri};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -178,6 +178,37 @@ fn already_running(port: u16) -> bool {
     }
 }
 
+/// Le navigateur ne s'ouvre que pour un lancement INTERACTIF.
+///
+/// Mesuré le 28/09/2026 : un script qui lance le serveur — ici le harnais de
+/// sondes, là un agent qui veut simplement interroger l'API — ouvrait une
+/// fenêtre du navigateur PAR DÉFAUT à chaque démarrage. Le harnais passe
+/// `--no-browser` et se tait donc depuis le début ; mais tout autre lancement
+/// scripté n'avait aucun moyen de l'éviter, et `--no-browser` ne s'invente pas.
+///
+/// Ouvrir une fenêtre sur le bureau de quelqu'un est une intrusion, et la
+/// règle du projet est simple : on ne touche que ce qu'on a fait naître, et on
+/// ne devine pas l'intention. Ici, le signe est le même que partout ailleurs
+/// dans ce binaire : y a-t-il une console ? Au double-clic, oui. Depuis un
+/// script, non. La décision est donc lisible, et non une convention.
+///
+/// Les deux drapeaux restent, et ils priment tous les deux sur le signal :
+/// `--browser` pour forcer, `--no-browser` pour interdire. Un Behavior qui ne
+/// peut être ni forcé ni interdit n'est pas une règle, c'est une pente.
+fn decider_le_navigateur(args: &[String], stdin_terminal: bool) -> bool {
+    // L'interdit est lu AVEC l'autorise, et le test --no-browser vient en
+    // PREMIER. Sans cela, `--browser --no-browser` ouvrait quand meme, et
+    // l'ordre des deux `any` decidait seul de l'issue : une regle dont l'issue
+    // tient a l'ordre de deux lignes n'est pas une regle, c'est un-au-hasard.
+    if args.iter().any(|a| a == "--no-browser") {
+        return false;
+    }
+    if args.iter().any(|a| a == "--browser") {
+        return true;
+    }
+    stdin_terminal
+}
+
 fn open_in_browser(url: &str) {
     let _ = Command::new("cmd").args(["/c", "start", "", url]).spawn();
 }
@@ -292,7 +323,13 @@ fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_PORT);
 
-    let open_browser = !args.iter().any(|a| a == "--no-browser");
+    let open_browser = decider_le_navigateur(&args, std::io::stdin().is_terminal());
+    if !open_browser {
+        // On DIT pourquoi. Un serveur qui n'ouvre rien sans un mot laisse
+        // croire a un defaut ; et celui qui n'explique pas sa decision ne la
+        // meritait pas.
+        println!("Navigateur  : non ouvert — lancement non interactif. `--browser` pour l’ouvrir.");
+    }
 
     // Une instance tourne déjà ? On ouvre le navigateur dessus au lieu d'en
     // lancer une seconde : deux instances feraient deux scans concurrents des
@@ -2151,8 +2188,8 @@ fn eleve_change_le_geste(eleve: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        confirmation_required, confirmation_suffit, dossiers_a_nommer, mots_exiges, LigneJournal,
-        PALIER_SUPPRIMER, PALIER_SUPPRIMER_TOUT,
+        confirmation_required, confirmation_suffit, decider_le_navigateur, dossiers_a_nommer,
+        mots_exiges, LigneJournal, PALIER_SUPPRIMER, PALIER_SUPPRIMER_TOUT,
     };
     use std::path::Path;
 
@@ -2430,6 +2467,53 @@ mod tests {
             let l = ligne(issue, "V:\\x\\a.txt", "V:\\x\\a.txt");
             assert_eq!(l.split('\t').nth(1), Some(issue));
         }
+    }
+
+    /// Un lancement sans console n'ouvre PAS de navigateur. C'est le défaut
+    /// mesuré le 28/09/2026 : tout lancement scripté — un agent, une sonde, un
+    /// script — ouvrait une fenêtre sur le bureau de celui qui l'avait lancé, et
+    /// `--no-browser` ne s'invente pas. Ouvrir une fenêtre qu'on n'a pas
+    /// demandé est une intrusion, quelle que soit l'innocence du code.
+    #[test]
+    fn un_lancement_sans_console_n_ouvre_pas_de_navigateur() {
+        let vide: Vec<String> = Vec::new();
+        assert!(!decider_le_navigateur(&vide, false));
+        assert!(decider_le_navigateur(&vide, true));
+    }
+
+    /// Les deux drapeaux PRIMENT sur le signal, et dans les deux sens. Un
+    /// comportement qu'on ne peut ni forcer ni interdire n'est pas une règle.
+    #[test]
+    fn les_draceaux_priment_sur_le_signal() {
+        for terminal in [true, false] {
+            assert!(decider_le_navigateur(&["--browser".into()], terminal));
+            assert!(!decider_le_navigateur(&["--no-browser".into()], terminal));
+        }
+    }
+
+    /// Quand les deux drapeaux sont présents, c'est `--no-browser` qui gagne.
+    /// C'est l'interdit qui l'emporte sur l'autorisé : une double intention doit
+    /// se résoudre vers la retenue, jamais vers l'intrusion.
+    #[test]
+    fn l_interdit_lemporte_sur_l_autorise() {
+        assert!(!decider_le_navigateur(
+            &["--browser".into(), "--no-browser".into()],
+            true
+        ));
+    }
+
+    /// Un drapeau QUI RESSEMBLE n'est pas un drapeau. `--no-browser=1` ou
+    /// `--browser-launch` ne doivent pas être lus comme `--no-browser` : sinon
+    /// une faute de frappe ouvre quand même une fenêtre.
+    #[test]
+    fn seul_le_drapeau_exact_compte() {
+        // Avec une console, un "--no-browser=1" n'interdit rien : sinon une
+        // faute de frappe se lirait comme une interdiction.
+        assert!(decider_le_navigateur(&["--no-browser=1".into()], true));
+        assert!(decider_le_navigateur(&["--no-browser ".into()], true));
+        // Et sans console, un "--browser-launch" n'autorise rien.
+        assert!(!decider_le_navigateur(&["--browser-launch".into()], false));
+        assert!(!decider_le_navigateur(&["browser".into()], false));
     }
 }
 

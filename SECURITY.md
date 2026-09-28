@@ -89,7 +89,7 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1520`) ; `execute` ne résout plus rien et ne supprime que les chemins
+(`src/main.rs:1557`) ; `execute` ne résout plus rien et ne supprime que les chemins
 figés par l'aperçu (`struct Montre`, `src/main.rs:101`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
@@ -224,12 +224,12 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
 |---|---|
-| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:861`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:783`) |
+| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:898`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:820`) |
 | DNS rebinding | Rien, pour la même raison |
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1385`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1422`) — voir R5 |
 
 ---
 
@@ -271,7 +271,7 @@ l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1385`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1422`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -402,7 +402,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2592`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2676`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -427,11 +427,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1656` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1661`) n'était
-appelé que dans `execute` (`src/main.rs:1764`). Des aperçus répétés sans confirmation
+`src/main.rs:1693` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1698`) n'était
+appelé que dans `execute` (`src/main.rs:1742`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1657`).
+endroit (`src/main.rs:1694`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -500,7 +500,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = done > 0` (`src/main.rs:1982`) et l'interface part en `poll()` ;
+le serveur pose `rescan = done > 0` (`src/main.rs:2019`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -668,6 +668,58 @@ un refus dans le bon sens : un verdict que le harnais ne sait pas lire est un ve
 peut pas vérifier. Mais il faut le savoir, et le dire. Le contrôle à double sens de
 `verifier-references.mjs` a la même limite, et reste le suivant à traiter.
 
+
+### R13 — Tout lancement scripté ouvrait une fenêtre du navigateur à l'écran · **Moyenne** · *corrigé le 28/09/2026*
+
+Même famille que le filet des fenêtres, et le même refus : **ne pas toucher au bureau de celui qui
+a lancé le programme.** Le filet traitait l'Explorateur ouvert par `/api/reveal` ; celui-ci traite
+l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'aucune ne la provoque.
+
+**Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
+Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:336`). C'étaient les lancements manuels,
+et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
+`open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
+fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
+
+**La règle :**
+
+> Le navigateur ne s'ouvre que pour un lancement **interactif**. Le signal est le même que partout
+> ailleurs dans ce binaire : y a-t-il une console ? Au double-clic, oui. Depuis un script, non.
+
+**Pourquoi pas l'autre sens.** On pourrait faire de `--no-browser` la norme, mais la décision
+resterait une convention : le défaut qui ouvre reste le défaut, et le premier lancement sans
+drapeau recommence. Ici l'absence de fenêtre est le défaut, et l'ouverture est une exception
+qu'il faut demander. Ouvrir une fenêtre qu'on n'a pas demandée est une intrusion, quelle que soit
+l'innocence du code.
+
+**Le correctif.** Une fonction pure et testable (`src/main.rs:198`), alimentée par le signal réel
+(`src/main.rs:326`). Les deux drapeaux restent, et **priment sur le signal** : `--browser` pour
+forcer, `--no-browser` pour interdire. Un comportement qu'on ne peut ni forcer ni interdire n'est
+pas une règle, c'est une pente. Quand les deux sont présents, l'interdit l'emporte — l'ordre des
+deux lignes décidait de l'issue, et une règle dont l'issue tient à l'ordre de deux lignes n'en
+est pas une.
+
+**Et il le dit.** Sans console, le serveur affiche pourquoi il n'ouvre rien
+(`src/main.rs:331`). Un serveur qui se tait laisse croire à un défaut ; celui qui n'explique pas sa
+décision ne la méritait pas.
+
+**Épreuves, les deux sens.** Lancement sans drapeau, sans console, fenêtres comptées avant et
+après : **0 fenêtre apparue**, et la ligne d'explication à l'écran. Ancien comportement remis,
+même lancement : **1 fenêtre**, `Espace disque — Brave`, `iconic=False` — le symptôme reproduit,
+déterministiquement, et non « peut-être ». `--browser` remis : la fenêtre revient, donc
+l'échappatoire fonctionne et n'est pas un interrupteur décoratif.
+
+**L'instrument, et sa limite.** L'énumération des fenêtres ne fonctionne **que** depuis un
+PowerShell lancé par node : lancé depuis Git Bash, il ne rend rien, alors que le navigateur
+existe. Un cas non mesuré ne vaut ni vert ni rouge, et le dire a évité de conclure à partir d'un
+zéro affiché qui était un angle mort. C'est aussi ce qui a coûté du temps le 28/09 : `tasklist`
+et `Get-Process` annonçaient `0` processus pendant qu'un Chromium tournait.
+
+**Ce que la règle ne couvre pas.** Elle repose sur le signal de console, qui est une convention du
+système d'exploitation, pas une garantie. Une personne qui lance `diskmap` avec son entrée
+standard redirigée verra le message qui explique pourquoi, et `--browser` sera là.
+
 ---
 
 ## 6. Ce qui est solide
@@ -692,6 +744,11 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:753`), pas verte par défaut : le
   harnais exige un décompte écrit. C'est le seul garde-fou qui couvre la sonde elle-même —
   R12. Les vingt sondes en tiennent un.
+- **Le navigateur ne s'ouvre que pour un lancement interactif**
+  (`src/main.rs:198`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
+  script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
+  tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
+  de celui qui a lancé le programme est une intrusion, même sans intention — R13.
 - **`\\?\` interdit à l'effacement** (`src/win32.rs:242`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
 - **La réversibilité se constate**, elle ne se déduit pas du code de retour : les fiches `$I`
@@ -702,7 +759,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
   (`tests/sondes/lancer.mjs:553`) : `rm -rf` y serait un bug, et le code le dit.
-- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1041`). Un
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1078`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
   serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
@@ -740,6 +797,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **17** | Le binaire emporte sa provenance : commit, etat de l'arbre a la compilation, agent qui compile — parce qu'un binaire du 26/09 etait inexpliquable | `build.rs`, `src/main.rs` | **fait** — `diskmap --version`, arbre sale signale ; absent de git, dit « commit-inconnu » plutot qu'invente |
 | **18** | Un lot qui touche un dossier dont la perte n'est pas anodine — `.git`, `.ssh`, `AppData` comme `Images` ou `Documents` — doit le nommer, dossier par dossier, avant d'agir ; et le harnais annonce les residus qu'il trouve sur le volume de travail | `src/main.rs` (`dossiers_a_nommer`), `ui/index.html`, `tests/sondes/sonde-dossiers-a-nommer.mjs`, `sonde-ui-suppression.mjs` | **fait** — 27/27 en sonde, 21/21 dans un vrai navigateur, 14/19 (rouge) quand on neutralise la garde |
 | **19** | Une sonde qui sort en 0 sans avoir ecrit son decompte est un echec, pas un vert : elle ne se distingue d'une sonde morte que par une etiquette | `tests/sondes/sonde-generation.mjs`, `tests/sondes/lancer.mjs` | **fait** — 5/5 et lisible au journal ; resume retire, ROUGE et run en 1 |
+| **20** | Le navigateur ne s'ouvre que pour un lancement interactif : un script qui lance le serveur n'a pas a ouvrir une fenetre sur le bureau de celui qui l'a lance | `src/main.rs` (`decider_le_navigateur`), `tests/sondes/lancer.mjs` | **fait** — 0 fenetre mesuree, 1 fenetre avec l'ancien comportement ; `--browser` force toujours |
 
 **Ce que les runs sur GitHub ont révélé — et qui ne concerne pas
 l'application.** Cinq échecs successifs, tous dans le harnais, tous masqués
