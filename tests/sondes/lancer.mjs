@@ -597,6 +597,46 @@ function plancherEffectif(brut, notes) {
   return { plancher: Math.max(0, brut - dispense), trous, dispense };
 }
 
+// ---------- le compte d une sortie de sonde, en pur ----------
+//
+// Une sonde ecrit ses verdicts ligne a ligne, et son resume, qu elle ecrit
+// ELLE-MEME : le harnais ne peut pas l ecrire a sa place. Il le recompte donc,
+// et il recompte les lignes aussi. Deux controles qui se recoupent ne valent que
+// s ils sont INDEPENDANTS — or les deux lisaient le meme tampon, et une seule
+// ligne pouvait donc les satisfaire tous les deux.
+//
+// C etait vrai, et c etait une laisse. Une entree construite le 30/09 par un
+// modele adverse : « ok    5/5 verifications », ecrit APRES le vrai resume.
+// Elle comptait comme verdict, comme numerateur et comme denominateur, et le
+// harnais declarait verte une sonde qui avait perdu un verdict. Le resume
+// commence maintenant une LIGNE : aucune ligne de verdict ne peut en etre un.
+//
+// La seconde laisse : rien ne verifiait qu un verdict n avait pas ROUGE. Un
+// ROUGE ecrit, puis une sortie en 0 : le recoupement passe — un resume honnete
+// « 4/5 » s accorde parfaitement avec quatre ok et un ROUGE — et le ROUGE
+// comble le plancher a la place d un ok manquant. Les vingt-cinq sondes
+// sortent toutes en 1 des qu un echec est enregistre, donc rien ne s ouvre
+// aujourd hui. La porte, elle, etait ouverte pour demain, et rien ne l aurait
+// signale : c est elle qu un harnais doit fermer, pas un code de sortie.
+const FORME_RESUME = /^[ \t]*(\d+)\/(\d+)[ \t]+v[ée]rifications/m;
+const TOUS_RESUMES = new RegExp(FORME_RESUME.source, 'gm');
+const FORME_VERDICT = /^(ok|ROUGE)\b\s/;
+
+/** Compte une sortie de sonde. Ne leve jamais : c est une fonction, pas un test. */
+function compterSortie(tout) {
+  const compte = [...tout.matchAll(TOUS_RESUMES)].pop();
+  const vide = !!compte && Number(compte[2]) === 0;
+  const muette = !compte || vide;
+  const lignesVerdict = tout.split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => FORME_VERDICT.test(l) && !FORME_RESUME.test(l));
+  const nOk = lignesVerdict.filter((l) => l.startsWith('ok')).length;
+  const verdictsEcrits = lignesVerdict.length;
+  const descompteFaux = !!compte
+    && (Number(compte[1]) !== nOk || Number(compte[2]) !== verdictsEcrits);
+  return { compte, vide, muette, nOk, verdictsEcrits, descompteFaux, rougeEcrit: verdictsEcrits !== nOk };
+}
+
 // ---------- la table de reconnaissance, eprouvee a chaque run ----------
 //
 // `classerNote` est une garde que PERSONNE ne regarde : elle ne rend un code de
@@ -701,6 +741,40 @@ if (plancherFaux.length) {
   for (const m of plancherFaux) console.error(`    - ${m}`);
   console.error('    Un plancher faux fait rougir a tort une sonde saine, ou laisse' +
     'passer une sonde qui a perdu des assertions. Corriger avant de lire un vert.');
+  process.exit(1);
+}
+
+// La MEME demarche, sur ce que le harnais LIT dans la sortie d une sonde. Ces
+// quatre entrees sont des sorties REELLES en forme : trois d entre elles sont
+// des formes qu aucune sonde n ecrit aujourd hui, et c est precisement le
+// sujet — une porte que rien n exerce est une porte qu on croit fermee.
+const SORTIE_PLAINE = 'ok   a\nok   b\n2/2 vérifications vertes';
+const SORTIE_AVEC_ROUGE = 'ok   a\nok   b\nok   c\nok   d\nROUGE somme des tailles\n'
+  + '      mesuré : 4096 au lieu de 4100\n4/5 vérifications vertes';
+const SORTIE_PARASITE = 'ok   a\nok   b\nok   c\nok   d\n4/4 vérifications vertes\nok    5/5 vérifications';
+const SORTIE_MUETTE = 'aucun cas a tester sur ce volume\n0/0 vérifications vertes';
+const TABLE_SORTIE = [
+  [SORTIE_PLAINE, { muette: false, descompteFaux: false, rougeEcrit: false, verdictsEcrits: 2 },
+    'une sortie honnete ne declenche rien'],
+  [SORTIE_AVEC_ROUGE, { muette: false, descompteFaux: false, rougeEcrit: true, verdictsEcrits: 5 },
+    'un resume HONNETE ne fait pas disparaitre un ROUGE : le recoupement passe, et c est la ligne rouge que le harnais doit voir'],
+  [SORTIE_PARASITE, { muette: false, descompteFaux: true, rougeEcrit: false, verdictsEcrits: 5 },
+    'une ligne « ok 5/5 verifications » n est plus un resume : elle devient un verdict, et le recoupement la voit'],
+  [SORTIE_MUETTE, { muette: true, descompteFaux: false, rougeEcrit: false, verdictsEcrits: 0 },
+    'une sonde qui annonce 0/0 est muette, quoi qu elle ecrit autour'],
+];
+const sortieFaux = TABLE_SORTIE
+  .filter(([texte, attendu]) => Object.entries(attendu)
+    .some(([cle, valeur]) => compterSortie(texte)[cle] !== valeur))
+  .map(([texte, attendu]) => Object.entries(attendu)
+    .filter(([cle, valeur]) => compterSortie(texte)[cle] !== valeur)
+    .map(([cle, valeur]) => `${cle} : attendu ${valeur}, mesuré ${compterSortie(texte)[cle]}`)
+    .join(', ') + ` sur « ${texte.split('\n').at(-1)} »`);
+if (sortieFaux.length) {
+  console.error(`  LA TABLE DES SORTIES EST FAUSSE : ${sortieFaux.length}`);
+  for (const m of sortieFaux) console.error(`    - ${m}`);
+  console.error('    Le harnais ne sait plus lire ce que les sondes ecrivent. Corriger avant' +
+    ' de lire un vert : un resume qu il ne voit pas est un plancher qu il ne garde pas.');
   process.exit(1);
 }
 
@@ -1176,7 +1250,7 @@ function lireResidus(racines, volume) {
     // donc toutes « — » — le même tiret qu'une sonde morte avant la fin, alors
     // qu'elles venaient de faire vingt-sept vérifications. Un résumé qu'on ne
     // sait pas lire ne dit pas ce qu'il a couvert.
-    const compte = [...sortie.tout.matchAll(/(\d+)\/(\d+)\s+v[ée]rifications/g)].pop();
+    const { compte, vide, muette, nOk, verdictsEcrits, descompteFaux, rougeEcrit } = compterSortie(sortie.tout);
     // Une sonde qui sort en 0 SANS avoir écrit son décompte n'a rien mesuré —
     // et la laisser verte est le pire des verdicts, parce qu'elle ne se
     // distingue d'une sonde MORTE que par un mot dans la colonne de droite.
@@ -1211,8 +1285,8 @@ function lireResidus(racines, volume) {
     // tester sur un volume donne, elle doit VERIFIER qu elle n a rien a
     // tester — l absence est une mesure, comme le dit deja R10 pour le
     // support d une demonstration.
-    const vide = !!compte && Number(compte[2]) === 0;
-    const muette = !compte || vide;
+    // (ci-dessus, `compterSortie` a deja tranche : muette, vide, et le
+    //  recoupement. Ce qui suit est le raisonnement qui a produit ces règles.)
     // Le resume doit etre un COMPTE FIDE des verdicts ecrits — les DEUX termes.
     // Sans cette arithmetique, la garde ci-dessus se laisse passer le cas qu elle
     // ne visait pas : une sonde qui ecrit son resume AVANT ses verifications
@@ -1220,9 +1294,15 @@ function lireResidus(racines, volume) {
     //
     // Les deux termes, parce qu un seul ne suffit pas. Un resume ecrit d avance
     // et jamais repris donnerait « 5/5 » juste, tant que tout passe : le seul
-    // denominateur ne voit rien. C est le numerateur qui revele qu un verdict a
-    // rouge apres coup, et c est le denominateur qui revele qu on a ajoute une
+    // denominateur ne voit rien. C est le numerateur qui revele qu on a retire
+    // un ok, et c est le denominateur qui revele qu on a ajoute une
     // verification sans la compter.
+    //
+    // Le numerateur NE revele plus qu un verdict a rouge apres coup. Il le
+    // pouvait, tant qu il coincidait avec le compte des lignes : un resume
+    // « 4/5 » s accorde avec quatre ok et un ROUGE, et le recoupement passait.
+    // C etait vrai le 30/09, et c etait faux des qu on l ecrit — le harnais
+    // regarde maintenant les lignes ROUGE directement, dans `compterSortie`.
     //
     // Mesure avant d ecrire la regle, sur les vingt sondes d un run complet :
     // les vingt numerateurs egalaient le nombre de lignes `ok`, et les vingt
@@ -1230,15 +1310,12 @@ function lireResidus(racines, volume) {
     // de ligne, donc ni l un ni l autre n entre dans le compte. La regle ne
     // separe rien aujourd hui — elle interdit seulement ce qui passerait
     // desormais.
-    const lignesVerdict = sortie.tout.split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => /^(ok|ROUGE)\b\s/.test(l));
-    const nOk = lignesVerdict.filter((l) => l.startsWith('ok')).length;
-    const verdictsEcrits = lignesVerdict.length;
-    const descompteFaux = !!compte
-      && (Number(compte[1]) !== nOk || Number(compte[2]) !== verdictsEcrits);
     const descompte = muette || descompteFaux;
-    let code = descompte && sortie.code === 0 ? 1 : sortie.code;
+    // Un ROUGE ecrit, et une sortie en 0. Le resume est honnete, donc le
+    // recoupement passe, et le ROUGE comble le plancher a la place d un ok
+    // manquant : le controle des trois portes passe au complet.
+    const mensonge = rougeEcrit && sortie.code === 0;
+    let code = (descompte || mensonge) && sortie.code === 0 ? 1 : sortie.code;
     // `let`, et non `const` : deux verifiers ont le droit de rendre cette
     // sonde rouge apres coup — le decompte incoherent, et le plancher. Avec un
     // `const`, le second levait une TypeError et tuait le run au moment precis
@@ -1362,7 +1439,7 @@ function lireResidus(racines, volume) {
       // muet, et le même défaut qu elle est censée signaler. Réservé au cas
       // forcé : une sonde « PAS PU » n a pas de synthèse parce qu elle n a rien
       // fait, et son raison est déjà plus haut.
-      if (descompte && code === 1) {
+      if ((descompte || mensonge) && code === 1) {
         if (vide) {
           console.log('           resume vide : la sonde annonce 0/0 verification, donc elle n en a');
           console.log('           fait aucune. « Je n avais rien a tester » n est pas une mesure :');
@@ -1370,6 +1447,10 @@ function lireResidus(racines, volume) {
         } else if (muette) {
           console.log('           aucun decompte ecrit : la sonde n a rien rapporte, donc rien ne prouve');
           console.log('           qu elle a verifie quoi que ce soit.');
+        } else if (mensonge) {
+          console.log(`           la sonde a ecrit un ROUGE et est sortie en 0 : elle annonce`);
+          console.log(`           ${compte[1]}/${compte[2]}, et c est coherent. C est son code de`);
+          console.log('           sortie qui aurait du la rougir, et rien d autre ne le voit.');
         } else {
           console.log(`           decompte incoherent : la sonde annonce ${compte[1]}/${compte[2]},`);
           console.log(`           et a ecrit ${nOk} ok et ${verdictsEcrits - nOk} ROUGE. Un resume`);

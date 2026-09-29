@@ -67,7 +67,6 @@ de lancer des sondes destructrices hors d'un volume qu'il sait jetable (§7/16).
 
 ---
 
-
 ## 3. Causes racines
 
 ### 3.1 Un identifiant n'est pas une identité — `bb5c60e` (corrigé)
@@ -660,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:1215`) et le motif est écrit (`tests/sondes/lancer.mjs:1422`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1214`, motif `tests/sondes/lancer.mjs:1367`. Sans ce
+(`tests/sondes/lancer.mjs:629`) et le motif est écrit (`tests/sondes/lancer.mjs:1503`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:628`, motif `tests/sondes/lancer.mjs:1444`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -676,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:1238`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1374`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:635`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1455`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -705,7 +704,6 @@ preuve, à une ligne d'écart, que le mot ne disait rien.
 
 Tout remis : `5/5`, puis `20/20 sondes vertes`, sans un seul `SANS SYNTHESE` au journal.
 
-
 **La troisième garde, et ce qu'elle a révélé tout de suite.** Les deux premières interdisent
 qu'une sonde **muette** ou qu'elle **mente sur son décompte**. Restait le cas le plus discret : une
 sonde qui mesure ce qu'elle peut, **note** ce qu'elle n'a pas pu, et sort quand même en `0`. Le
@@ -717,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1299`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1376`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1422`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1503`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -816,7 +814,6 @@ dans le bon sens aussi : il annonce lui-même un compte, donc un `verifier()` qu
 serait vu. Mais il ne distingue pas un `verifier()` renommé d'un `verifier()` absent, et c'est
 le suivant à traiter.
 
-
 ### R13 — Tout lancement scripté ouvrait une fenêtre du navigateur à l'écran · **Moyenne** · *corrigé le 28/09/2026*
 
 Même famille que le filet des fenêtres, et le même refus : **ne pas toucher au bureau de celui qui
@@ -825,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:733`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:807`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1191,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1215`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:629`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:1214`, motif `tests/sondes/lancer.mjs:1367`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:628`, motif `tests/sondes/lancer.mjs:1444`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1235,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:965`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1039`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1552,8 +1549,6 @@ jobs (`windows`, `sondes`, `release`).
 
 ---
 
-
-
 ---
 
 ### 7/30 Les trous que le harnais ne pouvait pas voir dans son propre travail · **corrigé le 30/09/2026**
@@ -1742,6 +1737,7 @@ une image), et les trois autres ne sont que des sondes à écrire — une demi-j
 chacune. La campagne a nommé les trous ; elle ne les a pas bouchés.*
 
 ---
+
 ### 7/32 La CI a parlé, et elle a dit deux choses · **30/09/2026**
 
 Le run `36598186930` est **rouge**. C'est la première fois que la CI tranche, et
@@ -1847,6 +1843,7 @@ branche du débordement reste non éprouvée sur toute machine dont la corbeille
 dépasse 256 Mio. La relaxer rend le run honnête, elle ne comble pas le trou.*
 
 ---
+
 ### 7/33 Corriger un crash révèle le défaut qu'il masquait · **30/09/2026**
 
 Le run `36606537220` a vérifié la détente du plancher : `plafond 4/4`, `6 - 2 = 4`,
@@ -2009,3 +2006,72 @@ ne tranche pas ». C'était la bonne réponse : la contradiction était réelle,
 l'arbitrage venait de la mesure, pas de lui.
 
 ---
+
+### 7/35 Le collecteur, et ce que le modèle n'a pas pu dire · **30/09/2026**
+
+Le collecteur — la partie du harnais qui lit ce que les sondes écrivent — a été
+soumis à la même épreuve, sur la même méthode : trois fichiers, un instantané
+figé, une consigne qui interdit d'acquiescer. Vingt-cinq sondes, un volet
+`Collecteur`.
+
+**Deux portes, et aucune des deux n'était ouverte aujourd'hui.** C'est la
+nouveauté de cette campagne : les deux cas trouvés étaient *mécaniquement*
+justes et *non constructibles* dans ce dépôt. Le premier demandait une ligne
+`ok    5/5 vérifications` écrite après le vrai résumé ; rien ne produit cela. Le
+second demandait une sonde écrivant un `ROUGE` et sortant en 0 ; les
+vingt-cinq font `exit(1)` sur un échec, les deux qui écrivent un `ROUGE` à la
+main font `process.exit(1)` juste après. **Les deux portes sont maintenant
+fermées, et la table qui l'éprouve est ci-dessous.**
+
+**1. Deux recoupements qui n'en faisaient qu'un.** Le résumé que la sonde écrit
+et le compte de lignes que le harnais recompte lisaient le même tampon, et le
+filtre des verdicts ne distinguait pas une ligne de verdict d'une ligne de
+résumé. Une seule ligne pouvait donc satisfaire les deux contrôles à la fois.
+Le résumé doit maintenant **commencer une ligne** : aucune ligne de verdict ne
+peut en être un.
+
+**2. Personne ne regardait les ROUGE.** Le recoupement vérifie que le résumé et
+les lignes *s'accordent*, pas que les lignes soient *vertes*. Un résumé honnête
+« 4/5 » s'accorde parfaitement avec quatre `ok` et un `ROUGE` — et le `ROUGE`
+comble alors le plancher à la place d'un `ok` manquant. La sécurité tenait
+entièrement au code de sortie de chaque sonde, ce qui est une hypothèse, pas un
+contrôle. Le harnais regarde maintenant les lignes `ROUGE` lui-même.
+
+**3. Un commentaire qui a lâché pendant que le code se corrigeait.** Le bloc de
+raisonnement affirmait encore « c'est le numérateur qui révèle qu'un verdict a
+rouge après coup ». C'était vrai tant que le numérateur coïncidait avec le
+compte des lignes ; dès que le harnais regarde les `ROUGE`, l'affirmation
+devient fausse, et elle se trouvait à douze lignes du code qu'elle décrivait.
+*Un commentaire qui décrit un comportement qu'on vient de changer est un
+commentaire qui ment, avec le retard de la relecture.* C'est la même famille que le
+§7/32, et c'est le second cas de la même semaine.
+
+**Ce que l'expérience a coûté, et ce qu'elle a rapporté.** Un seul cas par
+message, contre trois sections à la fois la première fois. Sur le premier
+dossier, six cas sur vingt tenaient ; sur celui-ci, **un sur un** dans chaque
+bras, et aucun des deux n'était constructible. Le gain n'est pas dans le nombre
+de trouvailles : il est dans le fait que les deux portes sont désormais
+éprouvées par `TABLE_SORTIE`, qui mordit à sa première exécution.
+
+**Sur l'effort, une mesure et non une conviction.** Un tirage par bras ne
+permet aucune conclusion, et je n'en tire pas. Un seul constat, à consigner
+comme tel : le bras à effort élevé s'est auto-limité — il a écrit « je ne dis
+pas que ça existe quelque part » et a énuméré ses propres angles morts. Le bras
+moyen ne l'a pas fait. Sur n=1, c'est un indice, pas un résultat.
+
+**Le taux de citations, lui, est mesuré.** Les vingt et une lignes recopiées
+entre chevrons par les deux réponses ont été relues par un script, contre les
+fichiers reçus : **vingt et une sur vingt et une, verbatim, zéro inventée**. La
+consigne « recopie la ligne mot pour mot » produit un contrôle que je n'ai pas
+à faire à la main. C'est le premier résultat chiffré de la campagne, et c'est le
+seul qui vaille quelque chose sur n=1.
+
+---
+
+*Ce que je n'ai pas fait : la branche `couvert par` compare le nom cité avec
+`noms.some((n) => n.includes(norm(nom)))`, un `includes` : `couvert par
+<une sonde>.mjs : e` passe dès qu'un nom de vérification contient la lettre `e`.
+Un test existe désormais pour le cas « fichier hors catalogue », pas pour
+celui-ci. Et six motifs du registre sur douze n'ont aucun `couts` : la note est
+classée `aveu structurel`, donc pas rouge, mais ne détend rien — un faux rouge
+sur une sonde saine. Les deux sont nommés et laissés ouverts.*
