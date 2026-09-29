@@ -51,6 +51,10 @@ const EPREUVES = [
     apres: '    ds.scan_running = 0; // NEUTRALISE POUR L EPREUVE',
     sonde: 'sonde-arret.mjs',
     args: ['running'],
+    // Le constat ou la cause racine que cette épreuve rattache. C'est ce qui
+    // permet à `verifier-preuves.mjs` de compter ce qui est prouvé, sans
+    // recompter les gardes ni croiser des codes HTTP.
+    preuve: 'R15',
     // Neutralisée, l'écran affiche « analyse en cours… » sans numéro : c'est
     // le signe que le serveur analyse et ne dit pas laquelle.
     mesure: /analyse en cours…/,
@@ -68,6 +72,9 @@ const EPREUVES = [
     apres: '            if false && gen_vue != snap.gen { // NEUTRALISE POUR L EPREUVE',
     sonde: 'sonde-generation.mjs',
     args: ['V'],
+    // La garde de génération EST la cause racine de l'incident du 26/09 : c'est
+    // elle qui empêche qu'un sélecteur périmé désigne un autre fichier.
+    preuve: '3.1',
     // La mesure exigée est le STATUT, pas le chemin visé. La première version
     // exigeait « RECYCLE.BIN » : le sélecteur périmé tombe bien sur un fichier
     // qui n'est pas p2.txt — mais LEQUEL dépend du contenu de la corbeille au
