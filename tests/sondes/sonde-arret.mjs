@@ -212,7 +212,7 @@ if (MODE === 'running') {
     verifier('le serveur publie le numéro de l’analyse en vol', false, mesure);
   } else {
     console.log('note : l’analyse s’est terminée avant d’être observée sur ce volume — structurel : le volume est trop rapide pour qu’un scan en vol soit observable'
-      + ' (trop rapide) — la publication du numéro n’est pas exercée ici');
+      + ' (trop rapide) — la publication du numéro en vol non exercée ici');
   }
 
   await page.locator('#stop').click();

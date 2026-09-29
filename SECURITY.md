@@ -659,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:629`) et le motif est écrit (`tests/sondes/lancer.mjs:1503`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:628`, motif `tests/sondes/lancer.mjs:1444`. Sans ce
+(`tests/sondes/lancer.mjs:672`) et le motif est écrit (`tests/sondes/lancer.mjs:1546`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:671`, motif `tests/sondes/lancer.mjs:1487`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -675,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:635`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1455`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:678`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1498`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -715,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1376`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1419`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1503`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1546`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -822,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:807`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:850`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1188,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:629`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:672`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:628`, motif `tests/sondes/lancer.mjs:1444`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:671`, motif `tests/sondes/lancer.mjs:1487`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1232,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1039`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1082`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -2075,3 +2075,42 @@ Un test existe désormais pour le cas « fichier hors catalogue », pas pour
 celui-ci. Et six motifs du registre sur douze n'ont aucun `couts` : la note est
 classée `aveu structurel`, donc pas rouge, mais ne détend rien — un faux rouge
 sur une sonde saine. Les deux sont nommés et laissés ouverts.*
+
+### 7/36 Fermer les six, et trouver le septième en vérifiant · **30/09/2026**
+
+Les deux trous laissés ouverts en §7/35 sont fermés — et leur fermeture a révélé
+le septième défaut de la semaine, là où personne ne regardait.
+
+**1. Le registre se vérifie lui-même.** Six motifs sur onze n'avaient aucun
+`couts`. La note était classée « aveu structurel » — donc jamais rouge — mais le
+calcul du plancher filtre sur `&& n.couts` et ne détendait rien : une sonde
+saine qui déclare un trou reconnu rougit à tort. Le harnais refuse maintenant ce
+silence : tout motif porte un `couts`, **zéro compris**, écrit et justifié.
+`le clic n` vaut zéro — la sonde est déjà rouge par ailleurs — et c'est une
+réponse légitime, à condition de la lire. Le contrôle mord : éprouvé en retirant
+un `couts`, il a arrêté le run avant les tables.
+
+**2. `couvert par` ne lit plus les sous-mots.** `includes` acceptait
+`couvert par <une sonde>.mjs : e` dès qu'un nom de vérification contenait la
+lettre `e`. La citation est maintenant lue par mots entiers, en séquence, avec
+tolérance d'accent — `numero` et `numéro` sont le même mot, et une recopie sans
+accent ne doit pas être refusée pour ça. Éprouvé : la citation réelle de
+`sonde-tickets` passe toujours, `e` seul ne passe plus.
+
+**3. Le septième défaut : le marqueur qui s'efface lui-même.** En vérifiant les
+coûts attribués, un trou est resté muet : `identifiant` déclarait son support
+absent, le registre le connaissait, le classifieur **refusait la note**. Cause :
+la note commençait par `NE PAS MESURABLE —`, le collecteur retire ce préfixe
+avant de classer, et le texte restant ne contenait **aucune marque d'aveu**. Le
+marqueur d'aveu était détruit par la collecte de l'aveu. Trois sondes portaient
+le même piège — `identifiant`, `entrees`, `erreurs` (guetteur) — et une
+quatrième approche (`arret`, « n'est pas exercée ») ne matchait pas la regex,
+qui exige le mot collé. *Le collecteur qui retire le préfixe qu'il vient de
+chercher est un collecteur qui mange sa propre preuve : la forme courte et la
+forme longue d'un même aveu ne doivent pas différer par la marque.* Les quatre
+notes portent maintenant la marque dans le corps du texte, où elle survit.
+
+**La preuve par le run.** 24/24 vertes, `identifiant` écrit à nouveau ses
+15 verdicts (le verdict de support était perdu avec la branche), le plancher
+d'`erreurs` se relâche du seul coût déclaré, et `PLANCHERS RELACHES` liste une
+ligne — chaque détente est une dette écrite, donc discutable.

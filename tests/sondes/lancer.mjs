@@ -446,10 +446,10 @@ const sansSonde = Object.keys(COMPTES_PLANCHER).filter((n) => !nomsConnus.has(n)
 // l ecart vaut 15 Mo ; la branche « ecart negligeable » n est donc pas
 // inexercitee par megarde, elle est inatteignable sur cette machine.
 const AVEURS_STRUCTURELS = [
-  { motif: 'branche « écart négligeable » non exercée', pourquoi: 'le seuil vaut 0,5 % de la racine plafonné à 20 Mio ; sur V: il vaut 38 octets pour 15 Mo d’écart, et sur C: l’écart vaut 33,8 Go. Aucun volume lisible ne passe sous le seuil.' },
-  { motif: 'le guetteur de fenêtres n', pourquoi: 'l’ouverture de l’Explorateur n’est pas mesurable en service continu' },
-  { motif: 'le support du volume n', pourquoi: 'les identifiants ne bougent pas quand la surface d’un volume ne change pas' },
-  { motif: 'le volume est trop rapide', pourquoi: 'un scan dure moins d’une seconde sur le volume jetable : aucun scan en vol n’est observable' },
+  { motif: 'branche « écart négligeable » non exercée', couts: 1, pourquoi: 'mesuré le 30/09 : la branche porte un verdict par volume concerné (écart affiché, signe, montant, signe affiché), et le registre prend le MINIMUM — un volume dont l écart passe sous le seuil perd un verdict, pas quatre ; sur V: le seuil vaut 38 octets pour 15 Mo d’écart, sur C: l’écart vaut 33,8 Go' },
+  { motif: 'le guetteur de fenêtres n', couts: 0, pourquoi: 'l ouverture de l Explorateur est neutralisée par le guetteur, pas sautée : la sonde tourne et écrit ses verdicts, rien n est perdu — le motif existe pour documenter la preuve, pas pour détendre un plancher' },
+  { motif: 'le support du volume n', couts: 1, pourquoi: 'mesuré : la démonstration porte un verdict unique (« le support est réel ») ; un volume calme le perd, et le runner l a montré le 28/09 — les identifiants ne bougent pas quand la surface d un volume ne change pas' },
+  { motif: 'le volume est trop rapide', couts: 1, pourquoi: 'mesuré : la publication du numéro en vol porte un verdict unique ; sur un volume où l analyse finit avant l observation, il ne s écrit pas — un scan dure moins d une seconde sur le volume jetable' },
   // Le motif suit les MOTS DE LA SONDE, et rien d'autre. Celui d ici decrivait
   // « la coalescence reste prouvée cote Rust » ; la sonde ecrit « ELLE reste
   // prouvee cote Rust ». Le registre ne trouvait donc jamais son propre motif, et
@@ -457,8 +457,8 @@ const AVEURS_STRUCTURELS = [
   // entree qui ne correspond a rien est une entree morte, et une entree morte ne
   // declare rien.
   { motif: 'coalescence pendant un scan en vol non exercée', couts: 1, pourquoi: 'mesuré le 30/09 : sur un volume rapide le premier scan est fini avant le second POST, donc la branche conditionnelle — un seul verdict — ne s ecrit pas ; la coalescence reste couverte par son test Rust, qu un navigateur ne peut pas voir' },
-  { motif: 'exige un instantané', pourquoi: 'la garde a besoin d’un instantané, et le volume n’en a pas au moment de la requête' },
-  { motif: 'le clic n', pourquoi: 'la modale ne s’est pas ouverte : le geste a échoué et la sonde est déjà rouge' },
+  { motif: 'exige un instantané', couts: 1, pourquoi: 'mesuré : le cas « chemin invalide » et son témoin portent deux verdicts, mais le témoin (le volume est analysé) est vérifié dans les deux branches — la perte est d un verdict, pas deux ; la garde a besoin d un instantané, et le volume n en a pas au moment de la requête' },
+  { motif: 'le clic n', couts: 0, pourquoi: 'le clic qui échoue rend la sonde déjà ROUGE par ailleurs : aucun verdict supplémentaire n est perdu, le motif documente la cause et ne détend rien' },
 
 // Le COUT d un trou, en verdicts. Un aveu structurel ne se contente pas de nommer
 // ce qui n a pas ete eprouve : il DECLARE combien de verifications la sonde n ecrira
@@ -486,6 +486,27 @@ const AVEURS_STRUCTURELS = [
  { motif: 'branches du débordement non exercée — plafond au-delà de la borne d écriture de 256 mio', couts: 2, pourquoi: 'mesuré le 30/09, run 36606537220 : le plafond du volume jetable de la CI dépasse 256 Mio, alors qu il vaut 51 Mio sur les volumes locaux ; la sonde y écrit 4 verdicts sur 6, donc la perte est de 2, pas de 3 — un cout plus haut pardonnerait un verdict perdu sans aveu' },
 ];
 
+// ---------- le registre se verifie LUI-MEME, avant les tables ----------
+//
+// Un motif sans `couts` est le pire des deux mondes : la note qu il recoit est
+// classee « aveu structurel » (donc jamais rouge), mais `plancherEffectif`
+// filtre sur `&& n.couts` et ne detend RIEN. Une sonde saine qui declare un
+// trou reconnu rougit donc a tort — le faux rouge le plus durable de ce depot,
+// resté ouvert pendant deux campagnes parce que rien ne l eprouvait.
+//
+// La regle n est pas « ajoute un cout » : c est « dis ce que vaut le trou ».
+// Zéro est une reponse legitime — `le clic n` ne coute rien, la sonde est déjà
+// rouge par ailleurs — mais il faut l ECRIRE, parce qu un cout omis et un cout
+// zero se lisent pareil et ne se comportent pas pareil.
+const MOTIF_SANS_COUTS = AVEURS_STRUCTURELS.filter((a) => a.couts === undefined);
+if (MOTIF_SANS_COUTS.length) {
+  console.error(`  REGISTRE DES AVEUX : ${MOTIF_SANS_COUTS.length} motif(s) sans couts déclaré :`);
+  for (const a of MOTIF_SANS_COUTS) console.error(`    - ${a.motif}`);
+  console.error('    Un motif sans couts classe l aveu sans jamais detendre le plancher :' +
+    ' la sonde qui declare son trou rougit a tort. Ecris le cout, meme zero.');
+  process.exit(1);
+}
+
 // Un aveu est reconnu par sa MARQUE, explicite de preference. Les formes
 // historiques restent reconnues, sinon un simple `NE PAS MESURABLE` passerait
 // sous le controle en changant trois lettres — un controle qu on contourne en
@@ -495,8 +516,12 @@ const FORME_COUVERT = /couvert par\s+([\w.-]+\.mjs)\s*:\s*(.+)$/;
 const FORME_STRUCTUREL = /structurel\s*:\s*(.+)$/;
 
 // Les apostrophes typographiques ne sont pas une raison de manquer une
-// verification : `l'Analyse` et `l’Analyse` doivent etre le meme nom.
+// verification : `l'Analyse` et `l’Analyse` doivent etre le meme nom. Les
+// accents non plus : `numero` et `numéro` sont le meme mot.
 const norm = (t) => String(t).toLowerCase().replace(/[’‘`]/g, "'")
+  .replace(/[\u00e0\u00e2\u00e4]/g, 'a').replace(/[\u00e9\u00e8\u00ea\u00eb]/g, 'e')
+  .replace(/[\u00ee\u00ef]/g, 'i').replace(/[\u00f4\u00f6]/g, 'o')
+  .replace(/[\u00f9\u00fb\u00fc]/g, 'u').replace(/\u00e7/g, 'c')
   .replace(/\s+/g, ' ').trim();
 
 // Les noms de verification d une sonde, lus dans son SOURCE et non dans sa
@@ -528,7 +553,25 @@ function classerNote(texte) {
       return { sorte: 'aveu nu', mesure: `${fichier} n’est pas une sonde du catalogue : elle ne peut rien couvrir` };
     }
     const noms = nomsDeVerification(fichier);
-    if (!noms.some((n) => n.includes(norm(nom)))) {
+    // La citation doit porter sur un NOM, pas sur une sous-chaine quelconque :
+    // `includes` faisait passer `couvert par <une sonde>.mjs : e` dès qu'un nom
+    // de verification contenait la lettre `e`. La citation est lue par MOTS
+    // ENTIERS, en sequence : elle doit apparaitre dans un nom sans y etre
+    // obligee de commencer au premier mot — une citation tronquee au debut reste
+    // recevable, une citation en sous-mots (« e ») ne l est plus. Les accents
+    // sont retires des deux cotes : `numero` et `numéro` sont le meme mot.
+    const motsCites = norm(nom).split(/\s+/).filter(Boolean);
+    const citeQuelqueChose = motsCites.length > 0 &&
+      noms.some((n) => {
+        const mots = n.split(/\s+/);
+        if (motsCites.length > mots.length) return false;
+        let i = 0;
+        for (const m of mots) {
+          if (m === motsCites[i]) i++;
+        }
+        return i === motsCites.length;
+      });
+    if (!citeQuelqueChose) {
       return {
         sorte: 'aveu nu',
         mesure: `${fichier} ne vérifie rien qui s’appelle « ${nom.trim()} » : la citation ne `

@@ -247,7 +247,7 @@ if (api[cible].total > 0) {
   // Le geste du serveur est correct même si le ramasse-miettes a échoué : les deux
   // faits sont distincts, et confondre les deux ferait rater un vrai défaut.
   if (!rapport.neutre) {
-    noter('NE PAS MESURABLE — le guetteur de fenêtres n’a rien pu dire : structurel : l’ouverture de l’Explorateur ne se mesure pas en service continu. '
+    noter('NE PAS MESURABLE — non mesurable : le guetteur de fenêtres n’a rien pu dire : structurel : l’ouverture de l’Explorateur ne se mesure pas en service continu. '
       + rapport.raison);
   } else {
     verifier('la révélation ne laisse aucune fenêtre à l’écran', rapport.fermees === rapport.neutralisees,

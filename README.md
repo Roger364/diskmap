@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:629`) and the reason is printed (`tests/sondes/lancer.mjs:1503`). A zero summary has its own door: `tests/sondes/lancer.mjs:628`, reason `tests/sondes/lancer.mjs:1444`.
+(`tests/sondes/lancer.mjs:672`) and the reason is printed (`tests/sondes/lancer.mjs:1546`). A zero summary has its own door: `tests/sondes/lancer.mjs:671`, reason `tests/sondes/lancer.mjs:1487`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -638,6 +638,37 @@ dialect.
 *What I did not do: `palier` still has a floor of 5, `csrf` a floor of 12, and their branches stay
 without a 20 GB folder. Relaxing the floor makes the run honest; it does not close the hole.*
 
+**Closing the six opened the seventh — 30/09/2026.** The two holes left open after the adversarial
+pass are now shut, and shutting them surfaced one more defect where nobody was looking.
+
+**The register now verifies itself.** Six of the eleven motifs carried no `couts`. The note was
+filed as a *structural admission* — never red — but the floor arithmetic filters on `&& n.couts` and
+relaxed nothing: a healthy probe declaring a known hole went red. The harness now refuses that
+silence: every motif carries a cost, **zero included**, written and justified. `le clic n` is worth
+zero — the probe is already red elsewhere — and that is a legitimate answer, as long as it is
+written down. The control bites: removing a single `couts` stops the run before any table.
+
+**`couvert par` no longer reads sub-words.** `includes` accepted `couvert par <une sonde>.mjs : e`
+as soon as any verification name contained the letter `e`. The citation is now matched whole-word,
+in sequence, accent-insensitively — `numero` and `numéro` are the same word, and a retyping that
+drops an accent must not be rejected for it. Proven both ways: `sonde-tickets`'s real citation still
+passes; a bare `e` does not.
+
+**The seventh defect: the marker that erased itself.** While attributing the costs, one hole stayed
+silent: `identifiant` declared its missing support, the register knew it, and the classifier
+**refused the note**. The note began with `NE PAS MESURABLE —`, the collector strips that prefix
+before classifying, and the remaining text carried **no admission mark at all**. The marker of the
+admission was destroyed by the collection of the admission. Three probes carried the same trap —
+`identifiant`, `entrees`, `erreurs` (the window watcher) — and a fourth variant (`arret`, writing
+"n'est pas exercée") missed the regex, which requires the hyphenated word. *A collector that strips
+the very prefix it just matched is eating its own proof: the short form and the long form of one
+admission must not differ by the mark.* All four notes now carry the mark inside the body, where it
+survives.
+
+**Proven by a run.** 24/24 green, `identifiant` writes its 15 verdicts again (the support verdict
+was lost with the branch), `erreurs`' floor relaxes by its one declared cost, and `PLANCHERS
+RELACHES` lists one line — every relaxation is a written debt, therefore arguable.
+
 register, with its three numbers, and the possible closure is named: a fillable disposable volume
 the application fills itself, which needs elevation and a volume this project does not have.
 
@@ -650,8 +681,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:635`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1455`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:678`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1498`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1116,9 +1147,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1376`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1419`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1503`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1546`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

@@ -133,7 +133,7 @@ if (support) {
     dossierAbsent.status === 404 && !/chemin invalide/.test(dossierAbsent.texte),
     `HTTP ${dossierAbsent.status} · ${dossierAbsent.texte.slice(0, 90)}`);
 } else {
-  info(`NE PAS MESURABLE — « chemin invalide » exige un instantané, et ${VOL} n'en a pas. structurel : la garde exige un instantané, et ce volume n'en a pas au moment de la requête.`);
+  info(`NE PAS MESURABLE — non mesurable : « chemin invalide » exige un instantané, et ${VOL} n'en a pas. structurel : la garde exige un instantané, et ce volume n'en a pas au moment de la requête.`);
   verifier('« chemin invalide » est éprouvé', false,
     `${VOL} sans instantané : le cas aurait mesuré la garde du volume, pas celle du chemin`);
 }
