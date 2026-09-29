@@ -58,6 +58,10 @@ struct DriveState {
     status: Status,
     snap: Option<Arc<Snapshot>>,
     prog: Arc<Progress>,
+    /// Dernier ticket d'analyse demandé pour ce volume.
+    scan_requested: u64,
+    /// Dernier ticket dont l'analyse a été publiée.
+    scan_completed: u64,
 }
 
 /// Ce que l'utilisateur a réellement vu lors de la simulation. Sans ce jeton,
@@ -148,6 +152,9 @@ struct DriveJson {
     skipped: u64,
     dirs: u64,
     files: u64,
+    /// Dernier ticket demandé et dernier ticket publié pour ce volume.
+    scan_requested: u64,
+    scan_completed: u64,
 }
 
 #[derive(serde::Serialize)]
@@ -359,6 +366,9 @@ fn main() {
                 status,
                 snap,
                 prog: Arc::new(Progress::new()),
+                // Un volume sans cache a déjà une analyse de démarrage en file.
+                scan_requested: if status == Status::Empty { 1 } else { 0 },
+                scan_completed: 0,
             },
         );
     }
@@ -496,14 +506,17 @@ fn pump(app: &Arc<App>) {
         }
     };
     let Some(letter) = next else { return };
+    let mut drives = app.drives.lock().unwrap();
+    let Some(ds) = drives.get_mut(&letter) else {
+        return;
+    };
+    ds.prog = Arc::new(Progress::new());
+    ds.status = Status::Scanning;
+    // Une demande faite pendant le scan précédent est coalescée ici :
+    // celui-ci porte alors le dernier ticket demandé.
+    let ticket = ds.scan_requested;
     *busy = Some(letter);
-    {
-        let mut d = app.drives.lock().unwrap();
-        if let Some(ds) = d.get_mut(&letter) {
-            ds.prog = Arc::new(Progress::new());
-            ds.status = Status::Scanning;
-        }
-    }
+    drop(drives);
     drop(busy);
 
     let app2 = app.clone();
@@ -527,13 +540,14 @@ fn pump(app: &Arc<App>) {
             eprintln!(
                 "{letter}: parcours interrompu — cache inchangé, volume non marqué comme analysé"
             );
-            {
-                let mut d = app2.drives.lock().unwrap();
-                if let Some(ds) = d.get_mut(&letter) {
-                    ds.status = Status::Empty;
-                }
+            let mut scanning = app2.scanning.lock().unwrap();
+            let mut d = app2.drives.lock().unwrap();
+            if let Some(ds) = d.get_mut(&letter) {
+                ds.status = Status::Empty;
             }
-            *app2.scanning.lock().unwrap() = None;
+            drop(d);
+            *scanning = None;
+            drop(scanning);
             // On enchaîne sur le volume suivant, sauf si c'est un arrêt complet :
             // relancer un parcours pendant l'arrêt serait absurde.
             if !app2.stopping.load(Ordering::Relaxed) {
@@ -549,14 +563,19 @@ fn pump(app: &Arc<App>) {
         if let Err(e) = snap.save(&cache, serial) {
             eprintln!("cache {letter}: {e}");
         }
-        {
-            let mut d = app2.drives.lock().unwrap();
-            if let Some(ds) = d.get_mut(&letter) {
-                ds.snap = Some(Arc::new(snap));
-                ds.status = Status::Ready;
-            }
+        // Publication atomique vis-à-vis de l'état observé : un lecteur ne peut
+        // pas voir le nouveau snapshot avant son ticket achevé, ni la fin du scan
+        // avec l'ancien snapshot.
+        let mut scanning = app2.scanning.lock().unwrap();
+        let mut d = app2.drives.lock().unwrap();
+        if let Some(ds) = d.get_mut(&letter) {
+            ds.snap = Some(Arc::new(snap));
+            ds.status = Status::Ready;
+            ds.scan_completed = ticket;
         }
-        *app2.scanning.lock().unwrap() = None;
+        drop(d);
+        *scanning = None;
+        drop(scanning);
         println!(
             "{letter}: terminé — {} dossiers, {} fichiers",
             count_dirs(&app2, letter),
@@ -587,28 +606,45 @@ fn count_files(app: &Arc<App>, l: char) -> usize {
 
 // La demande est-elle DÉJÀ COUVERTE par une analyse qui vient après elle ?
 //
-// Pure, pour être testée. Elle ne prend que la file : ce n'est pas une copie
-// de l'état, c'est la liste de ce qui s'exécutera. Une analyse EN COURS ne
-// couvre rien -- elle a commencé avant que la demande existe, donc son
-// instantané ne peut pas contenir ce que la demande voulait voir. C'est
-// exactement le défaut du 28/09/2026, et c'est pour cela que la fonction ne
-// prend pas `scanning` en paramètre : l'oublier est impossible.
+// Pure, pour être testée. La file ne contient que les volumes, sans doublon ;
+// le ticket, lui, est attaché au volume et sera lu au démarrage de sa tâche. Un
+// scan déjà en cours n'est pas dans la file : il ne peut donc pas couvrir une
+// demande plus récente.
+//
+// Le contrat est mesuré par la valeur booléenne : seul un volume présent en file
+// est déjà couvert. Une demande en vol ajoute au plus une entrée, même répétée.
 fn demande_couverte(en_attente: &[char], letter: char) -> bool {
     en_attente.contains(&letter)
 }
 
-fn start_scan(app: &Arc<App>, letter: char) {
-    // Ordre de verrouillage imposé partout : `scanning` puis `queue`.
-    // L'inverse (queue -> scanning) risquerait l'interblocage avec `pump`. Le
-    // verrou de `queue` est seul ici, et `pump` le prend apres `scanning` :
-    // même ordre, donc pas d'interblocage possible.
-    let mut q = app.queue.lock().unwrap();
-    if demande_couverte(&q, letter) {
-        return;
+/// Enregistre une demande avec un ticket monotone par volume. Une tâche déjà
+/// en file absorbe les demandes suivantes, mais son exécution portera le ticket
+/// le plus récent au moment où elle démarrera.
+fn programmer_analyse(en_attente: &mut Vec<char>, demande: &mut u64, letter: char) -> Option<u64> {
+    let ticket = demande.checked_add(1)?;
+    *demande = ticket;
+    if !demande_couverte(en_attente, letter) {
+        en_attente.push(letter);
     }
-    q.push(letter);
-    drop(q);
+    Some(ticket)
+}
+
+fn start_scan(app: &Arc<App>, letter: char) -> Result<u64, &'static str> {
+    // Ordre de verrouillage imposé partout : `scanning` puis `queue` puis
+    // `drives`. Le verrou de scan sérialise aussi la demande avec l'arrêt.
+    let ticket = {
+        let _busy = app.scanning.lock().unwrap();
+        if app.stopping.load(Ordering::Relaxed) {
+            return Err("arrêt en cours");
+        }
+        let mut q = app.queue.lock().unwrap();
+        let mut d = app.drives.lock().unwrap();
+        let ds = d.get_mut(&letter).ok_or("volume inconnu")?;
+        programmer_analyse(&mut q, &mut ds.scan_requested, letter)
+            .ok_or("compteur de tickets d'analyse épuisé")?
+    };
     pump(app);
+    Ok(ticket)
 }
 
 // ---------------------------- HTTP ----------------------------
@@ -930,8 +966,17 @@ fn route(
                     return Err(("404 Not Found", "volume inconnu".into()));
                 }
             }
-            start_scan(app, letter);
-            Ok(Resp::Json("{\"ok\":true}".to_string()))
+            let ticket = start_scan(app, letter).map_err(|message| {
+                let statut = if message == "arrêt en cours" {
+                    "409 Conflict"
+                } else {
+                    "503 Service Unavailable"
+                };
+                (statut, message.to_string())
+            })?;
+            Ok(Resp::Json(
+                serde_json::json!({ "ok": true, "ticket": ticket }).to_string(),
+            ))
         }
 
         ("GET", "/api/tree") => tree(app, q),
@@ -1020,6 +1065,9 @@ fn route(
 }
 
 fn state_json(app: &Arc<App>) -> StateJson {
+    // Même ordre que `pump` : l'instantané, les tickets et le drapeau global
+    // sont lus dans une seule fenêtre cohérente et sans inverser les verrous.
+    let scanning = app.scanning.lock().unwrap();
     let d = app.drives.lock().unwrap();
     let mut out: Vec<DriveJson> = Vec::new();
     let mut letters: Vec<char> = d.keys().copied().collect();
@@ -1044,11 +1092,13 @@ fn state_json(app: &Arc<App>) -> StateJson {
             skipped: snap.map(|x| x.skipped).unwrap_or(0),
             dirs: s.prog.dirs.load(Ordering::Relaxed),
             files: s.prog.files.load(Ordering::Relaxed),
+            scan_requested: s.scan_requested,
+            scan_completed: s.scan_completed,
         });
     }
     StateJson {
         drives: out,
-        scanning: app.scanning.lock().unwrap().map(|c| c.to_string()),
+        scanning: scanning.map(|letter| letter.to_string()),
         eleve: app.eleve,
     }
 }
@@ -1400,6 +1450,7 @@ struct DeleteOutcome {
     corbeille_deborde: Option<bool>,
     results: Vec<PreviewItem>,
     rescan: bool,
+    scan_ticket: Option<u64>,
 }
 
 fn now_ms() -> i64 {
@@ -2027,10 +2078,18 @@ fn execute(
 
     // L'index ne reflète plus le disque : on relance une analyse pour que les
     // totaux redeviennent justes au lieu de garder des entrées fantômes.
-    let rescan = done > 0;
-    if rescan {
-        start_scan(app, letter);
-    }
+    let scan_ticket = if done > 0 {
+        match start_scan(app, letter) {
+            Ok(ticket) => Some(ticket),
+            Err(message) => {
+                eprintln!("{letter}: réanalyse non programmée : {message}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let rescan = scan_ticket.is_some();
 
     // `to_trash` répond à la question utile : « l'opération était-elle
     // réversible ? » — et non « l'a-t-on demandée réversible ? ». Les deux
@@ -2046,6 +2105,7 @@ fn execute(
             corbeille_deborde: peek.corbeille_deborde,
             results,
             rescan,
+            scan_ticket,
         })
         .unwrap(),
     ))
@@ -2198,7 +2258,7 @@ fn eleve_change_le_geste(eleve: bool) -> bool {
 
 #[cfg(test)]
 mod tests_scan_redemande {
-    use super::demande_couverte;
+    use super::{demande_couverte, programmer_analyse};
 
     #[test]
     fn une_file_vide_ne_couvre_rien() {
@@ -2218,24 +2278,44 @@ mod tests_scan_redemande {
     }
 
     #[test]
-    fn deux_demandes_pendant_une_analyse_donnent_une_seule_Analyse() {
-        // La séquence que l'ancien code exécutait, et le résultat qu'il
-        // produisait : la demande absorbée, la file toujours vide, donc rien.
-        // Mesuré le 28/09/2026 sur `generation` -- le dossier créé, la demande
-        // répondue `ok`, et un instantané pris AVANT sa création.
-        //
-        // Un instantané antérieur à la création d'un dossier ne peut pas
-        // contenir ce dossier : la seule chose qui couvre la demande, c'est une
-        // analyse d'après elle. Deux demandes, une analyse de plus -- ni zéro,
-        // ni deux.
+    fn deux_demandes_pendant_une_analyse_donnent_une_seule_analyse_supplementaire() {
+        // L'analyse en cours n'est pas dans la file : les deux demandes doivent
+        // donc produire un unique passage supplémentaire, auquel le dernier
+        // ticket répondra.
         let mut file: Vec<char> = Vec::new();
-        if !demande_couverte(&file, 'G') {
-            file.push('G');
-        }
-        if !demande_couverte(&file, 'G') {
-            file.push('G');
-        }
+        let mut demande = 4;
+        assert_eq!(programmer_analyse(&mut file, &mut demande, 'G'), Some(5));
+        assert_eq!(programmer_analyse(&mut file, &mut demande, 'G'), Some(6));
         assert_eq!(file, vec!['G']);
+        assert_eq!(demande, 6);
+    }
+
+    #[test]
+    fn plusieurs_demandes_pendant_un_scan_sont_coalescees() {
+        let mut file = Vec::new();
+        let mut demande = 7;
+        assert_eq!(programmer_analyse(&mut file, &mut demande, 'G'), Some(8));
+        assert_eq!(programmer_analyse(&mut file, &mut demande, 'G'), Some(9));
+        assert_eq!(file, vec!['G']);
+        assert_eq!(demande, 9);
+    }
+
+    #[test]
+    fn une_demande_deja_en_file_ne_rajoute_pas_un_passage() {
+        let mut file = vec!['C', 'G'];
+        let mut demande = 7;
+        assert_eq!(programmer_analyse(&mut file, &mut demande, 'G'), Some(8));
+        assert_eq!(file, vec!['C', 'G']);
+        assert_eq!(demande, 8);
+    }
+
+    #[test]
+    fn depassement_du_compteur_refuse_sans_modifier_la_file() {
+        let mut file = Vec::new();
+        let mut demande = u64::MAX;
+        assert_eq!(programmer_analyse(&mut file, &mut demande, 'G'), None);
+        assert_eq!(demande, u64::MAX);
+        assert!(file.is_empty());
     }
 }
 
@@ -2779,10 +2859,15 @@ fn quit(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
             .map_err(|e| ("400 Bad Request", format!("corps illisible : {e}")))?
     };
 
+    // Barrière : le premier contrôle et la demande d'arrêt partagent le verrou
+    // tenu par `pump` et `start_scan`. Sans cette sérialisation, un nouveau scan
+    // pourrait s'intercaler juste après le contrôle « aucun scan en cours ».
+    // Ordre de verrouillage : `scanning` puis `queue` puis `drives`.
+    let busy = app.scanning.lock().unwrap();
     // Premier appel sans `force` alors qu'une analyse tourne : on ne refuse pas
     // sèchement, on rend de quoi demander confirmation — ce qui serait perdu,
     // chiffré, plutôt qu'un « vraiment ? » qui ne dit rien.
-    if let Some(letter) = *app.scanning.lock().unwrap() {
+    if let Some(letter) = *busy {
         if !req.force {
             let (dirs, files) = {
                 let d = app.drives.lock().unwrap();
@@ -2802,17 +2887,9 @@ fn quit(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
         }
     }
 
-    // À partir d'ici l'arrêt est acquis. Le drapeau sert deux fois : il empêche
-    // un second `/api/quit` de refaire le travail, et `pump` s'en sert pour ne pas
-    // enchaîner sur le volume suivant.
+    // À partir d'ici l'arrêt est acquis. Le drapeau empêche `pump` d'enchaîner
+    // sur le volume suivant et `start_scan` de prendre une nouvelle demande.
     app.stopping.store(true, Ordering::Relaxed);
-
-    // Barrière : on prend le verrou que `pump` tient pendant qu'il choisit un
-    // volume ET remplace sa progression. Sans elle, un `pump` déjà engagé
-    // installerait une progression neuve APRÈS la passe d'annulation ci-dessous,
-    // et le parcours ainsi lancé ne serait jamais annulé. Ordre de verrouillage
-    // respecté partout : `scanning` puis `queue` puis `drives`.
-    let busy = app.scanning.lock().unwrap();
     // La file n'a rien à préserver : ces volumes n'ont pas commencé, il n'y a ni
     // cache à écrire ni progression à perdre.
     app.queue.lock().unwrap().clear();

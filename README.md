@@ -671,14 +671,18 @@ window to open. Like R14, the defect depends on the **duration of a scan**, not 
 > What covers a scan request is a scan **later** than the request. A scan in progress does not
 > cover it: its snapshot was taken before the request existed.
 
-The question is lifted out of the locks and made pure (`src/main.rs:596`): it takes only the
-queue, because the queue is the list of what will run. A volume already waiting is not queued
-twice (`src/main.rs:609`) — so the bound holds: ten requests during one scan give **one** extra
-scan, not ten.
+Each accepted scan request now gets a monotone per-volume ticket. `start_scan`
+(`src/main.rs:632`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
+so a client can wait for **its** scan without missing a short run or mistaking the current scan's
+completion for the requested one. Repeated requests coalesce in the queue (`demande_couverte`,
+`src/main.rs:616`, and `en_attente.push(letter)`, `src/main.rs:627`): ten requests during one
+scan request just one additional pass, not ten. A scan already in progress never satisfies a
+request made after it began.
 
-The `scanning` parameter was removed from the function on purpose, after a first version kept it
-without using it. A parameter that does not change the answer is a lie the tests eventually
-show; forgetting it becomes impossible, and the test that explains why ignores it.
+Completion is published with the completed snapshot, not when the scan merely starts or its
+running flag drops. Lock order remains `scanning` → `queue` → `drives`; shutdown uses the same
+barrier before blocking new requests. Ticket overflow is refused rather than wrapping and making
+an old ticket look current.
 
 **Counter-proof, same probe sequence:** with the old behaviour restored, `generation` goes
 back to `SANS SYNTHESE` with the same `TypeError`. What `recherche` does is unchanged — which

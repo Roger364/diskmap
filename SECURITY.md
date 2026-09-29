@@ -89,8 +89,8 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1568`) ; `execute` ne résout plus rien et ne supprime que les chemins
-figés par l'aperçu (`struct Montre`, `src/main.rs:101`).
+(`src/main.rs:1619`) ; `execute` ne résout plus rien et ne supprime que les chemins
+figés par l'aperçu (`struct Montre`, `src/main.rs:105`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
 ci-dessus ferme l'éffacement, parce que c'est lui qui était mesuré. Mais l'interface
@@ -224,12 +224,12 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
 |---|---|
-| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:909`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:831`) |
+| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:945`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:867`) |
 | DNS rebinding | Rien, pour la même raison |
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1433`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1484`) — voir R5 |
 
 ---
 
@@ -271,7 +271,7 @@ l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1433`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1484`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -402,7 +402,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2730`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2702`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -427,11 +427,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1704` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1709`) n'était
-appelé que dans `execute` (`src/main.rs:1753`). Des aperçus répétés sans confirmation
+`src/main.rs:1755` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1760`) n'était
+appelé que dans `execute` (`src/main.rs:1804`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1705`).
+endroit (`src/main.rs:1756`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -500,7 +500,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = done > 0` (`src/main.rs:2030`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2092`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -827,15 +827,15 @@ drapeau recommence. Ici l'absence de fenêtre est le défaut, et l'ouverture est
 qu'il faut demander. Ouvrir une fenêtre qu'on n'a pas demandée est une intrusion, quelle que soit
 l'innocence du code.
 
-**Le correctif.** Une fonction pure et testable (`src/main.rs:198`), alimentée par le signal réel
-(`src/main.rs:326`). Les deux drapeaux restent, et **priment sur le signal** : `--browser` pour
+**Le correctif.** Une fonction pure et testable (`src/main.rs:205`), alimentée par le signal réel
+(`src/main.rs:333`). Les deux drapeaux restent, et **priment sur le signal** : `--browser` pour
 forcer, `--no-browser` pour interdire. Un comportement qu'on ne peut ni forcer ni interdire n'est
 pas une règle, c'est une pente. Quand les deux sont présents, l'interdit l'emporte — l'ordre des
 deux lignes décidait de l'issue, et une règle dont l'issue tient à l'ordre de deux lignes n'en
 est pas une.
 
 **Et il le dit.** Sans console, le serveur affiche pourquoi il n'ouvre rien
-(`src/main.rs:331`). Un serveur qui se tait laisse croire à un défaut ; celui qui n'explique pas sa
+(`src/main.rs:338`). Un serveur qui se tait laisse croire à un défaut ; celui qui n'explique pas sa
 décision ne la méritait pas.
 
 **Épreuves, les deux sens.** Lancement sans drapeau, sans console, fenêtres comptées avant et
@@ -988,14 +988,18 @@ de la **durée d'une analyse**, comme R14.
 > Ce qui couvre une demande d'analyse, c'est une analyse **postérieure** à la demande. Une
 > analyse en cours ne la couvre pas : son instantané a été pris avant qu'elle existe.
 
-**Le correctif.** La question est séparée des verrous et rendue pure (`src/main.rs:596`) : elle
-ne prend que la file, parce que la file est la liste de ce qui s'exécutera. Un volume déjà en
-attente n'est pas empilé deux fois (`src/main.rs:609`) — la borne est donc respectée : dix
-demandes pendant la même analyse donnent **une** analyse de plus, pas dix.
+**Le correctif.** Chaque analyse demandée reçoit un ticket monotone par volume : `start_scan`
+(`src/main.rs:632`) le rend dans la réponse HTTP, et `/api/state` publie `scan_requested` et
+`scan_completed`. Le client peut ainsi attendre le ticket de SA demande sans manquer une analyse
+courte ni confondre la fin du scan courant avec celle du scan demandé. Les demandes répétées sont
+coalescées dans la file (`demande_couverte`, `src/main.rs:616`, et `en_attente.push(letter)`,
+`src/main.rs:627`) : dix demandes pendant le même scan demandent une seule analyse supplémentaire,
+pas dix. L'analyse déjà en cours n'est jamais créditée pour une demande qu'elle précède.
 
-Le paramètre `scanning` a été retiré de la fonction délibérément, après qu'une première version
-l'ait gardé sans l'utiliser. Un paramètre qui ne change pas la réponse est un mensonge que les
-tests finissent par montrer ; l'oubli devient impossible, et le test qui dit pourquoi l'ignore.
+La fin est publiée seulement avec l'instantané complet. L'ordre des verrous est conservé
+(`scanning` → `queue` → `drives`), et l'arrêt prend la même barrière avant de bloquer de nouvelles
+demandes : une demande acceptée n'est donc ni perdue, ni publiée comme terminée trop tôt.
+Le compteur refuse proprement le débordement plutôt que de réutiliser un ticket.
 
 **Contre-épreuve, sur la même séquence de sondes :** ancien comportement remis,
 `generation` retombe en `SANS SYNTHESE` avec le même `TypeError`. Ce que `recherche` en fait
@@ -1151,7 +1155,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   voir. Mesuré : un dossier créé, la demande répondue `ok`, et `/api/search` qui le déclare
   introuvable tout en répondant `exact=true, tronque=false` sur 356 résultats. Ce qui couvre une
   demande, c'est une analyse **postérieure** à elle — donc la file, et jamais l'analyse en cours
-  (`src/main.rs:596`) — R15.
+  (`src/main.rs:616`) — R15.
 - **L'écran se recharge quand le disque a bougé depuis qu'il a été peint.** La veille de fond
   suivait l'état d'un volume analysé ailleurs, jamais l'arbre : le rechargement n'existait que
   dans `poll()`, qui ne démarre que sur un geste local et s'éteint après un tour. Une analyse
@@ -1160,7 +1164,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
   chaque peinture (`ui/index.html:422`), comparé par la veille (`ui/index.html:1833`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
-  (`src/main.rs:198`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
+  (`src/main.rs:205`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
   tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
   de celui qui a lancé le programme est une intrusion, même sans intention — R13.
@@ -1174,7 +1178,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
   (`tests/sondes/lancer.mjs:553`) : `rm -rf` y serait un bug, et le code le dit.
-- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1089`). Un
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1139`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
   serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
