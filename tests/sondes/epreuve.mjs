@@ -122,6 +122,9 @@ const EPREUVES = [
 
 const dire = (t) => console.log(t);
 let echecs = 0;
+// Les paires garde-sonde trouvees par le mode decouverte, et la preuve du
+// plancher : une entree laissee en decouverte fait ROUGE ce script.
+const decouvertes = [];
 const notes = [];
 
 function refuser(t) {
@@ -217,6 +220,195 @@ async function mesurer(ep, binaire) {
   }
 }
 
+// ------------------------------------------------------------------ découverte
+//
+// Le catalogue exige une MESURE, pas seulement un rouge : c'est ce qui empêche
+// une sonde de rougir pour une raison étrangère à la garde. Cette exigence a un
+// prix, et le prix est qu'on ne sait pas, à l'avance, QUELLE sonde verra QUELLE
+// garde — et le deviner, c'est-à-dire écrire une preuve sans l'avoir mesurée, est
+// exactement ce que le projet refuse ailleurs.
+//
+// Le mode `decouverte` répond à cela sans affaiblir le catalogue : on neutralise
+// la garde, on lance PLUSIEURS sondes candidates, et on note lesquelles rougissent
+// et CE QU'ELLES DISENT. Les lignes rougesAffichées sont la matière première de
+// la `mesure` stricte, écrite ensuite à partir d'un fait observé.
+//
+// Et il a un plancher : une entrée laissée en `decouverte` fait ROUGE le script à
+// la fin. Une découverte permanente serait un catalogue qui n'exige plus rien —
+// c'est-à-dire exactement le rapport de trous que 7/28 a condamné. Une découverte
+// est un chantier, pas un état.
+
+/**
+ * Neutralise, compile, mesure, restaure, recompile — et TOUJOURS dans un
+ * `finally`. Les deux modes s'en servent : la discipline de restauration n'est
+ * écrite qu'une fois, donc elle ne peut pas l'être deux fois différemment.
+ */
+async function sousGardeNeutralisee(ep, binaire, mesurerFn) {
+  const chemin = path.join(DEPOT, ep.fichier);
+  const original = fs.readFileSync(chemin, 'utf8');
+  // `split`/`join` et non `replace` : un remplacement de TOUTES les occurrences
+  // (trois gardes identiques dans l'interface) sans jamais écrire de regex, donc
+  // sans jamais se tromper d'échappement.
+  const attendu = ep.fois || 1;
+  const n = original.split(ep.avant).length - 1;
+  if (n !== attendu) {
+    throw new Error(`${ep.fichier} : « ${ep.avant.trim()} » trouvé ${n} fois, attendu ${attendu}.`
+      + ' Une garde qu on ne sait plus nommer n est pas une garde.');
+  }
+  try {
+    fs.writeFileSync(chemin, original.split(ep.avant).join(ep.apres));
+    compiler();
+    return await mesurerFn();
+  } finally {
+    fs.writeFileSync(chemin, original);
+    compiler();
+  }
+}
+
+/**
+ * Cherche QUELLE sonde voit la garde, et ce qu'elle dit quand elle la voit.
+ * Ne juge pas : elle rapporte. Le jugement vient de l'entrée écrite ensuite.
+ */
+async function decouvrir(ep, binaire) {
+  dire(`\n--- DECOUVERTE ${ep.nom} : ${ep.quoi} — constat ${ep.preuve || '?'} ---`);
+  const vues = await sousGardeNeutralisee(ep, binaire, async () => {
+    const releves = [];
+    for (const c of ep.candidats) {
+      const r = await mesurer({ sonde: c.sonde, args: c.args || [] }, binaire);
+      releves.push({ ...c, ...r });
+      const compte = r.tout.match(/(\d+)\/(\d+)\s+v[ée]rifications/);
+      dire(`   ${c.sonde.padEnd(28)} ${/ROUGE/.test(r.tout) ? 'ROUGE ' : '… vert '}`
+        + ` code ${r.code} ${compte ? `${compte[1]}/${compte[2]}` : ''}`);
+    }
+    return releves;
+  });
+
+  const mordantes = vues.filter((v) => /ROUGE/.test(v.tout));
+  if (!mordantes.length) {
+    dire('   AUCUNE sonde candidate ne voit cette garde.');
+    dire('   C est un résultat : cette garde n a pas de témoin dans le catalogue.');
+    decouvertes.push({ nom: ep.nom, sondes: vues.map((v) => `${v.sonde} (vert)`), constat: ep.preuve });
+    return { morsure: false, revenu: true };
+  }
+  for (const v of mordantes) {
+    dire(`   ${v.sonde} la voit. Lignes rouges, à transformer en \`mesure\` :`);
+    for (const l of v.tout.split(/\r?\n/)) {
+      if (/^(ROUGE|ok\s)|mesuré/.test(l.trim())) dire(`     ${l.trim().slice(0, 150)}`);
+    }
+  }
+  // Le VERT apres restauration, sur la sonde qui a mordu : la garde neutralisée
+  // ne doit pas rendre l'application inutilisable.
+  const revenu = await mesurer(mordantes[0], binaire);
+  dire(`   restaurée : ${mordantes[0].sonde} code ${revenu.code}`);
+  decouvertes.push({
+    nom: ep.nom,
+    constat: ep.preuve,
+    sondes: vues.map((v) => `${v.sonde} (${/ROUGE/.test(v.tout) ? 'ROUGE' : 'vert'})`),
+  });
+  if (revenu.code !== 0) return { morsure: true, revenu: false };
+  return { morsure: true, revenu: true };
+}
+
+// Les deux lignes de l interface contiennent une chaine vide (`''`) et des
+// attributs entre guillemets doubles. Les ecrire en direct demanderait trois
+// niveaux d echappement pour un texte qu on veut lire : elles sont construites.
+const UI_LBL_AVANT = '<span class="lbl">${escapeHtml(d.label || ' + "''" + ')}</span>';
+const UI_LBL_APRES = '<span class="lbl">${(d.label || ' + "''" + ')}</span>';
+
+const DECOUVERTES = [
+  {
+    nom: 'hote-local',
+    quoi: "le nom d'hote doit etre 127.0.0.1, localhost ou ::1",
+    fichier: 'src/main.rs',
+    avant: '    nom.eq_ignore_ascii_case("127.0.0.1") || nom.eq_ignore_ascii_case("localhost") || nom == "::1"',
+    apres: '    true // NEUTRALISE POUR LA DECOUVERTE',
+    mode: 'decouverte',
+    preuve: '3.4',
+    pourquoi:
+      'Cause 3.4 : le nom demande dans l en-tete Host etait la seule chose qui separait une page tierce d un acces en lecture et en ecriture. Si la sonde qui la verifie ne la mord pas, c est que cette sonde mesure autre chose.',
+    candidats: [
+      { sonde: 'sonde-host.mjs', args: [] },
+      { sonde: 'sonde-corps.mjs', args: [] },
+    ],
+  },
+  {
+    nom: 'echappement-label',
+    quoi: 'le nom de volume echappe avant d etre ecrit en HTML',
+    fichier: 'ui/index.html',
+    avant: UI_LBL_AVANT,
+    apres: UI_LBL_APRES,
+    mode: 'decouverte',
+    preuve: 'R1',
+    pourquoi:
+      'R1 : le nom de volume vient de GetVolumeInformationW, donc du disque, donc de dehors - et il est interpole sans echappement. Aucune sonde ne cherche a le rendre dangereux : c est ce que la mesure va dire.',
+    candidats: [
+      { sonde: 'sonde-ui-suppression.mjs', args: ['V'] },
+      { sonde: 'sonde-erreurs.mjs', args: [] },
+    ],
+  },
+  {
+    nom: 'requete-perimee',
+    quoi: 'une reponse plus ancienne que la demande courante n est pas peinte',
+    fichier: 'ui/index.html',
+    avant: 'if (mien !== requete) return;',
+    apres: 'if (mien === -1) return;',
+    fois: 3,
+    mode: 'decouverte',
+    preuve: 'R11',
+    pourquoi:
+      'R11 : deux reglages coup sur coup, et c est la reponse la plus ancienne qui peignait. Sans cette garde, la sonde d interface doit le voir - sinon sa verification sur les peintures ne mesure rien.',
+    candidats: [
+      { sonde: 'sonde-ui-suppression.mjs', args: ['V'] },
+    ],
+  },
+  {
+    nom: 'ticket-ecran',
+    quoi: 'l ecran ne croit l analyse terminee que si le serveur a depasse le ticket',
+    fichier: 'ui/index.html',
+    avant: '(cur.ticket !== null && d.scan_completed >= cur.ticket)',
+    apres: '(cur.ticket !== null || d.scan_completed >= 0)',
+    mode: 'decouverte',
+    preuve: 'R15',
+    pourquoi:
+      'R15 : le drapeau global ment entre deux analyses. C est le garde COTE interface ; la preuve existante de R15 porte sur le garde cote serveur. Les deux sont distincts, et celui-ci n a peut-etre personne.',
+    candidats: [
+      { sonde: 'sonde-tickets.mjs', args: ['V'] },
+      { sonde: 'sonde-ui-suppression.mjs', args: ['V'] },
+    ],
+  },
+  {
+    nom: 'purge-pending',
+    quoi: 'un jeton d apercu perime est retire de la file',
+    fichier: 'src/main.rs',
+    avant: 'p.retain(|_, v| now - v.at_ms < 600_000);',
+    apres: 'p.retain(|_, _v| true);',
+    fois: 2,
+    mode: 'decouverte',
+    preuve: 'R7',
+    pourquoi:
+      'R7 : sans purge, une serie d apercus jamais confirmes ferait croitre la map sans borne, chacune retenant une liste de chemins. Je ne connais AUCUNE sonde qui compte cette map : c est le temoin negatif de cette serie.',
+    candidats: [
+      { sonde: 'sonde-corps.mjs', args: [] },
+      { sonde: 'sonde-suppression.mjs', args: ['V'] },
+    ],
+  },
+  {
+    nom: 'generation-ecran',
+    quoi: 'un selecteur d instantane perime est refuse en 409',
+    fichier: 'src/main.rs',
+    avant: '            if gen_vue != snap.gen {',
+    apres: '            if false && gen_vue != snap.gen { // NEUTRALISE POUR LA DECOUVERTE',
+    mode: 'decouverte',
+    preuve: '3.1',
+    pourquoi:
+      '3.1 : l incident du 26/09. La preuve existante de 3.1 exige le statut 409, par la sonde de generation. Je mesure s il existe un AUTRE temoin.',
+    candidats: [
+      { sonde: 'sonde-generation.mjs', args: ['V'] },
+      { sonde: 'sonde-identifiant.mjs', args: ['V'] },
+    ],
+  },
+];
+
 // -------------------------------------------------------------------- moteur
 
 /**
@@ -288,10 +480,11 @@ async function eprouver(ep, binaire) {
 
 refuserSiSale();
 const demandees = process.argv.slice(2);
-const retenues = EPREUVES.filter((e) => !demandees.length || demandees.includes(e.nom));
+const retenues = EPREUVES.concat(DECOUVERTES)
+  .filter((e) => !demandees.length || demandees.includes(e.nom));
 if (!retenues.length) {
   refuser(`aucune épreuve ne porte ces noms : ${demandees.join(', ')}.\n`
-    + `  disponibles : ${EPREUVES.map((e) => e.nom).join(', ')}`);
+    + `  disponibles : ${EPREUVES.concat(DECOUVERTES).map((e) => e.nom).join(', ')}`);
 }
 
 const binaire = path.join(DEPOT, 'target', 'release', 'diskmap.exe');
@@ -304,7 +497,7 @@ compiler();
 
 for (const ep of retenues) {
   try {
-    await eprouver(ep, binaire);
+    await (ep.mode === 'decouverte' ? decouvrir(ep, binaire) : eprouver(ep, binaire));
   } catch (e) {
     echecs++;
     console.log(`\n  ÉCHEC    ${ep.nom} — ${e.message}`);
@@ -319,6 +512,30 @@ if (notes.length) {
   console.log(`  ${notes.length} réserve(s) :`);
   for (const n of notes) console.log(`    - ${n}`);
 }
+// ---------- plancher du mode decouverte ----------
+//
+// Une entree en `decouverte` n exige qu un ROUGE : elle ne dit pas si la sonde
+// a rougi POUR LA BONNE RAISON. C est un chantier, et un chantier laisse ne
+// laisse pas l outil dans cet etat. Le plan : ecrire la `mesure` a partir des
+// lignes rouges mesurees, retirer le mode, et le catalogue redevient strict.
+const enDecouverte = EPREUVES.concat(DECOUVERTES).filter((e) => e.mode === 'decouverte');
+if (enDecouverte.length) {
+  echecs += enDecouverte.length;
+  console.log(`  ROUGE  ${enDecouverte.length} entree(s) encore en mode decouverte :`);
+  for (const e of enDecouverte) {
+    const trouve = decouvertes.find((d) => d.nom === e.nom);
+    console.log(`    - ${e.nom} : ${trouve ? trouve.sondes.join(', ') : 'jamais mesuree'}`);
+  }
+  console.log('    Ecrire la `mesure` avec les lignes rouges mesurees, puis retirer le mode.');
+}
+
+if (decouvertes.length) {
+  console.log(`  ${decouvertes.length} garde(s) mesuree(s) :`);
+  for (const d of decouvertes) {
+    console.log(`    ${d.nom} [${d.constat || '?'}] — ${d.sondes.join(', ')}`);
+  }
+}
+
 console.log(echecs
   ? `  ${echecs} point(s) en échec — une garde qui ne mord pas est aussi un échec`
   : `  ${retenues.length} épreuve(s) : la garde mord, et l'application revient`);
