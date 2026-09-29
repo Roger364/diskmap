@@ -131,6 +131,15 @@ function compiler() {
     // La sortie de cargo est ici décisive : une garde neutralisée peut ne plus
     // compiler, et ce n'est PAS la même chose qu'une sonde qui ne mord pas.
     const sortie = `${e.stdout || ''}${e.stderr || ''}`.split('\n').slice(-12).join('\n');
+    // « Accès refusé » sur le binaire n'est pas une erreur de compilation : c'est
+    // une instance qui le tient ouvert. Les deux finissent par un message de cargo
+    // et une fin de course, et les confondre envoie chercher une panne dans le
+    // code alors qu'il n'y en a pas. Le harnais sait déjà le dire ; cet outil
+    // avait le même angle mort.
+    if (/Acc[eè]s refus|os error 5|being used by another process/i.test(sortie)) {
+      throw new Error('le binaire est ouvert par une instance de diskmap — ferme-la,'
+        + ' puis relance. Ce n\'est pas une erreur de compilation.\n' + sortie);
+    }
     throw new Error(`le binaire ne compile plus :\n${sortie}`);
   }
 }
