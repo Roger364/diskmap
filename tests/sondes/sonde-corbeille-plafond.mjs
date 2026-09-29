@@ -12,9 +12,12 @@
 // rougir ici.
 //
 // La branche de débordement exige un lot plus gros que le plafond, ce qui
-// suppose d'écrire sur le disque. C'est borné : au-delà de 256 Mio, la sonde
-// se contente de vérifier la cohérence et DIT qu'elle n'a pas éprouvé le
-// débordement — elle ne le simule pas, et ne prétend pas l'avoir fait.
+// suppose d écrire sur le disque. C est borné : au-delà de 256 Mio — et c est le
+// cas du volume jetable de la CI, dont la corbeille est plus large que cette
+// borne — la sonde se contente de vérifier la cohérence et ÉCRIT SON AVEU dans le
+// dialecte du registre : marque, justification, et le nombre de verdicts que le
+// trou coûte, car c est ce nombre qui détend le plancher. Elle ne simule pas, ne
+// prétend pas avoir éprouvé, et ne peut pas le faire dire à sa place.
 //
 // Usage : node sonde-corbeille-plafond.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
@@ -33,6 +36,32 @@ function verifier(nom, condition, mesure) {
   verifs.push(ok);
   if (!ok) echecs.push(`${nom} — mesuré : ${mesure}`);
   console.log(`${ok ? 'ok   ' : 'ROUGE'} ${nom}${ok ? '' : `\n      mesuré : ${mesure}`}`);
+}
+
+// Une note est un AVEU : elle dit noir sur blanc que ce vert ne prouve pas ce
+// qu il a l air de prouver. Deux conditions, et deux seulement, la rendent
+// VISIBLE. Une marque que le collecteur reconnait : non exercee, ne prouve rien,
+// non mesurable. Une justification : structurel : ... ou couvert par ... . Sans
+// la marque, le harnais classe la ligne en « explication » et l avale ; sans la
+// justification, il la classe « aveu nu » et rougit. Ni l un ni l autre ne se voit
+// si la sonde elle-meme ne le dit pas, parce que sur un run vert sa sortie ne sort
+// pas. D ou le controle ci-dessous : il compte dans le plancher de la sonde, et il
+// rougit sur place, la ou aucune collecte a posteriori ne peut plus rien voir.
+// C est la seule garde de ce fichier que personne ne regarde ailleurs.
+const MOT_AVEU = /ne prouve rien|non exerc[ée]e?|ne pas mesurable|non mesurable/i;
+const MARQUE_JUSTIF = /structurel\s*:\s*.{12,}|couvert par\s+\S+\.mjs\s*:/;
+function noter(texte) {
+  const plat = texte.replace(/\s+/g, ' ').trim();
+  const marque = MOT_AVEU.test(plat);
+  const justifie = MARQUE_JUSTIF.test(plat);
+  verifier('l aveu est ecrit dans le dialecte que le harnais sait lire',
+    marque && justifie,
+    `marque=${marque} justification=${justifie} sur « ${plat.slice(0, 110)} »`);
+  // UNE SEULE LIGNE dans la sortie, toujours : le collecteur lit ligne a ligne,
+  // et une justification repoussee a la ligne suivante se retrouve seule sur
+  // une ligne que personne ne recolle. D ou les tableaux ci-dessous, dont
+  // noter() recolle les morceaux : l erreur y serait locale et nommee.
+  console.log(`      note : ${plat}`);
 }
 
 const post = (c, corps) => fetch(BASE + c, {
@@ -105,10 +134,20 @@ if (petit.erreur) {
 // --- 2. la branche du débordement, si elle est atteignable sans abusive ------
 const plafond = petit.j && petit.j.corbeille_plafond;
 if (plafond == null) {
-  console.log('      branches du débordement : NON ÉPROUVÉE (plafond non mesuré)');
+  noter([
+    'branches du débordement NON EXERCÉE — plafond non mesurable',
+    '— structurel : le plafond de corbeille n est pas mesurable sur ce volume,',
+    'donc la loi du débordement ne peut pas y etre éprouvée ; ce trou coûte',
+    '4 verdicts à cette sonde, et le plancher les compte comme non écrits',
+  ].join(' '));
 } else if (plafond > 256 * Mio) {
-  console.log(`      branches du débordement : NON ÉPROUVÉE — il faudrait écrire `
-    + `${(plafond / Mio).toFixed(0)} Mio, au-delà de la borne de 256 Mio de cette sonde`);
+  noter([
+    'branches du débordement NON EXERCÉE — plafond au-delà de la borne',
+    ` d écriture de 256 Mio (mesuré : ${(plafond / Mio).toFixed(0)} Mio sur ${VOL})`,
+    '— structurel : les exercer exigerait d écrire plus que la borne',
+    'd écriture de cette sonde ; ce trou coûte 3 verdicts à cette sonde,',
+    'et le plancher les compte comme non écrits',
+  ].join(' '));
 } else {
   // On vise le plafond par un unique fichier, et on efface le petit lot : le
   // dossier doit contenir exactement ce qu'on veut mesurer.

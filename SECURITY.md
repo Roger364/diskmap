@@ -660,7 +660,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:1038`) et le motif est écrit (`tests/sondes/lancer.mjs:1172`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1037`, motif `tests/sondes/lancer.mjs:1168`. Sans ce
+(`tests/sondes/lancer.mjs:1174`) et le motif est écrit (`tests/sondes/lancer.mjs:1381`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1173`, motif `tests/sondes/lancer.mjs:1326`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -676,8 +676,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:1061`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1175`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:1197`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1333`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -717,9 +717,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1103`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1258`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1223`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1381`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -825,7 +825,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:556`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:692`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1191,9 +1191,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1038`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1174`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:1037`, motif `tests/sondes/lancer.mjs:1168`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:1173`, motif `tests/sondes/lancer.mjs:1326`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1235,7 +1235,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:788`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:924`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1740,5 +1740,98 @@ leurs correctifs sont douteux. Nommer ce motif vaut mieux que vingt preuves
 *Ce que je n'ai pas fait : R1 exigerait une élévation (formater une clé ou monter
 une image), et les trois autres ne sont que des sondes à écrire — une demi-journée
 chacune. La campagne a nommé les trous ; elle ne les a pas bouchés.*
+
+---
+### 7/32 La CI a parlé, et elle a dit deux choses · **30/09/2026**
+
+Le run `36598186930` est **rouge**. C'est la première fois que la CI tranche, et
+elle tranche dans le sens qu'on redoutait : non pas sur un défaut du produit, mais
+sur le harnais qui devait le garder. Trois défauts, dont un mien.
+
+**1. Un plancher qui mentait sur ce qu'il mesurait.** Sur le runner, `plafond` a
+écrit **3 verdicts sur 6**. Ici, sur cinq volumes, elle en écrit 6. La cause est
+dans `sonde-corbeille-plafond.mjs` : au-delà de 256 Mio de plafond de corbeille,
+la branche du débordement est sautée, et elle vaut trois verdicts. Or c'est
+exactement le cas du volume jetable de la CI.
+
+Le plancher de 6 était donc faux sur la machine qui l'a le plus servi. Un
+contrôle qui rougit une sonde saine n'est pas plus « rouge en permanence » qu'un
+contrôle qui reste muet : c'est un contrôle dont on a appris à ne pas croire, et
+le jour où il rougit pour de bon, personne ne le regardera.
+
+**2. Le harnais est mort au moment précis où il devait parler.** Le plancher s'est
+affiché, puis `TypeError: Assignment to constant variable` : `code` était déclaré
+`const` et réaffecté plus bas. Le processus meurt, et **sept sondes derrière
+(`elevation`, `csrf`, `erreurs`, `arret`, `arret-idle`, `arret-running`,
+`reversibilite`) n'ont jamais tourné** sur cette CI. Elles ne sont pas rouges :
+elles n'existent pas.
+
+Rien de local ne pouvait le voir. `node --check` passe, les trois vérificateurs de
+`npm test` passent, les 216 références de documentation passent : tous ces
+contrôles s'arrêtent avant la ligne fautive, ou ne l'exécutent jamais. **Un
+contrôle qui ne s'exécute pas n'est pas un contrôle vert** — c'est un contrôle
+absent, et il se présente comme le contraire.
+
+**3. Le correctif du correctif était cassé aussi.** La réparation écrite dans
+l'arbre de travail ne changeait pas `const` en `let` : elle **supprimait la
+déclaration**. `code` devenait un identifiant non déclaré, et le module, étant
+un module, levait un `ReferenceError` à la première lecture. Le diff l'a dit en
+une ligne ; aucun contrôle automatique ne l'a vu. C'est le pendant exact du
+point 2 : une réparation non exercée n'est pas une réparation, et la discipline
+du dépôt dit déjà que le défaut n'est pas le trou, c'est l'excuse.
+
+**Ce qui change, et pourquoi ce n'est pas un plancher plus permissif.**
+
+Le champ `couts` entre au registre `AVEURS_STRUCTURELS`
+(`tests/sondes/lancer.mjs:465`) : un trou structurel ne se contente plus de se
+nommer, il **déclare** ce qu'il coûte en verdicts. Le plancher se relâche
+d'autant — et d'autant seulement, parce qu'un aveu nu ne détend rien.
+
+```js
+{ motif: 'branches du débordement non exercée — plafond au-delà de la borne d'écriture de 256 mio',
+  couts: 3, pourquoi: 'mesuré le 30/09 : le plafond du volume jetable de la CI dépasse 256 Mio…' }
+```
+
+Le nombre ne se devine pas, il se lit à un seul endroit, et il est recompté à
+chaque run (`PLANCHERS RELACHES`). Une sonde ne peut pas acheter son plancher :
+elle peut seulement déclarer le trou qu'elle a nommé, une fois, ici. Et si le trou
+se bouche, la note disparaît, le plancher remonte, et la sonde doit réécrire ses
+verdicts — c'est le sens dans lequel ce mécanisme peut se refermer.
+
+**Trois gardes que personne ne regardait, et qui se regardent maintenant.**
+
+- **La sonde vérifie sa propre note.** `noter()` (`tests/sondes/sonde-corbeille-plafond.mjs:53`)
+  refuse d'écrire un aveu sans la marque (`non exercée`) ni la justification
+  (`structurel : …`) que le collecteur sait lire. Le défaut venait d'ailleurs :
+  l'aveu disait « NON ÉPROUVÉE », et `MOT_AVEU` ne connaît que `non exercée` —
+  l'aveu était donc classé « explication », c'est-à-dire **avalé**. Un trou
+  invisible est un trouAbsent du registre, ce qu'il était déjà.
+- **Une justification tient sur une ligne.** Le collecteur lit ligne à ligne ; un
+  `structurel :` suivi d'un retour à la ligne laisse la raison vide, et l'aveu
+  devient « nu » — donc rouge, mais pour une faute de forme, accusée à tort d'un
+  trou qui, lui, est bien déclaré. C'est exactement la forme que j'avais écrite.
+- **Les deux tables s'éprouvent avant la moindre sonde.** `TABLE_RECONNAISSANCE`
+  passe cinq phrases réelles dans le classifieur réel et compare aux catégories
+  annoncées ; `TABLE_PLANCHER` vérifie l'arithmétique de la détente sur les
+  mesures du 30/09 — dont le cas qui compte : *un aveu nu ne détend rien*. Une
+  retouche de deux lettres dans `MOT_AVEU` ferait sinon disparaître tout le
+  registre, et le run afficherait « 24/24 sondes vertes » en mentant sur son
+  unique interest.
+
+La table a mordu à sa première exécution : un cas d'essai mal écrit — une note
+sans marque d'aveu — était classé « explication », non « aveu nu ». Le contrôle
+ne s'est pas trompé, c'est la mesure qui était fausse. C'est le résultat qu'on
+attend d'une contre-épreuve.
+
+**Mesuré après correction**, sur le volume jetable local : **24/24 sondes vertes**,
+`plancher : 24/24 gardées`, `aveux : 1 — 0 couvert, 1 structurel, 0 sans
+justification`, et les sept sondes de la liste du point 2 s'exécutent enfin.
+Sur ce volume la corbeille tient sous 256 Mio, donc la branche s'exerce et la
+détente ne joue pas : c'est pour cela qu'elle est prouvée par table, et non par
+un run.
+
+*Ce que je n'ai pas fait : `plafond` reste à 6 verdicts de plancher, et la
+branche du débordement reste non éprouvée sur toute machine dont la corbeille
+dépasse 256 Mio. La relaxer rend le run honnête, elle ne comble pas le trou.*
 
 ---

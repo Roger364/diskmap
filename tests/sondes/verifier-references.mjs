@@ -17,6 +17,15 @@
 //     référence non vérifiée ne passe pas en douce : elle se déclare, et le
 //     contrôle échoue tant qu'elle n'a pas été lue.
 //
+// RECALER, quand un deplacement de lignes a broke des references :
+//   python tests/sondes/recalage-references.py
+// Jamais a la main, et jamais par decalage d un offset : le script cherche le
+// SYMBOLE annonce dans le fichier vise, renumerote la documentation ET ce
+// tableau, et repete jusqu a stabilite — parce qu une reference corrigee peut en
+// decaler une autre. Il a ete ecrit le 30/09 apres un recalage manuel qui avait
+// laisse 11 references fausses sur les 20 deplacees : la main voit ce qu elle a
+// sous les yeux, et le reste est hors champ.
+//
 // Le tableau ci-dessous est la trace de la vérification manuelle. Il est
 // relisible, donc contestable : si une référence désigne bien autre chose que
 // le symbole écrit, c'est le tableau qu'il faut corriger, et la correction
@@ -46,7 +55,7 @@ const ATTENDU = {
     'src/main.rs:643': 'en_attente.push(letter);',
     'src/main.rs:643': 'fn start_scan',
     'src/main.rs:345': 'Navigateur  : non ouvert',
-    'tests/sondes/lancer.mjs:556': "'--port', String(port), '--no-browser'",
+    'tests/sondes/lancer.mjs:692': "'--port', String(port), '--no-browser'",
     'src/main.rs:1496': 'fn blocked_reason',
     'src/main.rs:1631': 'gen_vue != snap.gen',
     'src/main.rs:1767': 'app.pending.lock()',
@@ -72,15 +81,15 @@ const ATTENDU = {
     'ui/index.html:986': 'if (mien !== requete) return;',
     'ui/index.html:1105': 'relancer en administrateur',
     'ui/index.html:1116': 'const cause = dr ?',
-    'tests/sondes/lancer.mjs:788': 'const connus',
-    'tests/sondes/lancer.mjs:1038': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:1037': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1168': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:1061': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1172': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1175': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1103': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1223': 'note(s) de',
+    'tests/sondes/lancer.mjs:924': 'const connus',
+    'tests/sondes/lancer.mjs:1174': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:1173': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1326': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:1197': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1381': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1333': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1258': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1381': 'note(s) de',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
     'tests/sondes/config.mjs:428': 'export async function attendreTicket',
@@ -115,6 +124,10 @@ const ATTENDU = {
     // la fonction qui porte la discipline de restauration — ecrite une fois,
     // donc impossible a ecrire deux fois differemment.
     'tests/sondes/epreuve.mjs:272': 'async function sousGardeNeutralisee',
+    'tests/sondes/lancer.mjs:465': 'couts: 4,',
+    'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
+    'tests/sondes/lancer.mjs:465': 'couts: 4,',
+    'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
   },
   'README.md': {
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
@@ -128,14 +141,14 @@ const ATTENDU = {
     'ui/index.html:681': 'cur.ticket = rep && typeof rep.ticket',
     'ui/index.html:699': 'd.scan_completed >= cur.ticket',
     'ui/index.html:1566': 'cur.ticket = typeof res.scan_ticket',
-    'tests/sondes/lancer.mjs:1038': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:1037': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1168': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:1061': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1172': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1175': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1103': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1223': 'note(s) de',
+    'tests/sondes/lancer.mjs:1174': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:1173': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1326': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:1197': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1381': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1333': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1258': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1381': 'note(s) de',
     'ui/index.html:427': 'let peintMs = null;',
     'ui/index.html:1868': 'peintMs === null || (d.finished_ms || 0) === peintMs',
     'ui/index.html:1873': 'rechargerTri();',

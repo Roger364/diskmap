@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:1038`) and the reason is printed (`tests/sondes/lancer.mjs:1172`). A zero summary has its own door: `tests/sondes/lancer.mjs:1037`, reason `tests/sondes/lancer.mjs:1168`.
+(`tests/sondes/lancer.mjs:1174`) and the reason is printed (`tests/sondes/lancer.mjs:1381`). A zero summary has its own door: `tests/sondes/lancer.mjs:1173`, reason `tests/sondes/lancer.mjs:1326`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -474,6 +474,71 @@ One pattern crosses the last three: the findings describe **interface-side** inv
 their probes have no scene, not because their fixes are doubtful. Naming the pattern is worth more than twenty
 hand-written proofs.
 
+**What the CI said, and it said two things — 30/09/2026.** Run `36598186930` came back
+**red**. It is the first time the CI has had a verdict on the harness itself, and it pointed at
+the harness rather than the product. Three defects, one of them mine.
+
+*A floor that lied about what it measured.* On the runner `plafond` wrote **3 verdicts out of 6**;
+here, across five volumes, it writes 6. Past a 256 MiB trash ceiling the probe skips the overflow
+branch — worth three verdicts — and the CI's disposable volume is past it. The floor of 6 was
+therefore wrong on the machine that used it most. A control that reds a healthy probe is not
+"permanently red" in any harmless sense: it is a control you have learned not to believe, and the
+day it reds for real, nobody will look.
+
+*The harness died exactly when it had to speak.* The floor message printed, then
+`TypeError: Assignment to constant variable`: `code` was declared `const` and reassigned further
+down. The process died, and **seven probes behind it — `elevation`, `csrf`, `erreurs`, `arret`,
+`arret-idle`, `arret-running`, `reversibilite` — never ran**. They are not red. They do not exist.
+
+Nothing local could see it: `node --check` passes, all three `npm test` verifiers pass, all 216
+documentation references pass. Every one of those stops before the faulty line, or never runs it.
+**A control that does not execute is not a green control** — it is an absent one, and it presents
+itself as the opposite.
+
+*And the fix of the fix was broken too.* The repair sitting in the working tree did not change
+`const` to `let`; it **deleted the declaration**. `code` became undeclared, and a module raises a
+`ReferenceError` on the first read. The diff said so in one line; no automatic control saw it.
+
+**What changed.** `AVEURS_STRUCTURELS` gained a `couts` field (`lancer.mjs:9999`): a structural hole
+no longer merely names itself, it **declares what it costs in verdicts**, and the floor relaxes by
+exactly that — and by nothing else, because an unjustified admission relaxes nothing at all. The
+number is not guessed; it is read from one place and recounted every run (`PLANCHERS RELACHES`). A
+probe cannot buy its floor: it can only declare, once, in writing, the hole it just named. And if
+the hole is ever closed, the note disappears, the floor goes back up, and the probe has to write its
+verdicts again — which is the direction this mechanism can close in.
+
+**Three guards nobody was looking at, which now look at themselves.**
+
+- **The probe checks its own admission.** `noter()` (`sonde-corbeille-plafond.mjs:9999`) refuses to
+  write an admission lacking the mark (`non exercée`) and the justification (`structurel : …`) the
+  collector can read. The defect was on that side too: the admission said « NON ÉPROUVÉE » while
+  `MOT_AVEU` only knows `non exercée` — so it was filed as an *explanation* and **swallowed**. An
+  invisible hole is a hole absent from the register, which is what it already was.
+- **A justification fits on one line.** The collector reads line by line, so a `structurel :`
+  followed by a newline leaves the reason empty and the admission becomes "bare" — red, but for a
+  *shape* error, wrongly accusing a hole that is properly declared. That is precisely the form I had
+  written.
+- **Both tables prove themselves before a single probe runs.** `TABLE_RECONNAISSANCE` pushes five
+  real sentences through the real classifier and compares the category each one claims;
+  `TABLE_PLANCHER` checks the relaxation arithmetic against the 30/09 measurements — including the
+  case that matters: *an unjustified admission relaxes nothing*. A two-letter edit in `MOT_AVEU`
+  would otherwise erase the whole register while the run printed `24/24 sondes vertes`, lying about
+  its only subject.
+
+The table bit on its first execution: a badly written test case — a note with no admission mark —
+classified as *explanation* rather than *bare admission*. The control was right; the measurement was
+wrong. That is what a counter-proof is for.
+
+**Measured after the fix**, on the local disposable volume: **24/24 probes green**, `plancher :
+24/24 gardées`, `aveux : 1 — 0 covered, 1 structural, 0 unjustified`, and the seven probes from the
+crash list execute for the first time. On that volume the trash ceiling is under 256 MiB, so the
+branch runs and the relaxation does not fire — which is exactly why it is proven by table rather
+than by a run.
+
+*What I did not do: `plafond` still has a floor of 6, and the overflow branch remains unexercised on
+any machine whose trash exceeds 256 MiB. Relaxing the floor makes the run honest; it does not close
+the hole.*
+
 register, with its three numbers, and the possible closure is named: a fillable disposable volume
 the application fills itself, which needs elevation and a volume this project does not have.
 
@@ -486,8 +551,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:1061`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1175`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:1197`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1333`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -952,9 +1017,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1103`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1258`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1223`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1381`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

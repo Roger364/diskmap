@@ -453,6 +453,17 @@ const AVEURS_STRUCTURELS = [
   { motif: 'la coalescence reste prouvée côté Rust', pourquoi: 'le comportement existe et son test Rust le couvre ; la sonde navigateur ne peut pas le voir' },
   { motif: 'exige un instantané', pourquoi: 'la garde a besoin d’un instantané, et le volume n’en a pas au moment de la requête' },
   { motif: 'le clic n', pourquoi: 'la modale ne s’est pas ouverte : le geste a échoué et la sonde est déjà rouge' },
+
+// Le COUT d un trou, en verdicts. Un aveu structurel ne se contente pas de nommer
+// ce qui n a pas ete eprouve : il DECLARE combien de verifications la sonde n ecrira
+// pas a cause de ca, et c est ce nombre qui detend son plancher. Mesure le 30/09 :
+// `plafond` ecrivait 6 verdicts ici et 3 sur le runner, et son plancher fixe de 6
+// le faisait rougir a tort — un controle qui ment sur ce qu il mesure. Le nombre
+// de verdicts perdus ne se devine donc pas : il se LIT dans le registre, la ou le
+// trou se declare. Une sonde ne peut pas acheter son plancher : elle peut
+// seulement declarer le trou qu elle a nomme, une fois, ici.
+ { motif: 'branches du débordement non exercée — plafond non mesurable', couts: 4, pourquoi: 'mesuré : `corbeille_plafond` vaut null, et la section 1 saute alors son troisieme verdict ; les trois verdicts de la branche de débordement sont donc hors d atteinte' },
+ { motif: 'branches du débordement non exercée — plafond au-delà de la borne d écriture de 256 mio', couts: 3, pourquoi: 'mesuré le 30/09 : le plafond du volume jetable de la CI dépasse 256 Mio, alors qu il vaut 51 Mio sur les volumes locaux ; exercer la branche demanderait d écrire plus que la borne d écriture que la sonde s est donnée' },
 ];
 
 // Un aveu est reconnu par sa MARQUE, explicite de preference. Les formes
@@ -508,6 +519,20 @@ function classerNote(texte) {
   }
   const structurel = texte.match(FORME_STRUCTUREL);
   if (structurel) {
+    // Une justification qui tient sur la LIGNE. Le collecteur lit ligne a ligne,
+    // donc un `structurel :` suivi d un retour a la ligne laisse la raison vide :
+    // l aveu devient « nu », donc rouge — mais pour une faute de FORME, accusée à tort
+    // d un trou qui, lui, est bel et bien déclaré. Le 30/09, un brouillon de
+    // `sonde-corbeille-plafond` écrivait exactement cela, et c est ce contrôle-là
+    // qui a produit le faux rouge de la première contre-épreuve.
+    if (structurel[1].trim().length < 12) {
+      return {
+        sorte: 'aveu nu',
+        mesure: 'la justification est vide ou trop courte : « structurel : » suivi d un'
+          + 'retour a la ligne perd sa raison, et l aveu est lu nu. Une note tient sur'
+          + 'UNE seule ligne.',
+      };
+    }
     // Le motif du registre se cherche dans la NOTE ENTIERE, pas dans la seule
     // raison. Premier essai, il ne cherchait que la raison — et comme l auteur
     // ecrit l identifiant du trou AVANT (`branche « ecart negligeable »`) et la
@@ -522,9 +547,120 @@ function classerNote(texte) {
           + 'un trou structurel nouveau doit être écrit une fois, ici',
       };
     }
-    return { sorte: 'aveu structurel', mesure: declare.pourquoi };
+    return {
+      sorte: 'aveu structurel',
+      mesure: declare.pourquoi,
+      motif: declare.motif,
+      couts: declare.couts || 0,
+    };
   }
   return { sorte: 'aveu nu', mesure: 'ni « couvert par », ni « structurel » : un aveu sans justification' };
+}
+
+/**
+ * Le plancher effectif, en une fonction PURE.
+ *
+ * Elle ne fait qu arithmetique — et c est precisement pour cela qu elle est
+ * eprouvee plus bas. Ecrits dans le corps du run, le calcul etait faux deux fois
+ * sur trois Machine : ici `plafond` ecrivait 3 verdicts sur le runner, et son
+ * plancher de 6 le faisait rougir a tort — un controle qui ment sur ce qu il
+ * mesure. Le pire n est pas le faux rouge : c est que rien dans le depot ne
+ * pouvait etre vrai et faux dans la meme seconde, selon la machine.
+ *
+ * Le defaut du calcul est nomme dans la fonction ; il est verifie par la table
+ * qui suit, sur des entrees connues, avant que la moindre sonde ne tourne.
+ */
+function plancherEffectif(brut, notes) {
+  const trous = (notes || []).filter((n) => n.sorte === 'aveu structurel' && n.couts);
+  const dispense = trous.reduce((a, n) => a + n.couts, 0);
+  if (brut === undefined) return { plancher: undefined, trous, dispense };
+  return { plancher: Math.max(0, brut - dispense), trous, dispense };
+}
+
+// ---------- la table de reconnaissance, eprouvee a chaque run ----------
+//
+// `classerNote` est une garde que PERSONNE ne regarde : elle ne rend un code de
+// sortie a personne, elle classe des phrases. Une retouche de `MOT_AVEU` — deux
+// lettres — et tous les aveux structurels du depot repassent « explication » :
+// plus de rouge, plus de registre, plus rien. Le trou redevient ce qu il etait
+// avant tout ca, et le run affiche « 24/24 sondes vertes ».
+//
+// Alors cette table est le contre-epreuve : elle passe dans le classifieur
+// REEL, avec des phrases reelles, et le run s arrete ICI, avant la moindre sonde,
+// si une seule ne tombe pas dans la categorie qu elle annonce. Le controle se
+// controle, et il se controle avant de rendre la main.
+//
+// Chaque ligne est un cas deja observe, ou un cas qu il faut pouvoir nommer.
+const TABLE_RECONNAISSANCE = [
+  [
+    'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : le plafond de corbeille n est pas mesurable',
+    'aveu structurel',
+    'un aveu structurel declare, sa raison tenant sur la meme ligne',
+  ],
+  [
+    'branches du débordement NON ÉPROUVÉE — structurel : une raison parfaitement suffisante',
+    'explication',
+    '« éprouvé » n est pas dans MOT_AVEU : la sonde aurait avoué sans etre comptee',
+  ],
+  [
+    'branches du débordement NON EXERCÉE — structurel :',
+    'aveu nu',
+    'une justification repoussee a la ligne suivante perd sa raison',
+  ],
+  [
+    'branches du débordement NON EXERCÉE — un trou que personne n a declare — structurel : une raison suffisamment longue',
+    'aveu nu',
+    'un trou structurel absent du registre ne passe pas',
+  ],
+  [
+    'rien à signaler sur ce volume',
+    'explication',
+    'une note qui n avoue rien est une explication, pas un aveu',
+  ],
+];
+const tableFaux = TABLE_RECONNAISSANCE
+  .filter(([texte, attendu]) => classerNote(texte).sorte !== attendu)
+  .map(([texte, attendu]) => `${attendu} — mesuré : ${classerNote(texte).sorte} sur « ${texte.slice(0, 70)} »`);
+if (tableFaux.length) {
+  console.error(`  LA TABLE DE RECONNAISSANCE DES AVEUX EST FAUSSE : ${tableFaux.length}`);
+  for (const m of tableFaux) console.error(`    - ${m}`);
+  'Le classifieur ne tient plus sa promesse, donc plus aucun aveu du depot',
+  'n est comptable. Corriger avant de lire un run vert.',
+  process.exit(1);
+}
+
+// La MEME demarche, sur l arithmetique du plancher. Une sonde qui perd des
+// verdicts ne doit pas etre rougee — mais une sonde qui en perd plus qu elle
+// ne dit pas, si. Ces entrees sont les MESURES du 30/09, pas des intentions :
+// `plafond` ecrivait 6 verdicts sur un volume dont la corbeille tient sous
+// 256 Mio, et 3 sur celui de la CI, dont la corbeille est plus large. Le meme
+// plancher ne peut pas etre vrai sur les deux — donc il se relache, et il se
+// relache du nombre que le registre DECLARE.
+const NON_EXERCEE = 'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : le plafond de corbeille n est pas mesurable';
+const TROP_LARGE = 'branches du débordement NON EXERCÉE — plafond au-delà de la borne d écriture de 256 Mio — structurel : la borne est dépassée';
+const SANS_MARQUE = 'branches du débordement NON ÉPROUVÉE — structurel : une raison parfaitement suffisante';
+const TRONQUEE = 'branches du débordement NON EXERCÉE — structurel :';
+const NON_DECLARE = 'branches du débordement NON EXERCÉE — un trou neuf — structurel : une raison parfaitement suffisante';
+const notes = (...textes) => textes.map((t) => ({ texte: t, ...classerNote(t) }));
+const TABLE_PLANCHER = [
+  [6, notes(), 6, 'sans note, le plancher ne bouge pas'],
+  [6, notes(TROP_LARGE), 3, 'un trou declare de 3 verdicts relache de 3 (mesure : 3 verdicts ecrits sur le runner)'],
+  [6, notes(NON_EXERCEE), 2, 'un trou declare de 4 verdicts relache de 4'],
+  [6, notes(SANS_MARQUE), 6, '« éprouvé » n est pas une marque d aveu : rien ne se relache'],
+  [6, notes(TRONQUEE), 6, 'une justification tronquee ne relache rien'],
+  [6, notes(NON_DECLARE), 6, 'un trou absent du registre ne relache rien'],
+  [6, notes(TROP_LARGE, NON_EXERCEE), 0, 'deux trous cumulent leurs couts, et le plancher est borne a zero'],
+  [undefined, notes(TROP_LARGE), undefined, 'une sonde sans plancher en garde reste sans plancher : une relaxation n en cree pas un'],
+];
+const plancherFaux = TABLE_PLANCHER
+  .filter(([brut, ns, attendu]) => plancherEffectif(brut, ns).plancher !== attendu)
+  .map(([brut, ns, attendu]) => `${attendu} — mesuré : ${plancherEffectif(brut, ns).plancher} sur un plancher de ${brut} et ${ns.length} note(s)`);
+if (plancherFaux.length) {
+  console.error(`  LA TABLE DES PLANCHERS EST FAUSSE : ${plancherFaux.length}`);
+  for (const m of plancherFaux) console.error(`    - ${m}`);
+  console.error('    Un plancher faux fait rougir a tort une sonde saine, ou laisse' +
+    'passer une sonde qui a perdu des assertions. Corriger avant de lire un vert.');
+  process.exit(1);
 }
 
 
@@ -1061,16 +1197,17 @@ function lireResidus(racines, volume) {
     const descompteFaux = !!compte
       && (Number(compte[1]) !== nOk || Number(compte[2]) !== verdictsEcrits);
     const descompte = muette || descompteFaux;
-    const code = descompte && sortie.code === 0 ? 1 : sortie.code;
+    let code = descompte && sortie.code === 0 ? 1 : sortie.code;
+    // `let`, et non `const` : deux verifiers ont le droit de rendre cette
+    // sonde rouge apres coup — le decompte incoherent, et le plancher. Avec un
+    // `const`, le second levait une TypeError et tuait le run au moment precis
+    // ou il avait a parler. Mesure le 30/09 sur la CI : le message du plancher
+    // s affichait, puis `TypeError: Assignment to constant variable`, et sept
+    // sondes derriere n ont jamais tourne.
     const resume = compte ? `${compte[1]}/${compte[2]}` : 'SANS SYNTHESE';
-    // Le plancher, calcule ICI parce que c est le seul endroit ou l on sait ce
-    // que la sonde a reellement ecrit, verdict par verdict.
-    // Un plancher est un nombre, ou une fonction de l environnement. Dans les deux
-    // cas il faut un NOMBRE a comparer — et il faut savoir lequel, sinon un
-    // plancher fonctionnel rouge avec « undefined » dans le message.
-    const brut = COMPTES_PLANCHER[s.nom];
-    const plancher = typeof brut === 'function' ? brut(ENV) : brut;
-    const perte = code === 0 && plancher !== undefined && verdictsEcrits < plancher;
+    // (le plancher, lui, est calcule plus bas : apres les notes, parce que
+    //  c est la qu on sait ce que la sonde dit ne pas avoir ecrit)
+    // (le plancher est calcule plus bas, apres les notes : voir pourquoi)
     // Ce que les sondes NOTENT, et qui n'apparait sur aucun run vert.
     //
     // Le 28/09/2026, une sonde a porte « (+1 non mesurable) » a son resume, et
@@ -1100,6 +1237,24 @@ function lireResidus(racines, volume) {
         .replace(/\(\+\d+ non mesurable\(s\)\)\s*$/i, '')
         .slice(0, 300))
       .map((texte) => ({ texte, ...classerNote(texte) }));
+    // Le plancher, calcule ICI et pas plus tot : c est le seul endroit ou l on sait
+    // a la fois ce que la sonde a reellement ecrit, verdict par verdict, ET ce
+    // qu elle a dit n avoir pas ecrit.
+    // Un plancher est un nombre, ou une fonction de l environnement. Dans les deux
+    // cas il faut un NOMBRE a comparer — et il faut savoir lequel, sinon un
+    // plancher fonctionnel rouge avec « undefined » dans le message.
+    const brut = COMPTES_PLANCHER[s.nom];
+    const plancherBrut = typeof brut === 'function' ? brut(ENV) : brut;
+    // Le plancher se RELACHE d autant de verdicts que les trous structurels en
+    // DECLARENT. Mesure le 30/09 : `plafond` ecrivait 6 verdicts ici et 3 sur le
+    // runner, et son plancher fixe de 6 le faisait rougir a tort — un controle qui
+    // ment sur ce qu il mesure. Le nombre de verdicts perdus ne se devine donc pas :
+    // il se LIT dans le registre, la ou le trou se declare.
+    // Un aveu nu ne detend RIEN, et un `structurel :` sans registre non plus : la
+    // porte est etroite par construction, et une sonde ne peut pas acheter son
+    // plancher — seulement declarer le trou qu elle a nomme.
+    const { plancher, trous, dispense } = plancherEffectif(plancherBrut, notes);
+    const perte = code === 0 && plancher !== undefined && verdictsEcrits < plancher;
     const mention = notes.length ? `  [!] ${notes.length} note(s)` : '';
     // Le compte des AVEUX, des la ligne de resume : une note d aveu non justifiee
     // doit se voir sur la ligne de la sonde, pas six pages plus loin.
@@ -1123,6 +1278,9 @@ function lireResidus(racines, volume) {
       console.log(`           PLANCHER : ${s.nom} a ecrit ${verdictsEcrits} verification(s), son`);
       console.log(`           plancher est ${plancher}. Une sonde verte qui en ecrit moins a`);
       console.log('           perdu des assertions — et rien d autre dans ce depot ne le voit.');
+      if (dispense) {
+        console.log(`           RELÂCHE de ${dispense} : ${plancherBrut} moins ${trous.map((n) => n.couts).join(' plus ')} = ${plancher}`);
+      }
       code = 1;
     }
     if (code !== 0 || aveuxNus.length) {
@@ -1185,7 +1343,7 @@ function lireResidus(racines, volume) {
       try { dedie.kill(); } catch { /* deja mort : c'est meme ce qu on attendait */ }
       dedie = null;
     }
-    resultats.push({ nom: s.nom, code, resume, notes, plancher, ecrit: verdictsEcrits });
+    resultats.push({ nom: s.nom, code, resume, notes, plancher, plancherBrut, trous, ecrit: verdictsEcrits });
     if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {
       const nouveaux = filet.incidents.slice(incidentsAvant);
       console.log(`           FILET  ${nouveaux.length} incident(s) pendant « ${s.nom} »`);
@@ -1276,6 +1434,20 @@ if (sansPlancher.length) {
   console.log('           rougirait rien. C est un choix, il doit etre visible.');
 } else {
   console.log(`  plancher : ${avecPlancher}/${vertes.length} sondes vertes gardees, aucune sans`);
+}
+
+// Les planchers RELACHES, eux, sont une dette comme les autres : ils se
+// recomptent a chaque run, avec le trou qui les a detendus et le nombre de
+// verdicts qu il a coute. Un plancher elargi en silence redeviendrait un
+// plancher que personne ne surveille.
+const relaches = resultats.filter((r) => r.trous && r.trous.length);
+if (relaches.length) {
+  console.log(`  PLANCHERS RELACHES : ${relaches.length} — chaque ligne est un trou structurel declare, donc ecrit, donc discutable`);
+  for (const r of relaches) {
+    for (const t of r.trous) {
+      console.log(`    - ${r.nom} : ${r.plancherBrut} - ${t.couts} = ${r.plancher} (${t.motif})`);
+    }
+  }
 }
 
 // Le filet a la parole. Un incident rend la run ROUGE même si toutes les sondes
