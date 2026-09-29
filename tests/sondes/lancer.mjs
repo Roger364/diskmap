@@ -450,7 +450,13 @@ const AVEURS_STRUCTURELS = [
   { motif: 'le guetteur de fenêtres n', pourquoi: 'l’ouverture de l’Explorateur n’est pas mesurable en service continu' },
   { motif: 'le support du volume n', pourquoi: 'les identifiants ne bougent pas quand la surface d’un volume ne change pas' },
   { motif: 'le volume est trop rapide', pourquoi: 'un scan dure moins d’une seconde sur le volume jetable : aucun scan en vol n’est observable' },
-  { motif: 'la coalescence reste prouvée côté Rust', pourquoi: 'le comportement existe et son test Rust le couvre ; la sonde navigateur ne peut pas le voir' },
+  // Le motif suit les MOTS DE LA SONDE, et rien d'autre. Celui d ici decrivait
+  // « la coalescence reste prouvée cote Rust » ; la sonde ecrit « ELLE reste
+  // prouvee cote Rust ». Le registre ne trouvait donc jamais son propre motif, et
+  // le 30/09 l aveu passait en « sans justification » sur une machine rapide. Une
+  // entree qui ne correspond a rien est une entree morte, et une entree morte ne
+  // declare rien.
+  { motif: 'coalescence pendant un scan en vol non exercée', couts: 1, pourquoi: 'mesuré le 30/09 : sur un volume rapide le premier scan est fini avant le second POST, donc la branche conditionnelle — un seul verdict — ne s ecrit pas ; la coalescence reste couverte par son test Rust, qu un navigateur ne peut pas voir' },
   { motif: 'exige un instantané', pourquoi: 'la garde a besoin d’un instantané, et le volume n’en a pas au moment de la requête' },
   { motif: 'le clic n', pourquoi: 'la modale ne s’est pas ouverte : le geste a échoué et la sonde est déjà rouge' },
 
@@ -468,6 +474,12 @@ const AVEURS_STRUCTURELS = [
 // trouve autre chose a dire. La sonde le disait depuis toujours — en deux lignes
 // que le collecteur ne comptait pas, dans un dialecte (« non éprouvé ») qui ne
 // correspond a aucune des marques reconnues.
+
+// Un quatrieme trou de la meme famille, et le seul ou le cout s additionne :
+// `csrf` fait trois cas, et le cas muet est un cas qui n a pas repondu. Un seul
+// motif, donc un `couts` de 3 — et le harnais SOMME une entree par cas muet,
+// donc le plancher baisse de 3 par cas et non une fois pour toutes.
+  { motif: 'cas de csrf inaccessible non exercé', couts: 3, pourquoi: 'mesuré le 30/09 sur le runner : la page d un des trois cas n a pas repondu ; ce cas ne peut rien prouver, ni le CSRF ni son absence — la sonde ecrit alors 1 verdict au lieu de 4, et la distinction entre inaccessible et echec reste dans un commentaire' },
   { motif: 'le palier de vingt gigaoctets non exercée', couts: 4, pourquoi: 'mesuré le 30/09 sur le runner : aucun dossier de plus de 20 Go n existe, la sonde n écrit donc que son unique verdict de coherence ; la branche à cinq verdicts reste couverte par les tests unitaires, qui la vérifient à 74,2 Go' },
 
   { motif: 'branches du débordement non exercée — plafond non mesurable', couts: 4, pourquoi: 'mesuré : `corbeille_plafond` vaut null, et la section 1 saute alors son troisieme verdict ; les trois verdicts de la branche de débordement sont donc hors d atteinte' },
@@ -647,6 +659,8 @@ if (tableFaux.length) {
 const NON_EXERCEE = 'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : le plafond de corbeille n est pas mesurable';
 const TROP_LARGE = 'branches du débordement NON EXERCÉE — plafond au-delà de la borne d écriture de 256 Mio — structurel : la borne est dépassée';
 const LE_PALIER = 'le palier de vingt gigaoctets NON EXERCÉE — structurel : aucun dossier de plus de 20 Go n existe sur cette machine';
+const LE_CSRF = 'cas de csrf inaccessible NON EXERCÉ — structurel : la page n a pas pu etre atteinte, donc rien n a ete mesuré pour ce cas';
+const LE_TICKETS = 'coalescence pendant un scan en vol non exercée sur ce volume (trop rapide) — elle reste prouvée côté Rust — structurel : la coalescence a son test Rust, qu un navigateur ne peut pas voir';
 const SANS_MARQUE = 'branches du débordement NON ÉPROUVÉE — structurel : une raison parfaitement suffisante';
 const TRONQUEE = 'branches du débordement NON EXERCÉE — structurel :';
 const NON_DECLARE = 'branches du débordement NON EXERCÉE — un trou neuf — structurel : une raison parfaitement suffisante';
@@ -658,6 +672,9 @@ const TABLE_PLANCHER = [
   [6, notes(SANS_MARQUE), 6, '« éprouvé » n est pas une marque d aveu : rien ne se relache'],
   [6, notes(TRONQUEE), 6, 'une justification tronquee ne relache rien'],
   [6, notes(NON_DECLARE), 6, 'un trou absent du registre ne relache rien'],
+  [12, notes(LE_CSRF), 9, 'un cas muet sur trois detache 3 verdicts : 12 - 3 = 9, ce qu ecrit reellement la sonde sur le runner'],
+  [12, notes(LE_CSRF, LE_CSRF), 6, 'deux cas muets detachent 6 : le cout s cumule, il ne s ecrit qu une fois'],
+  [9, notes(LE_TICKETS), 8, 'un scan en vol non observe detache le seul verdict conditionnel : 9 - 1 = 8, ce qu ecrit la sonde sur un volume rapide'],
   [5, notes(LE_PALIER), 1, 'un trou declare de 4 verdicts ramene le plancher de 5 a 1, ce qu ecrit reellement une sonde sans dossier de 20 Go'],
   [6, notes(TROP_LARGE, NON_EXERCEE), 0, 'deux trous cumulent leurs couts, et le plancher est borne a zero'],
   [undefined, notes(TROP_LARGE), undefined, 'une sonde sans plancher en garde reste sans plancher : une relaxation n en cree pas un'],

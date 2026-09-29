@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:1184`) and the reason is printed (`tests/sondes/lancer.mjs:1391`). A zero summary has its own door: `tests/sondes/lancer.mjs:1183`, reason `tests/sondes/lancer.mjs:1336`.
+(`tests/sondes/lancer.mjs:1201`) and the reason is printed (`tests/sondes/lancer.mjs:1408`). A zero summary has its own door: `tests/sondes/lancer.mjs:1200`, reason `tests/sondes/lancer.mjs:1353`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -544,7 +544,7 @@ than by a run.
 
 *What I did not do: `plafond` still has a floor of 6, and the overflow branch remains unexercised on
 any machine whose trash exceeds 256 MiB. Relaxing the floor makes the run honest; it does not close
-the hole.*
+the run honest; it does not close the hole.*
 **Fixing a crash reveals the defect it was hiding — 30/09/2026.** Run `36606537220` confirmed the
 relaxation works: `plafond 4/4`, `6 - 3 = 3`, one more structural admission in the register, and the
 seven probes the `TypeError` had killed all ran. `windows` stayed **red** for an unexpected reason,
@@ -575,26 +575,66 @@ lucky run is worse than a permanent one*. Here it was not a hole that vanished, 
 ate a red. A control that dies before the end protects nothing after it — and the fact that it died
 *red* makes it easier to ignore, not harder.
 
-**The second red was a different thing entirely.** The `sondes` job failed for a reason that
-predates all of this: `D:` produced no usable snapshot within 900 s.
+**The infrastructure, meanwhile, is not a defect of this repository.** The `sondes` job failed twice on
+a timeout and then succeeded on the third attempt, on the **same** `D:`, accepted on **declaration**
+— the log says so in as many words. A volume accepted on declaration is one whose snapshot nothing
+guarantees, and the 900 s are a constant, not a measurement. I did not touch the timeout: raising
+it to 1800 s would move the failure to the next step rather than fix it, and a longer timeout on a
+slow runner is not a correction, it is waiting. The finding stands: **the availability of the test
+infrastructure is measured by no control in this repository.**
+
+**When the snapshot does arrive, there is still one more.** On the next run the `sondes` job did not
+time out: `D:` produced its snapshot and the run reached **23/24**. The remaining red is `csrf`, and
+it is the **fourth** defect of the same family.
 
 ```
-analyse de D: et de C: ... delai de 900s dépassé / C: 207137 dossiers, 1196647 fichiers
-Le volume D n'a pas produit d'instantané exploitable (delai de 900s dépassé).
+vert   csrf            9/9
+       PLANCHER : csrf a ecrit 9 verification(s), son
+       plancher est 12. Une sonde verte qui en ecrit moins a
+       perdu des assertions — et rien d autre dans ce depot ne le voit.
 ```
 
-And it is **intermittent**: the same `D:` produced its snapshot in the `windows` job of the very same
-run, minutes earlier. `D:` is not accepted because it is virtual — it is accepted on **declaration**
-(`DISKMAP_SONDE_MACHINE_EPHEMERE`), and the log says so in as many words. A volume accepted on
-declaration is one whose snapshot nothing guarantees, and the 900 s limit is a constant, not a
-measurement.
+`csrf` runs three cases: a local page, a private-network page, a `file://` page. Each silent case
+costs one, and the probe writes three assertions per case — four when the page answers, one when it
+does not. On the runner **one case in three did not answer**: 9 verdicts instead of 12.
 
-I did not touch the timeout: raising it to 1800 s would move the failure to the next step rather than
-fix it, and a longer timeout on a slow runner is not a correction, it is waiting. The finding stands:
-**the availability of the test infrastructure is not measured by this repository**, and none of its
-controls can see it.
+And the probe had the right idea, written out in a nine-line comment:
 
-*What I did not do: `palier` still has a floor of 5, and its branch stays unexercised on any machine
+> On distingue donc l'INACCESSIBILITÉ de l'ÉCHEC : la première se dit, la seconde se prouve. Un
+> cas non mesuré n'est jamais compté ni comme réussite ni comme échec.
+
+The distinction existed. It was invisible: the line it produced was
+*"(page inatteignable sur « C » : … — rien n'a été mesuré)"* — no `note :` prefix, so the collector
+filed it as an explanation. A fourth instance of the same fact: **the probe tells the truth, and the
+truth is not in a shape the control can read.**
+
+This one has a property the other three lacked: the cost **adds up**. The hole is declared once, with
+`couts: 3`, and the harness sums one entry per silent case — so the floor drops by 3 per case, not once
+for all. The table checks both: one silent case gives 9, two give 6.
+
+**The infrastructure, meanwhile, is not a defect of this repository.** The `sondes` job failed twice
+in a row on a timeout, then succeeded on the third attempt, on the **same** `D:`, which is accepted
+on **declaration** — the log says so in as many words. A volume accepted on declaration is one whose
+snapshot nothing guarantees, and the 900 s are a constant, not a measurement. I did not touch the
+timeout: raising it to 1800 s would move the failure to the next step rather than fix it, and a longer
+timeout on a slow runner is not a correction, it is waiting. The finding stands: **the availability of
+the test infrastructure is measured by no control in this repository.**
+
+**Fifth instance, and the most trivial: a dead register entry.** A local run reddened `tickets` twice
+in a row, for two neighbouring reasons. First its admission came through as **"unjustified"**: the
+register's motif said "la coalescence reste prouvée côté Rust" while the probe writes "**elle** reste
+prouvée côté Rust". The register therefore never matched its own motif — an entry that matches nothing
+declares nothing, and it had never known it, because the case had not come up. Then its floor of 9
+went red: the conditional branch is worth **one** verdict, and the floor of 9 came from a run in which
+that branch had been exercised.
+
+Nothing new here, and that is what is new: a register motif describing a **paraphrase** of what the
+probe says instead of its own words. It is the fifth time the same fact shows up — a probe telling the
+truth in a shape the control cannot read — and it is time to name it as such rather than fix it five
+times over. Five of the twenty-four probes now carry an admission, and **all of them** write it in the
+dialect.
+
+*What I did not do: `palier` still has a floor of 5, `csrf` a floor of 12, and their branches stay
 without a 20 GB folder. Relaxing the floor makes the run honest; it does not close the hole.*
 
 register, with its three numbers, and the possible closure is named: a fillable disposable volume
@@ -609,8 +649,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:1207`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1343`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:1224`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1360`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1075,9 +1115,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1268`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1285`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1391`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1408`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

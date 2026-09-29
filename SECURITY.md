@@ -660,7 +660,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:1184`) et le motif est écrit (`tests/sondes/lancer.mjs:1391`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1183`, motif `tests/sondes/lancer.mjs:1336`. Sans ce
+(`tests/sondes/lancer.mjs:1201`) et le motif est écrit (`tests/sondes/lancer.mjs:1408`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1200`, motif `tests/sondes/lancer.mjs:1353`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -676,8 +676,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:1207`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1343`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:1224`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1360`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -717,9 +717,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1268`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1285`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1391`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1408`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -825,7 +825,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:702`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:719`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1191,9 +1191,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1184`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1201`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:1183`, motif `tests/sondes/lancer.mjs:1336`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:1200`, motif `tests/sondes/lancer.mjs:1353`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1235,7 +1235,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:934`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:951`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1795,7 +1795,7 @@ du dépôt dit déjà que le défaut n'est pas le trou, c'est l'excuse.
 **Ce qui change, et pourquoi ce n'est pas un plancher plus permissif.**
 
 Le champ `couts` entre au registre `AVEURS_STRUCTURELS`
-(`tests/sondes/lancer.mjs:473`) : un trou structurel ne se contente plus de se
+(`tests/sondes/lancer.mjs:485`) : un trou structurel ne se contente plus de se
 nommer, il **déclare** ce qu'il coûte en verdicts. Le plancher se relâche
 d'autant — et d'autant seulement, parce qu'un aveu nu ne détend rien.
 
@@ -1884,28 +1884,71 @@ n'est pas un trou qui s'est effacé, c'est un **rouge** qui a mangé un rouge. U
 contrôle qui meurt avant la fin ne protège plus rien de ce qui suit — et le fait
 qu'il soit mort en **rouge** le rend plus facile à ignorer, pas moins.
 
-**Le second reds n'était pas le même, lui.** Le job `sondes` a échoué sur un
-autre motif, antérieur à tout ce travail : `D:` n'a produit aucun instantané
-exploitable en 900 s.
+**Quand l'instantané passe, il y en a encore un.** Le job `sondes` du run
+suivant n'a pas eu le délai dépassé : `D:` a produit son instantané, et le run
+est arrivé à **23/24**. Le rouge restant est `csrf`, et c'est le **quatrième**
+défaut de la même famille.
 
 ```
-analyse de D: et de C: ... delai de 900s dépassé / C: 207137 dossiers, 1196647 fichiers
-Le volume D n'a pas produit d'instantané exploitable (delai de 900s dépassé).
+vert   csrf            9/9
+       PLANCHER : csrf a ecrit 9 verification(s), son
+       plancher est 12. Une sonde verte qui en ecrit moins a
+       perdu des assertions — et rien d autre dans ce depot ne le voit.
 ```
 
-Et il est **intermittent** : le même `D:` a produit son instantané dans le job
-`windows` du même run, quelques minutes plus tôt. `D:` n'est pas accepté parce
-qu'il est virtuel — il est accepté sur **déclaration**
-(`DISKMAP_SONDE_MACHINE_EPHEMERE`), le log le dit en toutes lettres. Un volume
-accepté sur déclaration est un volume dont l'instantané n'est garanti par rien,
-et le délai de 900 s est une constante, pas une mesure.
+`csrf` fait trois cas : une page locale, une page privée, une page `file://`.
+Chaque cas muet en coûte un, et la sonde n écrit que trois assertions par cas —
+quatre quand la page répond, une quand elle ne répond pas. Sur le runner, **un
+cas sur trois n'a pas répondu** : 9 verdicts au lieu de 12.
 
-Je n'ai pas touché à ce délai : le porter à 1800 s ferait passer l'étape au
-prochain échec au lieu de la faire passer, et un délai allongé sur un runner
-lent n'est pas une correction, c'est de l'attente. Le constat tient : **la
-disponibilité de l'infrastructure de test n'est pas mesurée par ce dépôt**, et
-aucun de ses contrôles ne peut le voir.
+Et la sonde avait la bonne idée, écrite dans un commentaire de neuf lignes :
 
+> On distingue donc l'INACCESSIBILITÉ de l'ÉCHEC : la première se dit, la
+> seconde se prouve. Un cas non mesuré n'est jamais compté ni comme réussite
+> ni comme échec.
+
+La distinction existait. Elle ne se voyait pas : la ligne produite était
+« *(page inatteignable sur « C » : … — rien n'a été mesuré)* », sans le
+préfixe `note :`, et le collecteur la classait en explication. Un quatrième
+exemple du même fait : **la sonde dit la vérité, et la vérité n'est pas dans le
+format que le contrôle sait lire.**
+
+Celui-ci a une propriété que les trois autres n'avaient pas : le coût s'**additionne**.
+Le trou est déclaré une fois, avec `couts: 3`, et le harnais somme une entrée par cas
+muet — donc le plancher baisse de 3 par cas, et non une fois pour toutes. C'est
+vérifié par table sur les deux cas : un cas muet donne 9, deux cas muets donnent 6.
+
+**L'infrastructure, elle, n'est pas un défaut du dépôt.** Le job `sondes` a
+échoué deux fois de suite sur un délai dépassé, puis a réussi au troisième essai,
+sur le **même** `D:`, accepté sur **déclaration** — le log le dit en toutes
+lettres. Un volume accepté sur déclaration est un volume dont l'instantané n'est
+garanti par rien, et les 900 s sont une constante, pas une mesure. Je n'ai pas
+touché au délai : le porter à 1800 s ferait passer l'étape au prochain échec au
+lieu de la faire passer, et un délai allongé sur un runner lent n'est pas une
+correction, c'est de l'attente. Le constat tient : **la disponibilité de
+l'infrastructure de test n'est mesurée par aucun contrôle de ce dépôt.**
+
+**Cinqième instance, et la plus triviale : une entrée morte.** Un run local a
+rednessé `tickets` deux fois de suite, pour deux raisons voisines. D'abord son
+aveu passait en **« sans justification »** : le motif du registre disait
+« la coalescence reste prouvée côté Rust », et la sonde écrit « **elle** reste
+prouvée côté Rust ». Le registre ne trouvait donc jamais son propre motif — une
+entrée qui ne correspond à rien ne déclare rien, et elle ne l'a jamais su, parce
+que le cas ne s'était pas produit. Ensuite son plancher de 9 a rougi : la branche
+conditionnelle vaut **un** verdict, et le plancher de 9 venait d'un run où cette
+branche s'était exercée.
+
+Rien de nouveau ici, et c'est ce qui est nouveau : un motif de registre qui
+décrit une **paraphrase** de ce que la sonde dit, au lieu de ses mots. C'est la
+cinquième fois que le même fait apparaît — une sonde qui dit la vérité dans un
+format que le contrôle ne sait pas lire — et il est temps de le nommer comme
+tel plutôt que de le corriger cinq fois. Cinq sondes sur vingt-quatre portent
+aujourd'hui un aveu, et **toutes** l'écrivent désormais dans le dialecte.
+
+*Ce que je n'ai pas fait : `palier` garde un plancher de 5, `csrf` un plancher de
+12, et leurs branches restent non exercées sur toute machine qui n'a ni dossier de
+20 Go ni page qui réponde. La détente rend le run honnête, elle ne comble pas le
+trou.*
 *Ce que je n'ai pas fait : `palier` garde un plancher de 5, et sa branche reste
 non exercée sur toute machine sans dossier de 20 Go. La détente rend le run
 honnête, elle ne comble pas le trou.*

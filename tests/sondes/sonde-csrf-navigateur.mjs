@@ -211,7 +211,17 @@ for (const cas of CAS) {
     // seconde se prouve. Un cas non mesuré n'est jamais compté ni comme
     // réussite ni comme échec.
     if (/ERR_CONNECTION_TIMED_OUT|ERR_CONNECTION_REFUSED|Timeout .* exceeded|net::ERR_/i.test(motif)) {
-      console.log(`      (page inatteignable sur « ${cas.nom} » : ${motif} — rien n'a été mesuré)`);
+      // Un AVEU, comme tous ceux du depot : la marque et la justification sur
+      // UNE seule ligne, sinon le collecteur la classe en explication. Le cout
+      // est 3 verdicts — ceux que ce cas aurait ecrit si la page avait repondu —
+      // et le harnais les SOMME sur les cas inaccessibles, donc deux cas muets
+      // detachent 6 et non 3. Mesure le 30/09 sur le runner : 2 cas sur 3 ont
+      // repondu, la sonde a donc ecrit 9 verdicts sur un plancher de 12.
+      console.log('      note : ' + [
+        'cas de csrf inaccessible NON EXERCÉ — structurel : la page',
+        'n a pas pu etre atteinte, donc rien n a ete mesuré pour ce cas',
+        '; ce trou coûte 3 verdicts, un par assertion non écrite',
+      ].join(' '));
       await page.close();
       continue;
     }
