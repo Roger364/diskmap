@@ -188,6 +188,12 @@ async function eprouver(ep, binaire) {
   let neutralisee;
   try {
     fs.writeFileSync(chemin, original.replace(ep.avant, ep.apres));
+    // LA COMPILATION ICI, et pas plus tard. Sans elle, on mesure l'ancien
+    // binaire et l épreuve « passe » : c'est ce que fait la première version de
+    // ce fichier, et les deux gardes sont alors declarées non mordantes alors
+    // qu elles mordent. Un test qui mesure l objet d avant la modification ne
+    // mesure rien — il constate qu on n a rien fait.
+    compiler();
     neutralisee = await mesurer(ep, binaire);
   } finally {
     // Toujours, même sur une exception : le dépôt ne doit jamais sortir d'ici
