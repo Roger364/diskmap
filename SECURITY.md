@@ -1712,10 +1712,16 @@ Ce que chacun exigerait, pour devenir prouvé :
   du texte, pas un élément ». Le nom vient de `GetVolumeInformationW` : il faut
   donc un volume dont le libellé est choisi, donc une clé formatée ou une image
   montée — c'est le seul des quatre qui demande une élévation.
-- **R7** — l'invariant est une fonction **pure** (`p.retain` sur une `HashMap`).
-  Un test unitaire Rust le mordrait en quelques millisecondes, sans navigateur,
-  sans volume, sans élévation. C'est le témoin le moins cher des quatre, et il
-  n'existe pas.
+- **R7** — l'invariant est une fonction **pure** (`p.retain` sur une `HashMap`),
+  et c'est le témoin le moins cher des quatre : un test unitaire, sans navigateur,
+  sans volume, sans élévation. **Mais ce qu il mordrait, je ne l'ai pas mesuré**, et
+  l'affirmation est plus faible qu'elle n'en a l'air : un test sur une fonction
+  pure prouve la **règle**, pas l'**appel**. Supprimer l'appel à `p.retain` — le
+  geste que R7 corrige — laisserait ce test vert. Le témoin qui mord vraiment
+  doit passer par le serveur : un jeton vieux de plus de dix minutes doit être
+  **refusé en 409**, et il faut donc pouvoir vieillir un jeton sans attendre dix
+  minutes — une horloge injectable, ou une route de test. C'est plus cher que
+  « un test unitaire », et c'est la raison pour laquelle je ne l'ai pas fait.
 - **R11** — deux requêtes qui se chevauchent, la réponse ancienne arrivant **en
   dernier**. Playwright sait retarder une requête à la demande ; la sonde sait
   lire l'écran ; il manque le délai. C'est une demi-journée, pas une garde
