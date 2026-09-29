@@ -94,25 +94,27 @@ const EPREUVES = [
       + "échouer l'épreuve pour une raison étrangère à la garde.",
   },
   {
-    nom: 'csrf',
+    nom: 'x-diskmap',
     quoi: "l'en-tête X-Diskmap exigé sur toute requête qui modifie",
     fichier: 'src/main.rs',
     avant: '    if method == "POST" && action != "1" {',
     apres: '    if false && method == "POST" && action != "1" { // NEUTRALISE POUR L EPREUVE',
-    sonde: 'sonde-csrf-navigateur.mjs',
-    args: ['V'],
-    // La LIGNE ROUGE, pas son libellé seul : le libellé apparaît aussi dans les
-    // lignes `ok` du run normal, et l'exiger seul validerait l'épreuve sans
-    // que rien n'ait cédé. La preuve, c'est « ROUGE » ET le libellé, sur la même
-    // ligne.
-    mesure: new RegExp('ROUGE[^' + String.fromCharCode(10) + ']*effacer le fichier'),
+    sonde: 'sonde-host.mjs',
+    args: [],
+    // La LIGNE ROUGE, pas son libellé seul : « → refusé » figure aussi dans les
+    // lignes `ok` du run normal. La preuve, c'est ROUGE ET le libellé, même ligne.
+    mesure: new RegExp('ROUGE[^' + String.fromCharCode(10) + ']*refusé'),
     preuve: '3.2',
     pourquoi:
-      "C'est la garde la plus lourde du dépôt : sans elle, une page web tierce — "
-      + 'servie depuis le loopback, depuis l IP privée, ou ouverte en file:// — '
-      + 'efface un fichier du disque, sans confirmation et sans que rien ne se voie. '
-      + "Elle a ete mesuree dans un vrai navigateur le 26/09/2026, trois fois sur "
-      + 'trois, avant d etre refermee.',
+      "Une page web tierce efface un fichier sans confirmation si cette garde "
+      + 'tombe — mesuré dans un vrai navigateur le 26/09/2026, trois fois sur trois. '
+      + "L'épreuve passe par `sonde-host` et NON par la sonde CSRF, et l'écart "
+      + "vaut d'être noté : avec le navigateur, la garde neutralisée laissait 12/12 "
+      + 'au vert. Le navigateur bloque déjà la requête de lui-même — un en-tête '
+      + 'personnalisé déclenche un préflight, et le serveur n en sert aucun. Cette '
+      + 'garde est donc une SECONDE défense, et une épreuve par navigateur ne peut '
+      + 'pas la morser : elle mesure le navigateur. Une requête directe, elle, ne '
+      + 'passe par aucun des deux.',
   },
 ];
 
