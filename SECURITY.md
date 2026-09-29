@@ -660,7 +660,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:802`) et le motif est écrit (`tests/sondes/lancer.mjs:906`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:801`, motif `tests/sondes/lancer.mjs:902`. Sans ce
+(`tests/sondes/lancer.mjs:846`) et le motif est écrit (`tests/sondes/lancer.mjs:950`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:845`, motif `tests/sondes/lancer.mjs:946`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -676,8 +676,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:825`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:909`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:869`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:953`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -717,9 +717,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:855`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:899`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:951`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1001`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -825,7 +825,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:345`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:367`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1174,9 +1174,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:802`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:846`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:801`, motif `tests/sondes/lancer.mjs:902`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:845`, motif `tests/sondes/lancer.mjs:946`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1218,7 +1218,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:574`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:596`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1258,7 +1258,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **18** | Un lot qui touche un dossier dont la perte n'est pas anodine — `.git`, `.ssh`, `AppData` comme `Images` ou `Documents` — doit le nommer, dossier par dossier, avant d'agir ; et le harnais annonce les residus qu'il trouve sur le volume de travail | `src/main.rs` (`dossiers_a_nommer`), `ui/index.html`, `tests/sondes/sonde-dossiers-a-nommer.mjs`, `sonde-ui-suppression.mjs` | **fait** — 27/27 en sonde, 21/21 dans un vrai navigateur, 14/19 (rouge) quand on neutralise la garde |
 | **19** | Une sonde qui sort en 0 sans avoir ecrit son decompte est un echec, pas un vert : elle ne se distingue d'une sonde morte que par une etiquette | `tests/sondes/sonde-generation.mjs`, `tests/sondes/lancer.mjs` | **fait** — 5/5 et lisible au journal ; resume retire, ROUGE et run en 1 |
 | **20** | Le navigateur ne s'ouvre que pour un lancement interactif : un script qui lance le serveur n'a pas a ouvrir une fenetre sur le bureau de celui qui l'a lance | `src/main.rs` (`decider_le_navigateur`), `tests/sondes/lancer.mjs` | **fait** — 0 fenetre mesuree, 1 fenetre avec l'ancien comportement ; `--browser` force toujours |
-| **21** | Les modes `idle` et `running` de la sonde `arret` ne sont jamais exercés : `running` appelle `POST /api/quit`, qui tuerait le serveur unique du harnais | `tests/sondes/sonde-arret.mjs`, `tests/sondes/lancer.mjs` | **ouvert — non fait** — les points 4, 5, 6 et le contrôle de `scan_running` à l'arrêt sont écrits et non exécutés ; un serveur dédié par port le permettrait, et n'a pas été fait |
+| **21** | Les modes `idle` et `running` de la sonde `arret` n'étaient jamais exercés : `running` appelle `POST /api/quit`, qui aurait tué le serveur unique du harnais | `tests/sondes/sonde-arret.mjs`, `tests/sondes/lancer.mjs` | **fait** — `serveurDedie` donne à ces deux sondes leur propre serveur sur un autre port ; le binaire ne verrouille que par port. `arret-idle` 3/3, `arret-running` 4/4, dont `scan_running` observé **en vol** et l'invariant « aucun scan_running collé après l'arrêt » |
 
 **Ce que les runs sur GitHub ont révélé — et qui ne concerne pas
 l'application.** Cinq échecs successifs, tous dans le harnais, tous masqués

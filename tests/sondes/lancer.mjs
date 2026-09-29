@@ -207,6 +207,28 @@ const SONDES = [
     quoi: 'Le bouton Arreter est present, et les boutons d illisibles sont discrets',
   },
   {
+    // Les deux modes qui ARRETENT le serveur, enfin exerces.
+    //
+    // Jusqu'au 29/09/2026, `lancer.mjs` n'invoquait `sonde-arret.mjs` qu'en mode
+    // `styles` : les points 4, 5 et 6 du fichier, et le controle de `scan_running`
+    // a l'arret, etaient du code ecrit et jamais execute. La raison etait
+    // structurelle — `running` appelle `POST /api/quit`, qui aurait tue le serveur
+    // unique du harnais — et elle etait invisible : rien ne la disait, et la sonde
+    // annoncait 9/9 comme si elle avait tout mesure.
+    //
+    // `serveurDedie` leve la raison structurelle : ces deux sondes demarrent LEUR
+    // serveur, sur un autre port, et l'arretent elles-memes. Le binaire ne
+    // verrouille que par port — verifie, pas suppose.
+    nom: 'arret-idle', fichier: 'sonde-arret.mjs', args: (c) => [c.url, 'idle'],
+    ci: true, detruit: 'rien', serveurDedie: true,
+    quoi: 'Sans analyse en cours, l arret aboutit et la veille s eteint',
+  },
+  {
+    nom: 'arret-running', fichier: 'sonde-arret.mjs', args: (c) => [c.url, 'running'],
+    ci: true, detruit: 'rien', serveurDedie: true,
+    quoi: 'L arret pendant une analyse chiffre ce qui serait perdu, et ne laisse aucun scan_running colle',
+  },
+  {
     // LA MÊME sonde, sur le volume de travail. Son invariant — « ce que
     // l'application annonce doit correspondre à l'état du disque » — tient sur
     // un volume AVEC corbeille comme sur un volume sans : la seconde entrée ci
@@ -604,9 +626,13 @@ try {
 
 try {
   const volume = opt.volume;
+  // HORS du `if (!url)` : une sonde a serveur dedie doit savoir ou trouver le
+  // binaire meme quand l appelant fournit deja une URL. Un calcul de chemin, rien
+  // de plus — le refus sur un binaire absent ou perime reste la ou il est.
+  const binaire = opt.binaire || path.join(DEPOT, 'target', 'release', 'diskmap.exe');
+
 
   if (!url) {
-    const binaire = opt.binaire || path.join(DEPOT, 'target', 'release', 'diskmap.exe');
     if (!fs.existsSync(binaire)) {
       console.error(`Binaire introuvable : ${binaire}`);
       // `--offline` compile depuis un cache chaud, et échoue sur une machine
@@ -744,7 +770,25 @@ function lireResidus(racines, volume) {
       resultats.push({ nom: s.nom, code: 2 });
       continue;
     }
-    const args = s.args({ url: urlProbes, volume, volumeSansCorbeille: opt.volumeSansCorbeille });
+    // Une sonde qui ARRETE le serveur ne peut pas passer par le filet : le filet
+    // relaierait `/api/quit` et tuerait le serveur des vingt sondes suivantes.
+    // Ces sondes ont donc leur PROPRE serveur, sur un autre port, et ne sont pas
+    // relayees.
+    //
+    // C'est la seule entree du filet, et elle est volontaire. Le filet existe pour
+    // voir passer une suppression ; ces sondes n'en envoient aucune, et surtout
+    // leur but EST d'arreter un serveur — le relayer tuerait l'instrument. Un
+    // contournement declare vaut mieux qu'un contournement muet.
+    let dedie = null;
+    let urlDedi = urlProbes;
+    if (s.serveurDedie) {
+      const portDedi = (await portLibre(8811)) || 8811;
+      const d = await demarrer(binaire, portDedi);
+      dedie = d.processus;
+      urlDedi = d.adresse.replace(/\/$/, '') + '/';
+      console.log(`  serveur dedie pour « ${s.nom} » : ${urlDedi}`);
+    }
+    const args = s.args({ url: urlDedi, volume, volumeSansCorbeille: opt.volumeSansCorbeille });
     // Le filet compte ses incidents. Ceux qu'une sonde PROVOQUE pour éprouver le
     // filet ne sont pas des échecs — la sonde `filet` ne peut faire autrement,
     // et ses propres vérifications la jugent. Ceux qu'une autre sonde provoque
@@ -912,6 +956,12 @@ function lireResidus(racines, volume) {
         }
       }
       for (const l of lignes.slice(-24)) console.log(`           ${l}`);
+    }
+    // Le serveur dedi est rendu meme si la sonde a echoue : un run interrompu
+    // laisserait un processus qui scanne, et le harnais ne verrait plus pourquoi.
+    if (dedie) {
+      try { dedie.kill(); } catch { /* deja mort : c'est meme ce qu on attendait */ }
+      dedie = null;
     }
     resultats.push({ nom: s.nom, code, resume, notes });
     if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {
