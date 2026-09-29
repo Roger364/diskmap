@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node verifier-volume-jetable.mjs && node verifier-preuves.mjs"
+    "test": "node verifier-volume-jetable.mjs && node verifier-preuves.mjs && node verifier-libelles.mjs"
   },
   "devDependencies": {
     "playwright": "1.58.2"
