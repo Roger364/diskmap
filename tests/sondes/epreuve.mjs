@@ -51,8 +51,9 @@ const EPREUVES = [
     apres: '    ds.scan_running = 0; // NEUTRALISE POUR L EPREUVE',
     sonde: 'sonde-arret.mjs',
     args: ['running'],
-    // Neutralisée, l'écran affiche « analyse en cours… » sans numéro.
-    mesure: /analyse en cours/,
+    // Neutralisée, l'écran affiche « analyse en cours… » sans numéro : c'est
+    // le signe que le serveur analyse et ne dit pas laquelle.
+    mesure: /analyse en cours…/,
     pourquoi:
       'Une application qui n annonce pas QUELLE analyse elle attend laisse '
       + "l'utilisateur devant un texte identique à celui de la précédente. "
@@ -67,8 +68,16 @@ const EPREUVES = [
     apres: '            if false && gen_vue != snap.gen { // NEUTRALISE POUR L EPREUVE',
     sonde: 'sonde-generation.mjs',
     args: ['V'],
-    // Neutralisée, l'aperçu vise un fichier de la corbeille au lieu de perime/p2.txt.
-    mesure: /RECYCLE\.BIN|\\\$I/,
+    // La mesure exigée est le STATUT, pas le chemin visé. La première version
+    // exigeait « RECYCLE.BIN » : le sélecteur périmé tombe bien sur un fichier
+    // qui n'est pas p2.txt — mais LEQUEL dépend du contenu de la corbeille au
+    // moment du run, et un passage est tombé sur « (rien) ». L'épreuve se
+    // déclarait alors non mordante, à tort, et pour une raison étrangère à la
+    // garde. Une mesure qui varie n'est pas une mesure.
+    //
+    // Le statut, lui, ne varie pas : 409 quand la garde tient, 200 quand elle a
+    // cédé et que l'aperçu passe.
+    mesure: /périmée\) : HTTP 200/,
     pourquoi:
       "C'est le garde-fou de l'incident du 26/09/2026 : un sélecteur périmé "
       + "désignait alors un autre fichier, jamais montré, et supprimable. "
