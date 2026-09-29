@@ -16,6 +16,26 @@
 // à l'ambre passerait sans rien casser, et une boîte de confirmation vide
 // (« vraiment ? ») aurait l'air correcte tout en n'apprenant rien.
 //
+// ---------------------------------------------------------------------------
+// CE QUE LE HARNAIS EXERCE, ET CE QU'IL N'EXERCE PAS — 29/09/2026
+//
+// `lancer.mjs` n'invoque cette sonde qu'en mode `styles` : c'est ce qui explique
+// ses 9/9 exacts. Les modes `idle` et `running` ne sont donc JAMAIS exécutés par
+// un run, ni en local, ni en CI.
+//
+// La raison n'est pas un oubli, et elle est structurelle : `running` clique sur
+// « Arrêter maintenant », qui appelle `POST /api/quit` et TUE le serveur. Or le
+// harnais n'a qu'un serveur pour toutes les sondes : l'exercer ici rendrait mort
+// le serveur des vingt sondes suivantes. Le binaire ne verrouille que par PORT,
+// donc un serveur dédié serait possible — mais ça demande de toucher au cœur du
+// harnais, et cela n'a pas été fait.
+//
+// Tant que ce n'est pas fait, les points 4, 5 et 6 ci-dessus — et le contrôle de
+// `scan_running` à l'arrêt, ajouté le même jour — sont du code jamais exécuté. Ils
+// sont écrits et justifiés, pas éprouvés : un dépôt ne doit pas laisser croire
+// le contraire. §7/21 du plan de remédiation porte cette limite.
+// ---------------------------------------------------------------------------
+
 // Usage : node sonde-arret.mjs <url> <styles|idle|running>
 
 import { chromium } from './navigateur.mjs';
@@ -138,6 +158,53 @@ if (MODE === 'running') {
   await page.locator('#sdo').click();
   await page.waitForSelector('#stopped:not(.hidden)', { timeout: 5000 });
   verifier('« Arrêter maintenant » arrête bien', true, '');
+
+  // --- l'état annoncé ne survit pas à l'arrêt --------------------------------
+  // Le serveur PUBLIE `scan_running` tant qu'un volume est en cours, et l'écran
+  // affiche « analyse n°N en cours » dessus. Une valeur laissée collée par
+  // l'arrêt afficherait un compte éternel — et, pire, la file refuserait toute
+  // nouvelle demande : `start_scan` refuse tant qu'un volume est en cours.
+  // L'application deviendrait alors inutilisable sans redémarrage.
+  //
+  // La lecture se fait par l'API, pas par le DOM : ce n'est pas l'affichage qu'on
+  // éprouve, c'est l'état que le serveur refuse de laisser mentir.
+  const lire = () => page.evaluate(async () => {
+    try {
+      const r = await fetch('/api/state', { headers: { 'X-Diskmap': '1' } });
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  });
+
+  // AVANT l'arrêt, dans la même boucle que l'arrêt lui-même : lu après coup, un
+  // volume rapide a déjà rendu `scan_running` à 0, et l'absence se lirait
+  // « l'analyse en vol n'existe pas » — un verdict faux sur un défaut qui n'y
+  // est pas. Le 28/09, la sonde `tickets` a commis exactement cette erreur.
+  const avantArret = await lire();
+  const annonce = Math.max(0, ...(avantArret?.drives || []).map((d) => d.scan_running || 0));
+  console.log(annonce > 0
+    ? `      constat : un volume annonçait une analyse en vol (scan_running = ${annonce})`
+    : `      constat : scan_running déjà rendu à 0 avant la lecture — l'analyse a été trop`
+      + ` rapide pour être observée ici ; l'invariant ci-dessous reste mesurable`);
+
+  await page.locator('#sdo').click();
+  await page.waitForSelector('#stopped:not(.hidden)', { timeout: 5000 });
+  verifier('« Arrêter maintenant » arrête bien', true, '');
+
+  // APRÈS l'arrêt, deux issues, et aucune n'est un cas non mesuré : soit le
+  // serveur répond encore et aucun volume ne doit annoncer d'analyse, soit il est
+  // arrêté et l'invariant est tenu par sa disparition — ce qui se DIT, au lieu
+  // d'être compté comme une mesure d'état.
+  const apresArret = await lire();
+  if (apresArret === null) {
+    verifier('l’arrêt ne laisse aucun volume annoncer une analyse en vol', true,
+      'le serveur ne répond plus : aucun état ne peut être affiché, donc rien ne peut rester collé');
+  } else {
+    const restes = (apresArret.drives || [])
+      .filter((d) => (d.scan_running || 0) > 0)
+      .map((d) => `${d.letter}:${d.scan_running}`);
+    verifier('l’arrêt ne laisse aucun volume annoncer une analyse en vol', restes.length === 0,
+      `scan_running encore publié — ${restes.join(', ')}`);
+  }
 }
 
 console.log('');

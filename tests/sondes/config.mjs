@@ -386,47 +386,23 @@ export function journal() {
   return path.join(process.env.LOCALAPPDATA || '', 'diskmap', 'suppressions.log');
 }
 
-/**
- * Attend qu'un volume soit analyse ET que l'instantaner voie ce qu'on vient de
- * creer.
- *
- * Attendre seulement `!scanning` est une course, et elle est SILENCIEUSE :
- * l'analyse peut s'achever avant que les fichiers soient ecrits — ou le runner
- * peut servir un instantane en cache, plus vieux que la creation. Dans les deux
- * cas la boucle sort au premier tour, la sonde interroge un index qui ne
- * connait pas ses fichiers, et elle conclut « absent » ou « dossier hors de
- * l'instantane » : un verdict FAUX, sur un defaut qui n'existe pas. C'est ce
- * que le premier run sur GitHub a produit, et le diagnostic indiquait « les
- * protections ne fonctionnent plus » — alors que rien de tout cela n'etait vrai.
- *
- * `attendus` est le nombre de fichiers que le volume doit porter au minimum.
- * On le releve AVANT la creation et on y ajoute le nombre cree : la comparaison
- * porte alors sur le volume entier, donc elle marche aussi sur un runner deja
- * rempli, sans rien savoir du nom du dossier de travail.
- *
- * `attendreFichier` est préférable dans la plupart des cas — voir plus bas.
- *
- * Renvoie `true` si le volume porte bien le nombre attendu, `false` sinon. Un
- * `false` n'est pas une panne : la sonde appelante decide ce qu'il vaut, parce
- * que la consequence n'est pas la meme partout.
- */
-export async function attendreAnalyse(base, vol, attendus = 0, tours = 600) {
-  for (let i = 0; i < tours; i++) {
-    const s = await (await fetch(`${base}/api/state`)).json();
-    const d = (s.drives || []).find((x) => x.letter === String(vol).toUpperCase());
-    if (s && !s.scanning) {
-      if (!attendus) return true;
-      if (d && d.n_files >= attendus) return true;
-    }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
-}
+// Il n'y a plus d'attente « le volume se repose », et c'est une suppression, pas
+// une note de limite. Elle vivait ici : `attendreAnalyse(BASE, VOL, 0)` rendait
+// la main des le premier tour ou `scanning` etait faux, donc sur l'instantane du
+// run PRECEDENT ; sa seule protection, `n_files >= attendus`, comptait les
+// fichiers du VOLUME — donc l'activite des AUTRES sondes, pas la sienne — et son
+// dernier appelant l'utilisait ainsi, dans la sonde qui rejoue l'incident du
+// 26/09/2026. Elle attend desormais le ticket qu'elle a demande
+// (`attendreTicket`) ou le fichier qu'elle a ecrit (`attendreFichier`), et ces
+// deux-la constatent un fait au lieu de deviner une fin. Un depot ne garde pas
+// une attente dont la seule garantie est qu'elle n'expire pas.
+
 
 /**
  * Attend que l'analyse promise à UN ticket soit publiée.
  *
- * L'inverse du problème historique : `attendreAnalyse` conclut sur `!scanning`,
+ * L'inverse du problème historique : l'attente par drapeau — celle qui
+ * concluait sur `!scanning` — concluait sur `!scanning`,
  * qui est vrai dans l'intervalle entre la fin du scan en vol et le début de
  * celui qu'on vient de demander — le harnais mesurait alors l'instantané du
  * run précédent. Ici, l'attente porte sur la promesse EXPLICITE que le serveur

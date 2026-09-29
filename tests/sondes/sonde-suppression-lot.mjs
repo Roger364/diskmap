@@ -38,7 +38,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { dossier, corbeille, aCorbeille, estEleve, aTaper, attendreAnalyse,
+import { dossier, corbeille, aCorbeille, estEleve, aTaper, attendreTicket,
   attendreFichier, VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
@@ -79,23 +79,31 @@ const post = (chemin, corps) => fetch(BASE + chemin, {
   method: 'POST', headers: H, body: JSON.stringify(corps),
 }).then(async r => ({ status: r.status, texte: await r.text() }));
 
-/**
- * Attend que le volume soit analysé ET que l'instantané contienne nos fichiers.
- *
- * Attendre seulement `!scanning` ne suffit pas, et l'échec est silencieux :
- * l'analyse peut s'être terminée AVANT que les fichiers soient sur le disque,
- * ou le runner peut servir un instantané déjà en cache, plus ancien que la
- * création. Dans les deux cas `scanning` passe à faux au premier tour, la sonde
- * repart sur un index qui ne connaît pas ses fichiers, et elle conclut
- * « les deux dossiers d'essai ne sont pas dans l'instantané » — un verdict
- * faux, sur un défaut qui n'existe pas.
- *
- * On attend donc que le FAIT soit constaté, et non que le processus ait fini.
- *
- * Délégué à `attendreAnalyse` (config.mjs), où la course est décrite une fois
- * pour toutes : c'était la troisième sonde à en souffrir.
- */
-const repos = (attendus = 0) => attendreAnalyse(BASE, VOL, attendus);
+// L'analyse qu'on attend EST celle qu'on a demandée : le ticket rendu par le POST
+// est la seule borne honnête. Une réponse sans ticket est un échec de sonde, pas
+// un verdict — si le serveur cessait de rendre `{ok, ticket}`, il faut le voir
+// ici plutôt que le lire plus tard comme une analyse qui ne se termine jamais.
+// `sonde-tickets.mjs` énonce le même contrat pour une seule sonde ; ici il sert
+// au protocole destructif du §1, où un mauvais départ se paie en fichiers.
+async function demander() {
+  const r = await post(`/api/scan/${VOL}`, {});
+  const corps = (() => { try { return JSON.parse(r.texte); } catch { return null; } })();
+  if (r.status !== 200 || !corps || typeof corps.ticket !== 'number') {
+    throw new Error(`POST /api/scan a répondu ${r.status} sans ticket : ${r.texte.slice(0, 120)}`);
+  }
+  return corps.ticket;
+}
+
+// Cette sonde n'attend plus « le volume se repose » : elle attend DES FAITS, et
+// chacun d'eux est nommé — `attendreTicket` pour la réanalyse qu'elle demande
+// (§1), `attendreFichier` pour ses propres fichiers (montage), et
+// `attendreLesFichiers` pour un lot dont l'instantané doit porter tous les noms
+// (§2). Le helper `repos()` qui attendait `!scanning` est parti avec son dernier
+// appelant : il rendait la main dès son premier tour, donc il pouvait repartir sur
+// l'instantané du run PRÉCÉDENT, et sa seule protection — `n_files >= attendus` —
+// compte les fichiers du VOLUME, donc l'activité des autres sondes, pas la
+// nôtre. Un dépôt ne garde pas une attente qui ne prouve plus rien.
+
 
 const nom = i => `f${String(i).padStart(3, '0')}.txt`;
 function monter(dossier, n) {
@@ -155,8 +163,20 @@ verifier('l’aperçu annonce bien le fichier visé', annonce.endsWith(CIBLE), a
 // On retire un fichier placé AVANT dans l'ordre de parcours, puis on réanalyse :
 // tous les identifiants suivants se décalent d'un cran.
 fs.unlinkSync(`${DOSSIER_B}/${nom(1)}`);
-await post(`/api/scan/${VOL}`, {});
-await repos();
+
+// L'attente porte sur le TICKET rendu par cette réanalyse, pas sur `!scanning`.
+// C'est le seul endroit du dépôt où une attente par drapeau précédait un verdict
+// sans boucle de protection derrière : `attendreAnalyse` sortait au premier tour
+// où `scanning` était faux — donc sur l'instantané du run PRÉCÉDENT — et l'étape
+// suivante partait avec un `gen` périmé. Le serveur refuse alors (409), et
+// `dryB.items[0]` levait sur une liste vide : la sonde mourait d'une exception
+// muette, en accusant un défaut de suppression qui n'existait pas.
+const tCoherence = await demander();
+const publie = await attendreTicket(BASE, VOL, tCoherence);
+if (!publie) {
+  throw new Error(`l'analyse n°${tCoherence} n'a jamais été publiée : ` +
+    `« ${CIBLE} » serait lu dans un instantané qui ne porte pas son identifiant`);
+}
 
 const exec = await post('/api/delete', { drive: VOL, mode: 'recycle', token: dryB.token, confirm: confirmation('recycle') });
 const d = JSON.parse(exec.texte);
@@ -203,22 +223,30 @@ async function supprimer(noms, mode) {
   // serveur refuse — à raison. Un 409 ici n'est pas un défaut à contourner, c'est
   // la garde qui fait son travail ; on recharge et on réessaie, comme le fait
   // l'interface quand elle affiche « Recharge la liste ».
+  // Attendre le FAIT, jamais la fin d'un processus : l'instantané courant doit
+  // porter TOUS les noms du lot. C'est la condition que cette boucle testait
+  // déjà — elle l'attendait par `attendreAnalyse`, dont la sortie au premier tour
+  // où `scanning` était faux pouvait se contenter d'un instantané encore
+  // partiel et coûter une tentative sur huit. Un nom absent ne se traduit donc
+  // plus par une reprise : on attend qu'il soit là, comme après un 409.
+  //
+  // La borne est courte et VISIBLE (40 × 300 ms). Dépassée, elle dit ce qu'elle
+  // n'a pas vu au lieu d'expirer en silence : un lot privé de sa simulation doit
+  // se lire dans le message d'échec, pas dans un coût mesuré trop vite.
+  const attendreLesFichiers = async () => {
+    for (let i = 0; i < 40; i++) {
+      const v = await idsDuDossier(DOSSIER_A);
+      if (v && noms.every((n) => v.ids.get(n) !== undefined)) return v;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return null;
+  };
+
   let dry = null;
   let dryRep = null;
   for (let essai = 0; essai < 8; essai++) {
-    const v = await idsDuDossier(DOSSIER_A);
-    if (!v) {
-      await repos();
-      continue;
-    }
-    // Un nom absent de la liste signifie que l'instantané lu est partiel : la
-    // réanalyse Suit encore. Envoyer `sel: undefined` ne donnerait qu'un « corps
-    // illisible » — un échec de la sonde qui n'aurait rien à voir avec ce qu'elle
-    // mesure. On attend, comme on attend après un 409.
-    if (noms.some(n => v.ids.get(n) === undefined)) {
-      await repos();
-      continue;
-    }
+    const v = await attendreLesFichiers();
+    if (!v) break;
     const items = noms.map(n => v.ids.get(n));
     dryRep = await post('/api/delete', { drive: VOL, items, mode: 'dry', gen: v.gen });
     if (dryRep.status === 200) {
@@ -228,7 +256,8 @@ async function supprimer(noms, mode) {
     if (dryRep.status !== 409) {
       return { ms: 0, r: dryRep, n: noms.length, refuse: `HTTP ${dryRep.status} : ${dryRep.texte.slice(0, 120)}` };
     }
-    await repos();
+    // Un 409 dit que l'instantané n'est plus le nôtre. On n'attend rien
+    // d'autre que le fait — et l'itération suivante le fait déjà.
   }
   if (!dry || !dry.token) {
     return {
@@ -237,7 +266,7 @@ async function supprimer(noms, mode) {
       n: noms.length,
       refuse: dryRep
         ? `HTTP ${dryRep.status} : ${String(dryRep.texte).slice(0, 120)}`
-        : 'l instantane ne contient pas les fichiers du lot apres 8 tentatives',
+        : 'aucun jeton apres 8 tentatives : l instantane ne porte pas les fichiers du lot',
     };
   }
   const corps = { drive: VOL, mode, token: dry.token, confirm: confirmation(mode) };

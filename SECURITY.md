@@ -30,7 +30,7 @@ l'état : `%LOCALAPPDATA%\diskmap\suppressions.log` (lecture seule).
 | Incident | Le 26/09/2026 entre 05:05 et 05:57, 168 fichiers réels supprimés, dont **79 détruits définitivement** (4,1 Mo) |
 | Cause | Trois défauts cumulés, tous corrigés dans les sources depuis 06:30 |
 | État du code aujourd'hui | Les deux chemins vers « supprimer autre chose que ce qui est affiché » sont **fermés** |
-| Binaire sur le disque | **Périmé** — `diskmap-CI.exe` (02:51) ne contient aucun des correctifs |
+| Binaire publié | `v0.1.59` (`72704dd`) — compilé et éprouvé par la CI de ce commit : fmt, clippy, 51 tests, 194/194 références, **21/21 sondes** (`run 36514287640`) |
 | Risque résiduel le plus élevé | Aucun connu : R1 à R4 corrigés et vérifiés |
 | Nouvelle découverte de cet audit | XSS stockée via le nom de volume → effacement arbitraire sans interface |
 | Seconde moitié de la cause | Le harnais de sondes n'avait aucun filet — §3.7 |
@@ -278,18 +278,32 @@ documents personnels, puisque `blocked_reason` (`src/main.rs:1496`) ne refuse qu
 par le serveur toute suppression dont le nombre d'éléments dépasse un seuil — le refus doit
 venir du serveur, seul endroit qui ne peut pas être contourné par l'interface.
 
-### R3 — Les tests de sécurité de l'incident ne tournent pas en CI · **Moyenne** · *partiellement traité*
+### R3 — Les tests de sécurité de l'incident ne tournent pas en CI · **Moyenne** · *corrigé le 29/09/2026*
 
-`.github/workflows/build.yml` lance
-`node tests/sondes/lancer.mjs --volume D --sans generation,reelle,lot,ui,csrf,erreurs`.
-Les six sondes exclues sont exactement celles qui couvrent l'incident. Un CI vert ne dit
-rien de la sécurité de la suppression. Le choix est légitime et documenté (protéger un runner
-auto-hébergé), mais il faut savoir que la régression n'est plus gardée automatiquement.
+`.github/workflows/build.yml` écarte toujours `generation,reelle,lot,ui,csrf,erreurs` de son
+premier job : ce job peut tourner sur un runner auto-hébergé, où « volume jetable » n'est pas une
+garantie. Le second job, `sondes`, tourne sur `windows-latest` — runner éphémère, `D:` scratch — et
+exécute **toutes** les sondes, filet compris. `release` déclare `needs: [windows, sondes]` : aucun
+binaire n'est publié si l'une des deux échoue.
 
-**Correctif proposé :** un second job sur `windows-latest` (runner éphémère, jetable par
-définition) qui exécute l'ensemble des sondes avec `DISKMAP_SONDE_VOLUME=D` et
-`DISKMAP_SONDE_RACINE` pointant sur un dossier dédié. Le job actuel reste inchangé pour les
-runners auto-hébergés.
+**Ce constat est resté écrit après son propre correctif, et c'est ce qui l'a rendu nuisible.**
+Un lecteur de ce document en concluait que la régression du 26/09 n'était plus gardée, donc
+qu'une release verte ne disait rien de la sécurité de la suppression. C'était faux — et c'est le
+document, seule source de vérité par excellence, qui affirmait le contraire de la mesure. Le défaut
+n'était pas dans le code : il était dans un paragraphe jamais recontrôlé.
+
+**Mesuré le 29/09/2026** — `run 36514287640`, commit `72704dd` :
+
+```
+windows SUCCESS · sondes SUCCESS · release SUCCESS
+21/21 sondes vertes sur le runner, 4 notes de 3 sondes
+filet : 5 executions refusees, 3 incidents — tous produits par sa sonde d'epreuve
+17/17 regle du volume jetable · 194/194 references de la documentation
+release v0.1.59 publiee, binaire repris TEL QUEL dans l'artifact eprouve
+```
+
+La même série, sur un volume virtuel jetable monté en local (`V:`, « Msft Virtual Disk », file
+backed) : **21/21**, mêmes verdicts, filet 5 refus / 3 incidents.
 
 ### R4 — Le cache n'est validé que par son numéro de série · **Moyenne** · *corrigé*
 
@@ -1058,7 +1072,7 @@ promesse que personne n'encaissait : l'interface et les sondes continuaient d'at
 drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais :
 
 - `POST /api/scan` répond `{ok, ticket}`, et chaque client attend **son** ticket :
-  `attendreTicket` (`tests/sondes/config.mjs:452`) boucle sur `scan_completed >= ticket` et ne
+  `attendreTicket` (`tests/sondes/config.mjs:428`) boucle sur `scan_completed >= ticket` et ne
   consulte jamais `!scanning` pour conclure ;
 - l'interface note le ticket rendu (`ui/index.html:681`) et `poll()` s'arrête sur sa publication
   (`ui/index.html:699`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
@@ -1070,13 +1084,22 @@ drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais
   scan → deux tickets distincts honorés par la même publication), et fichier créé avant la
   demande présent dans l'instantané publié sous ce ticket.
 
-**Ce qui reste une limite.** `attendreDossier` et `attendreFichier` vérifient le fait dans
-l'instantané, mais utilisent encore `!scanning` comme porte avant la requête à `/api/tree`.
-À l'inverse, `attendreAnalyse` (`tests/sondes/config.mjs:413`) peut, avec son argument par
-defaut, conclure sur le seul état `!scanning` ; c'est une attente indirecte et elle reste
-utilisée pour les rescan/retry de `lot`. Ces deux limites ne sont pas corrigées : les sondes qui
-attendent un dossier ou un fichier doivent continuer à vérifier ce fait directement, sans
-remplacer cette preuve par un drapeau ni par un ticket.
+**Ce qui reste une limite : plus rien sur ce point — et la moitié de ce qui était écrit
+n'en était pas une.** `attendreDossier` et `attendreFichier` interrogent `/api/tree` sous
+`!scanning`, présenté ici comme une porte de second rang. C'est un garde-fou de SERVICE : il évite
+de lire un instantané au milieu d'une publication, et la boucle ne rend jamais la main par lui —
+elle rend sur le fait (`r.ok` pour un dossier, la ligne pour un fichier) ou sur sa borne.
+`attendreAnalyse`, elle, était une véritable attente par substitut : c'est elle que les deux
+affirmations confondaient.
+
+Elle est **supprimée** (29/09/2026). Son dernier appelant — `lot`, la sonde qui rejoue l'incident
+du 26/09 — attendait `attendreAnalyse(VOL, 0)` juste après son `POST /api/scan` : la fonction
+rendait la main au premier tour où `scanning` était faux, donc sur l'instantané du run PRÉCÉDENT,
+et le `dry` suivant partait avec une génération périmée. La garde `gen` a repoussé, à raison, et
+l'échec s'est manifesto par une exception muette sur une liste vide — un accident de course qui
+accusait un défaut de suppression inexistant. `lot` attend désormais le ticket qu'elle a demandé
+(`attendreTicket`, `tests/sondes/config.mjs:428`), puis, pour chaque lot, l'instantané qui porte
+tous les noms visés. Mesuré le 29/09/2026 : `lot` 9/9 au run complet, filet inchangé.
 
 ---
 
@@ -1126,9 +1149,9 @@ fichier dans son dossier par chemin et utilise le même helper que les autres. L
 Ces mesures valident ces exécutions, pas toutes les conditions possibles.
 
 **Ce que ça ne couvre toujours pas.** La cause de l'écart reste inconnue. Le garde-fou
-`seuil > 0` rend invalide une calibration non positive, sans expliquer pourquoi elle l'est.
-`attendreAnalyse` peut encore retourner sur `!scanning` seul quand `attendus=0`, et plusieurs
-sondes ont leurs propres boucles d'attente : ces usages ne sont pas couverts par R16.
+`seuil > 0` rend invalide une calibration non positive, sans expliquer pourquoi elle l'est. R16 ne
+porte que sur le verdict du coût : l'attente qui précède chaque lot — le ticket demandé, puis
+l'instantané qui porte tous les noms — n'est pas couverte par ce constat.
 
 ---
 
@@ -1227,7 +1250,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **10** | `racine()` refuse une racine posée sur un autre volume | `tests/sondes/config.mjs` | **fait** |
 | **11** | Aligner les noms de dossiers des cinq sondes sur `dossier()` | `tests/sondes/*.mjs` | **fait** |
 | **12** | Vérifier R9 sur un nom à espace finale (au lieu de le supposer) | `src/win32.rs`, `src/scan.rs` | **vérifié, sans défaut** |
-| **13** | Publication : anonymisation, CI verte sur GitHub | `SECURITY.md`, `.github/workflows/build.yml`, `tests/sondes/*.mjs` | **fait** — 11/11 vertes sur `windows-latest` |
+| **13** | Publication : anonymisation, CI verte sur GitHub | `SECURITY.md`, `.github/workflows/build.yml`, `tests/sondes/*.mjs` | **fait** — **21/21** vertes sur `windows-latest` (`run 36514287640`), les trois jobs verts, release `v0.1.59` publiée |
 | **14** | Le filet ne se rabat plus sur une racine inventee : une sonde destructive sans racine fait echouer le run | `tests/sondes/lancer.mjs` | **fait** — refus avant tout demarrage |
 | **15** | La regle de refus PAR VOLUME du filet etait du code mort : `lettre('A:\\')` renvoyait `''`, la branche ne pouvait pas s executer | `tests/sondes/filet.mjs` | **fait** — 403 mesuré, et Covered par la sonde d'epreuve |
 | **16** | Le harnais refuse un volume de travail qui n'est pas jetable, mesure avant de demarrer quoi que ce soit | `tests/sondes/config.mjs`, `lancer.mjs` | **fait** — 18/18, test qui echoue si on retire l'appel |
@@ -1235,6 +1258,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **18** | Un lot qui touche un dossier dont la perte n'est pas anodine — `.git`, `.ssh`, `AppData` comme `Images` ou `Documents` — doit le nommer, dossier par dossier, avant d'agir ; et le harnais annonce les residus qu'il trouve sur le volume de travail | `src/main.rs` (`dossiers_a_nommer`), `ui/index.html`, `tests/sondes/sonde-dossiers-a-nommer.mjs`, `sonde-ui-suppression.mjs` | **fait** — 27/27 en sonde, 21/21 dans un vrai navigateur, 14/19 (rouge) quand on neutralise la garde |
 | **19** | Une sonde qui sort en 0 sans avoir ecrit son decompte est un echec, pas un vert : elle ne se distingue d'une sonde morte que par une etiquette | `tests/sondes/sonde-generation.mjs`, `tests/sondes/lancer.mjs` | **fait** — 5/5 et lisible au journal ; resume retire, ROUGE et run en 1 |
 | **20** | Le navigateur ne s'ouvre que pour un lancement interactif : un script qui lance le serveur n'a pas a ouvrir une fenetre sur le bureau de celui qui l'a lance | `src/main.rs` (`decider_le_navigateur`), `tests/sondes/lancer.mjs` | **fait** — 0 fenetre mesuree, 1 fenetre avec l'ancien comportement ; `--browser` force toujours |
+| **21** | Les modes `idle` et `running` de la sonde `arret` ne sont jamais exercés : `running` appelle `POST /api/quit`, qui tuerait le serveur unique du harnais | `tests/sondes/sonde-arret.mjs`, `tests/sondes/lancer.mjs` | **ouvert — non fait** — les points 4, 5, 6 et le contrôle de `scan_running` à l'arrêt sont écrits et non exécutés ; un serveur dédié par port le permettrait, et n'a pas été fait |
 
 **Ce que les runs sur GitHub ont révélé — et qui ne concerne pas
 l'application.** Cinq échecs successifs, tous dans le harnais, tous masqués

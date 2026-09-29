@@ -736,7 +736,7 @@ cashed: the UI and the probes kept waiting on the global flag, which measurement
 between two scans. Now:
 
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
-  `attendreTicket` (`tests/sondes/config.mjs:452`) loops on `scan_completed >= ticket` and never
+  `attendreTicket` (`tests/sondes/config.mjs:428`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
 - the UI records the returned ticket (`ui/index.html:681`) and `poll()` stops on its publication
   (`ui/index.html:699`); the rescan after a deletion waits on the `scan_ticket` returned by the
@@ -748,12 +748,21 @@ between two scans. Now:
   scan → two distinct tickets honoured by the same publication), and a file created before the
   request present in the snapshot published under that ticket.
 
-**What remains a limit.** `attendreDossier` and `attendreFichier` check the fact in the snapshot,
-but still use `!scanning` as the gate before requesting `/api/tree`. Conversely,
-`attendreAnalyse` (`tests/sondes/config.mjs:413`) may, with its default argument, return on
-`!scanning` alone; it remains used for the rescan/retry loops of `lot`. Neither is fixed here:
-probes waiting for a folder or a file must keep checking that fact directly — replacing the
-proof with a flag or a ticket would be the same mistake twice.
+**What remains a limit: nothing on this point — and half of what was written never was
+one.** `attendreDossier` and `attendreFichier` query `/api/tree` under `!scanning`, presented here
+as a second-rank gate. It is a SERVICE guard: it keeps a snapshot from being read in the middle of
+a publication, and the loop never returns on it — it returns on the fact (`r.ok` for a folder, the
+row for a file) or on its bound. `attendreAnalyse` was, on the other hand, a real substitute wait:
+it is what the two statements conflated.
+
+It is **removed** (29/09/2026). Its last caller — `lot`, the probe that replays the 26/09 incident
+— waited `attendreAnalyse(VOL, 0)` right after its `POST /api/scan`: the function returned at the
+first turn where `scanning` was false, hence on the PREVIOUS run's snapshot, and the following
+`dry` left with a stale generation. The `gen` guard pushed back, rightly, and the failure surfaced
+as a silent exception on an empty list — a race accident accusing a non-existent deletion defect.
+`lot` now waits for the ticket it asked for (`attendreTicket`, `tests/sondes/config.mjs:428`),
+then, for each batch, for the snapshot carrying every targeted name. Measured 29/09/2026: `lot`
+9/9 in the full run, safety net unchanged.
 
 ### R16 — A negative ceiling invalidates the positive-cost verdict
 
@@ -793,9 +802,9 @@ verdict change, full run `r16e` recorded 21/21 probes: `lot` 9/9, `sans-corbeill
 `reversibilite` 8/8. These runs validate those executions, not every possible condition.
 
 **Still not covered.** The discrepancy's cause remains unknown. The `threshold > 0` guard
-rejects a non-positive calibration but does not explain it. `attendreAnalyse` can still return
-on `!scanning` alone when `expected=0`, and several probes have their own wait loops; R16 does
-not cover those uses.
+rejects a non-positive calibration but does not explain it. R16 covers the cost verdict only: the
+wait preceding each batch — the requested ticket, then the snapshot carrying every name — is not
+covered by this finding.
 
 ### A verdict that depends on something you do not control is not a verdict
 
