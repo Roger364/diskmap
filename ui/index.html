@@ -548,7 +548,7 @@ function renderDrives() {
   // un clic tombant pendant un rendu était purement perdu. On ne reconstruit que
   // si les données affichées changent ; sinon on ne déplace que la sélection.
   const sig = state.drives
-    .map(d => `${d.letter}|${d.status}|${d.dirs}|${d.files}|${d.free}|${d.total}|${d.unreadable}|${d.skipped}`)
+    .map(d => `${d.letter}|${d.status}|${d.dirs}|${d.files}|${d.free}|${d.total}|${d.unreadable}|${d.skipped}|${d.scan_running || 0}`)
     .join(';');
   if (sig === driveSig) { markActive(); return; }
   driveSig = sig;
@@ -562,7 +562,13 @@ function renderDrives() {
     el.dataset.letter = d.letter;
     const st = d.status === 'ready'
       ? `${nf.format(d.n_files)} fichiers · ${nf.format(d.n_dirs)} dossiers`
-      : d.status === 'scanning' ? 'analyse en cours…'
+      : d.status === 'scanning'
+        // Le ticket rend la promesse VISIBLE : « analyse #7 » dit quelle
+        // demande est en train d'être tenue, pas seulement qu'un travail
+        // invisible court. Sans lui (serveur ancien, analyse déclenchée par
+        // le serveur), on dit le travail sans le numéro — et on n'affirme rien
+        // qu'on ne sache.
+        ? (d.scan_running ? `analyse n°${d.scan_running} en cours…` : 'analyse en cours…')
       : d.status === 'error' ? 'erreur'
       : 'non analysé';
     // Un dossier illisible emporte TOUT son sous-arbre : le total affiché est

@@ -62,6 +62,11 @@ struct DriveState {
     scan_requested: u64,
     /// Dernier ticket dont l'analyse a été publiée.
     scan_completed: u64,
+    /// Ticket porté par l'analyse EN COURS, 0 sinon. Publié pour que l'écran
+    /// montre QUELLE promesse est en train d'être tenue — pas seulement qu'un
+    /// travail invisible court. Remis à zéro sous les mêmes verrous que la
+    /// publication du résultat, donc jamais lu déchiré avec lui.
+    scan_running: u64,
 }
 
 /// Ce que l'utilisateur a réellement vu lors de la simulation. Sans ce jeton,
@@ -155,6 +160,8 @@ struct DriveJson {
     /// Dernier ticket demandé et dernier ticket publié pour ce volume.
     scan_requested: u64,
     scan_completed: u64,
+    /// Ticket de l'analyse en vol, 0 sinon.
+    scan_running: u64,
 }
 
 #[derive(serde::Serialize)]
@@ -369,6 +376,7 @@ fn main() {
                 // Un volume sans cache a déjà une analyse de démarrage en file.
                 scan_requested: if status == Status::Empty { 1 } else { 0 },
                 scan_completed: 0,
+                scan_running: 0,
             },
         );
     }
@@ -515,6 +523,7 @@ fn pump(app: &Arc<App>) {
     // Une demande faite pendant le scan précédent est coalescée ici :
     // celui-ci porte alors le dernier ticket demandé.
     let ticket = ds.scan_requested;
+    ds.scan_running = ticket;
     *busy = Some(letter);
     drop(drives);
     drop(busy);
@@ -544,6 +553,7 @@ fn pump(app: &Arc<App>) {
             let mut d = app2.drives.lock().unwrap();
             if let Some(ds) = d.get_mut(&letter) {
                 ds.status = Status::Empty;
+                ds.scan_running = 0;
             }
             drop(d);
             *scanning = None;
@@ -572,6 +582,7 @@ fn pump(app: &Arc<App>) {
             ds.snap = Some(Arc::new(snap));
             ds.status = Status::Ready;
             ds.scan_completed = ticket;
+            ds.scan_running = 0;
         }
         drop(d);
         *scanning = None;
@@ -1094,6 +1105,7 @@ fn state_json(app: &Arc<App>) -> StateJson {
             files: s.prog.files.load(Ordering::Relaxed),
             scan_requested: s.scan_requested,
             scan_completed: s.scan_completed,
+            scan_running: s.scan_running,
         });
     }
     StateJson {

@@ -78,10 +78,33 @@ const t1 = await demander();
 console.log(`      ticket rendu : ${t1}`);
 verifier('la réponse /api/scan porte un ticket numérique', typeof t1 === 'number' && Number.isFinite(t1), `ticket=${JSON.stringify(t1)}`);
 
-const publie = await attendreTicket(BASE, VOL, t1);
+// L'attente ET la capture en vol, dans la MÊME boucle : une fois le ticket
+// publié, l'analyse ne court plus, et une vérification lue après coup ne verrait
+// jamais `scan_running` — mesuré : la première version de cette sonde appelait
+// `attendreTicket` PUIS cherchait l'état en vol, et concluait « trop rapide »
+// sur un G: de 13 s. L'état en vol se capture pendant qu'il y est.
+let publie = null, vuEnVol = null;
+for (let i = 0; i < 600 && !publie; i++) {
+  const d = await etatVolume();
+  if (d) {
+    if (d.status === 'scanning') vuEnVol = d;
+    if (d.scan_completed >= t1) publie = d;
+  }
+  await new Promise((r) => setTimeout(r, 300));
+}
 verifier('le ticket demandé est publié par /api/state', !!publie,
   publie ? `scan_completed=${publie.scan_completed} < ${t1}` : 'ticket jamais publié (délai ou arrêt)');
 console.log(`      état publié : scan_completed=${publie ? publie.scan_completed : '(rien)'}`);
+if (vuEnVol) {
+  verifier('l’analyse en vol annonce son ticket (scan_running)',
+    typeof vuEnVol.scan_running === 'number' && vuEnVol.scan_running >= 1,
+    `scan_running=${JSON.stringify(vuEnVol.scan_running)} pendant le vol`);
+} else {
+  console.log('note : l’analyse n’a pas été vue en vol (volume trop rapide) — scan_running non exercé ici');
+}
+verifier('à la publication du ticket, l’analyse en vol n’est plus annoncée',
+  !publie || publie.scan_running === 0,
+  publie ? `scan_running=${publie.scan_running} alors que scan_completed=${publie.scan_completed}` : 'jamais publié');
 
 // La preuve d'existence, à l'instant où le ticket est publié : le fichier créé
 // AVANT la demande doit être dans l'instantané. C'est le cœur du contrat R15 —

@@ -531,8 +531,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:427`). The watch compares (`ui/index.html:1862`) and reloads
-(`ui/index.html:1867`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:427`). The watch compares (`ui/index.html:1868`) and reloads
+(`ui/index.html:1873`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -606,8 +606,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:427`). The watch compares (`ui/index.html:1862`) and reloads
-(`ui/index.html:1867`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:427`). The watch compares (`ui/index.html:1868`) and reloads
+(`ui/index.html:1873`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -672,10 +672,10 @@ window to open. Like R14, the defect depends on the **duration of a scan**, not 
 > cover it: its snapshot was taken before the request existed.
 
 Each accepted scan request now gets a monotone per-volume ticket. `start_scan`
-(`src/main.rs:632`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
+(`src/main.rs:643`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
 so a client can wait for **its** scan without missing a short run or mistaking the current scan's
 completion for the requested one. Repeated requests coalesce in the queue (`demande_couverte`,
-`src/main.rs:616`, and `en_attente.push(letter)`, `src/main.rs:627`): ten requests during one
+`src/main.rs:643`, and `en_attente.push(letter)`, `src/main.rs:643`): ten requests during one
 scan request just one additional pass, not ten. A scan already in progress never satisfies a
 request made after it began.
 
@@ -738,9 +738,9 @@ between two scans. Now:
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
   `attendreTicket` (`tests/sondes/config.mjs:452`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
-- the UI records the returned ticket (`ui/index.html:675`) and `poll()` stops on its publication
-  (`ui/index.html:693`); the rescan after a deletion waits on the `scan_ticket` returned by the
-  execution (`ui/index.html:1560`);
+- the UI records the returned ticket (`ui/index.html:681`) and `poll()` stops on its publication
+  (`ui/index.html:699`); the rescan after a deletion waits on the `scan_ticket` returned by the
+  execution (`ui/index.html:1566`);
 - `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
   — the fact-based wait below remains its proof of existence;
 - the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the
