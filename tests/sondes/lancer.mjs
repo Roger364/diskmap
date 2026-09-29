@@ -380,7 +380,7 @@ if (!retenues.length) {
 // geste echoue — et son rouge suffit.
 const COMPTES_PLANCHER = {
   aNommer: 27, arret: 9, 'arret-idle': 3, 'arret-running': 4, corps: 4,
-  csrf: 12, elevation: 18, entrees: 10, erreurs: 46, filet: 16,
+  csrf: 12, elevation: 18, entrees: 10, filet: 16,
   generation: 6, host: 33, identifiant: 15, lot: 9, mot: 6, palier: 5,
   plafond: 6, recherche: 25, rechercheGrande: 7, reelle: 38,
   reversibilite: 8, suppression: 34, tickets: 9, ui: 39,
@@ -388,6 +388,22 @@ const COMPTES_PLANCHER = {
 // Un plancher sans sonde est une garde qui ne garde rien : renommer une sonde
 // laisse son plancher derriere, il ne rend plus jamais, et personne ne le
 // remarque. C est le controle gratuit le plus utile du lot.
+// Ce que le harnais sait DEJA de la machine, sans demander quoi que ce soit.
+// Un plancher qui en depend doit dependre de ca, et non d un nombre recopie
+// depuis un run fait ailleurs.
+// PROVISIONNEL a 1 : la vraie valeur est etablie par `exigerVolumeJetable`, qui
+// est la seule a savoir combien de volumes la machine a reellement. Le plancher
+// n est compare qu apres, donc la valeur provisoire ne sert jamais — mais elle
+// doit exister, sinon une comparaison anterieurroe au releve leverait.
+const ENV = { volumes: 1 };
+// `erreurs` ecrit 1 a 4 verdicts par volume pret : 26 hors boucle (mesure le
+// 30/09 : 46 - 5 volumes x 4), et au moins 1 par volume. Un plancher fixe de
+// 46 serait FAUX sur le runner, qui a moins de volumes. Cout par volume pris
+// au MINIMUM (1) : une machine dont un volume passe sous le seuil ecrira moins
+// de 4 verdicts pour ce volume, et un plancher plus serre la ferait rougir a
+// tort. Limite nommee : cette sonde peut perdre ses trois verdicts de signe,
+// de montant et de signe affiche sans que son plancher le voie.
+COMPTES_PLANCHER.erreurs = (env) => 25 + env.volumes;
 const nomsConnus = new Set(SONDES.map((x) => x.nom));
 const sansSonde = Object.keys(COMPTES_PLANCHER).filter((n) => !nomsConnus.has(n));
 
@@ -633,6 +649,9 @@ function exigerVolumeJetable(vol) {
   const faits = interrogerVolumes();
   const cible = (faits || []).find((f) => String(f.lettre).toUpperCase() === String(vol).toUpperCase());
 
+  // Le releve des volumes alimente les planchers structurels. C est la seule
+  // mesure de la machine dont le harnais dispose, et elle est juste ici.
+  ENV.volumes = Math.max(1, faits.length);
   console.log(`  volumes : ${faits.length} monte(s), releves par PowerShell`);
   for (const f of [...faits].sort((a, b) => a.lettre.localeCompare(b.lettre))) {
     const j = volumeJetable(f);
@@ -1046,7 +1065,11 @@ function lireResidus(racines, volume) {
     const resume = compte ? `${compte[1]}/${compte[2]}` : 'SANS SYNTHESE';
     // Le plancher, calcule ICI parce que c est le seul endroit ou l on sait ce
     // que la sonde a reellement ecrit, verdict par verdict.
-    const plancher = COMPTES_PLANCHER[s.nom];
+    // Un plancher est un nombre, ou une fonction de l environnement. Dans les deux
+    // cas il faut un NOMBRE a comparer — et il faut savoir lequel, sinon un
+    // plancher fonctionnel rouge avec « undefined » dans le message.
+    const brut = COMPTES_PLANCHER[s.nom];
+    const plancher = typeof brut === 'function' ? brut(ENV) : brut;
     const perte = code === 0 && plancher !== undefined && verdictsEcrits < plancher;
     // Ce que les sondes NOTENT, et qui n'apparait sur aucun run vert.
     //
