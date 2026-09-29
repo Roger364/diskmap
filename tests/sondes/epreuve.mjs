@@ -44,6 +44,32 @@ const DEPOT = path.resolve(ICI, '..', '..');
  */
 const EPREUVES = [
   {
+    nom: 'hote-local',
+    quoi: "le nom demande dans l en-tete Host doit etre 127.0.0.1, localhost ou ::1",
+    fichier: 'src/main.rs',
+    avant: '    nom.eq_ignore_ascii_case("127.0.0.1") || nom.eq_ignore_ascii_case("localhost") || nom == "::1"',
+    apres: '    true // NEUTRALISE POUR L EPREUVE',
+    sonde: 'sonde-host.mjs',
+    args: [],
+    preuve: '3.4',
+    // La MESURE est celle du 30/09, lue dans la sortie de la decouverte : le
+    // verdict sur 127.0.0.1.evil.test passe de refuse a refuse AVEC 200, parce
+    // que la reponse est SERVIEE. Exiger le libelle seul ne suffirait pas — il
+    // contient « refuse » dans les deux cas — donc la mesure exige le 200 sur la
+    // ligne d apres. Un 200 la, c est la garde calee : la page tierce a recu les
+    // donnees du disque.
+    mesure: /127\.0\.0\.1\.evil\.test[^\n]*refus[\s\S]{0,160}?HTTP 200/,
+    pourquoi:
+      "Cette garde est la derniere frontiere de la cause 3.4 : sans elle, une page "
+      + "servie ailleurs sur le reseau lit l instantane et, avec un jeton, efface. "
+      + "La sonde host la mord : mesure le 30/09, elle passe de 33/33 a 14/33, et "
+      + "les verdiets qui tombent sont precis — un nom de domaine qui commence par "
+      + "l adresse locale, et l adresse collee a un autre nom. C etait la seule des "
+      + "six gardes de la campagne a avoir un temoin ; les cinq autres ont ete "
+      + "mesurees, et aucune sonde ne les voit (SECURITY.md 7/31).",
+  },
+
+  {
     nom: 'scan-running',
     quoi: 'la publication du numéro d’analyse en vol',
     fichier: 'src/main.rs',
@@ -309,106 +335,6 @@ async function decouvrir(ep, binaire) {
   return { morsure: true, revenu: true };
 }
 
-// Les deux lignes de l interface contiennent une chaine vide (`''`) et des
-// attributs entre guillemets doubles. Les ecrire en direct demanderait trois
-// niveaux d echappement pour un texte qu on veut lire : elles sont construites.
-const UI_LBL_AVANT = '<span class="lbl">${escapeHtml(d.label || ' + "''" + ')}</span>';
-const UI_LBL_APRES = '<span class="lbl">${(d.label || ' + "''" + ')}</span>';
-
-const DECOUVERTES = [
-  {
-    nom: 'hote-local',
-    quoi: "le nom d'hote doit etre 127.0.0.1, localhost ou ::1",
-    fichier: 'src/main.rs',
-    avant: '    nom.eq_ignore_ascii_case("127.0.0.1") || nom.eq_ignore_ascii_case("localhost") || nom == "::1"',
-    apres: '    true // NEUTRALISE POUR LA DECOUVERTE',
-    mode: 'decouverte',
-    preuve: '3.4',
-    pourquoi:
-      'Cause 3.4 : le nom demande dans l en-tete Host etait la seule chose qui separait une page tierce d un acces en lecture et en ecriture. Si la sonde qui la verifie ne la mord pas, c est que cette sonde mesure autre chose.',
-    candidats: [
-      { sonde: 'sonde-host.mjs', args: [] },
-      { sonde: 'sonde-corps.mjs', args: [] },
-    ],
-  },
-  {
-    nom: 'echappement-label',
-    quoi: 'le nom de volume echappe avant d etre ecrit en HTML',
-    fichier: 'ui/index.html',
-    avant: UI_LBL_AVANT,
-    apres: UI_LBL_APRES,
-    mode: 'decouverte',
-    preuve: 'R1',
-    pourquoi:
-      'R1 : le nom de volume vient de GetVolumeInformationW, donc du disque, donc de dehors - et il est interpole sans echappement. Aucune sonde ne cherche a le rendre dangereux : c est ce que la mesure va dire.',
-    candidats: [
-      { sonde: 'sonde-ui-suppression.mjs', args: ['V'] },
-      { sonde: 'sonde-erreurs.mjs', args: [] },
-    ],
-  },
-  {
-    nom: 'requete-perimee',
-    quoi: 'une reponse plus ancienne que la demande courante n est pas peinte',
-    fichier: 'ui/index.html',
-    avant: 'if (mien !== requete) return;',
-    apres: 'if (mien === -1) return;',
-    fois: 3,
-    mode: 'decouverte',
-    preuve: 'R11',
-    pourquoi:
-      'R11 : deux reglages coup sur coup, et c est la reponse la plus ancienne qui peignait. Sans cette garde, la sonde d interface doit le voir - sinon sa verification sur les peintures ne mesure rien.',
-    candidats: [
-      { sonde: 'sonde-ui-suppression.mjs', args: ['V'] },
-    ],
-  },
-  {
-    nom: 'ticket-ecran',
-    quoi: 'l ecran ne croit l analyse terminee que si le serveur a depasse le ticket',
-    fichier: 'ui/index.html',
-    avant: '(cur.ticket !== null && d.scan_completed >= cur.ticket)',
-    apres: '(cur.ticket !== null || d.scan_completed >= 0)',
-    mode: 'decouverte',
-    preuve: 'R15',
-    pourquoi:
-      'R15 : le drapeau global ment entre deux analyses. C est le garde COTE interface ; la preuve existante de R15 porte sur le garde cote serveur. Les deux sont distincts, et celui-ci n a peut-etre personne.',
-    candidats: [
-      { sonde: 'sonde-tickets.mjs', args: ['V'] },
-      { sonde: 'sonde-ui-suppression.mjs', args: ['V'] },
-    ],
-  },
-  {
-    nom: 'purge-pending',
-    quoi: 'un jeton d apercu perime est retire de la file',
-    fichier: 'src/main.rs',
-    avant: 'p.retain(|_, v| now - v.at_ms < 600_000);',
-    apres: 'p.retain(|_, _v| true);',
-    fois: 2,
-    mode: 'decouverte',
-    preuve: 'R7',
-    pourquoi:
-      'R7 : sans purge, une serie d apercus jamais confirmes ferait croitre la map sans borne, chacune retenant une liste de chemins. Je ne connais AUCUNE sonde qui compte cette map : c est le temoin negatif de cette serie.',
-    candidats: [
-      { sonde: 'sonde-corps.mjs', args: [] },
-      { sonde: 'sonde-suppression.mjs', args: ['V'] },
-    ],
-  },
-  {
-    nom: 'generation-ecran',
-    quoi: 'un selecteur d instantane perime est refuse en 409',
-    fichier: 'src/main.rs',
-    avant: '            if gen_vue != snap.gen {',
-    apres: '            if false && gen_vue != snap.gen { // NEUTRALISE POUR LA DECOUVERTE',
-    mode: 'decouverte',
-    preuve: '3.1',
-    pourquoi:
-      '3.1 : l incident du 26/09. La preuve existante de 3.1 exige le statut 409, par la sonde de generation. Je mesure s il existe un AUTRE temoin.',
-    candidats: [
-      { sonde: 'sonde-generation.mjs', args: ['V'] },
-      { sonde: 'sonde-identifiant.mjs', args: ['V'] },
-    ],
-  },
-];
-
 // -------------------------------------------------------------------- moteur
 
 /**
@@ -480,11 +406,11 @@ async function eprouver(ep, binaire) {
 
 refuserSiSale();
 const demandees = process.argv.slice(2);
-const retenues = EPREUVES.concat(DECOUVERTES)
+const retenues = EPREUVES
   .filter((e) => !demandees.length || demandees.includes(e.nom));
 if (!retenues.length) {
   refuser(`aucune épreuve ne porte ces noms : ${demandees.join(', ')}.\n`
-    + `  disponibles : ${EPREUVES.concat(DECOUVERTES).map((e) => e.nom).join(', ')}`);
+    + `  disponibles : )}', ')}`);
 }
 
 const binaire = path.join(DEPOT, 'target', 'release', 'diskmap.exe');
@@ -518,7 +444,7 @@ if (notes.length) {
 // a rougi POUR LA BONNE RAISON. C est un chantier, et un chantier laisse ne
 // laisse pas l outil dans cet etat. Le plan : ecrire la `mesure` a partir des
 // lignes rouges mesurees, retirer le mode, et le catalogue redevient strict.
-const enDecouverte = EPREUVES.concat(DECOUVERTES).filter((e) => e.mode === 'decouverte');
+const enDecouverte = EPREUVES.filter((e) => e.mode === 'decouverte');
 if (enDecouverte.length) {
   echecs += enDecouverte.length;
   console.log(`  ROUGE  ${enDecouverte.length} entree(s) encore en mode decouverte :`);
