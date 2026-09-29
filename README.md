@@ -499,14 +499,22 @@ Measured on the author's machine, 28/09/2026: three readings of the client at th
 the gesture, then sixty seconds later.
 
 ```
-avant    {gen 9, statut scanning, scanning true,  veille vive, requete 6}
-immediat {gen 9, statut scanning, scanning true,  veille vive, requete 6}
-final    {gen 9, statut ready,     scanning false, veille vive, requete 6}
+avant    {gen 9, statut scanning, scanning 'C',  veille vive, requete 6}
+immediat {gen 9, statut scanning, scanning 'C',  veille vive, requete 6}
+final    {gen 9, statut ready,     scanning null, veille vive, requete 6}
 ```
+
+**`scanning` is not a boolean.** The field carries the **letter** of the volume being scanned —
+`"C"`, `"V"` — or `null` when nothing is running (`scanning: Mutex<Option<char>>`, serialised as
+`Option<String>`). This table used to say `true` / `false`, because the volume's `status` field
+carries the value `"scanning"`; the two differ by one word. That is not cosmetic: on 29/09
+`arret-running` compared `scanning === true` to decide whether an analysis was running, so the
+"server is scanning but published no number" branch was never reachable, and neutralising the
+number publication did not turn the probe red — it passed 3/3 with a "volume too fast" note.
 
 `requete` does not move: **the request never went out.** The user's gesture — changing the
 sort — calls `load(true)`, which returns without painting while the displayed volume is not
-ready. The gesture is lost, silently. And the watch *does* see the scan end (`scanning: false`
+ready. The gesture is lost, silently. And the watch *does* see the scan end (`scanning: null`
 at `final`): it sees, and reloads nothing. The request counter proves it better than reading
 code would: after sixty seconds and a full watch cycle, the screen still held exactly the same
 snapshot.
@@ -574,14 +582,14 @@ Measured on the author's machine, 28/09/2026: three readings of the client at th
 the gesture, then sixty seconds later.
 
 ```
-avant    {gen 9, statut scanning, scanning true,  veille vive, requete 6}
-immediat {gen 9, statut scanning, scanning true,  veille vive, requete 6}
-final    {gen 9, statut ready,     scanning false, veille vive, requete 6}
+avant    {gen 9, statut scanning, scanning 'C',  veille vive, requete 6}
+immediat {gen 9, statut scanning, scanning 'C',  veille vive, requete 6}
+final    {gen 9, statut ready,     scanning null, veille vive, requete 6}
 ```
 
 `requete` does not move: **the request never went out.** The user's gesture — changing the
 sort — calls `load(true)`, which returns without painting while the displayed volume is not
-ready. The gesture is lost, silently. And the watch *does* see the scan end (`scanning: false`
+ready. The gesture is lost, silently. And the watch *does* see the scan end (`scanning: null`
 at `final`): it sees, and reloads nothing. The request counter proves it better than reading
 code would: after sixty seconds and a full watch cycle, the screen still held exactly the same
 snapshot.

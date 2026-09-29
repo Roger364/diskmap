@@ -54,6 +54,7 @@ const ATTENDU = {
     'src/main.rs:1772': 'p.retain',
     'src/main.rs:1816': 'app.pending.lock()',
     'src/main.rs:2104': 'let rescan = scan_ticket.is_some()',
+    'src/main.rs:125': 'scanning: Mutex<Option<char>>',
     'src/main.rs:2714': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',

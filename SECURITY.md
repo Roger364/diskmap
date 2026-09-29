@@ -892,14 +892,27 @@ déclenche donc jamais.
 client prises au moment du geste, puis soixante secondes plus tard :
 
 ```
-avant    {gen 9, statut scanning, scanning true,  veille vive, requete 6}
-immediat {gen 9, statut scanning, scanning true,  veille vive, requete 6}
-final    {gen 9, statut ready,     scanning false, veille vive, requete 6}
+avant    {gen 9, statut scanning, scanning 'C',  veille vive, requete 6}
+immediat {gen 9, statut scanning, scanning 'C',  veille vive, requete 6}
+final    {gen 9, statut ready,     scanning null, veille vive, requete 6}
 ```
+
+**`scanning` n'est pas un booléen, et le l'écrire comme tel a coûté une vérification.** Le champ
+`scanning` de `/api/state` porte la **lettre** du volume en cours — `"C"`, `"V"` — ou `null`
+quand rien ne tourne : `scanning: Mutex<Option<char>>` (`src/main.rs:125`), sérialisé en
+`Option<String>`. Ce tableau le décrivait `true` / `false`, parce que le champ `status` du même
+volume vaut `"scanning"` : les deux se confondent d'un mot.
+
+Le coût n'est pas théorique. Le 29/09, `arret-running` a comparé `scanning === true` pour
+décider « une analyse court-elle ? ». La comparaison ne pouvait jamais être vraie, la branche
+« le serveur analyse sans publier de numéro » n'était donc jamais atteinte, et neutraliser la
+publication du numéro ne faisait pas rougir la sonde : elle passait en 3/3 avec une note
+« volume trop rapide ». Un document qui décrit mal une forme d'API ne se contente pas de
+tromper : il écrit à sa place des prédicats impossibles.
 
 `requete` ne bouge pas : **la requête n'est jamais partie.** Le geste de l'utilisateur — changer
 le tri — appelle `load(true)`, qui rend la main quand le volume affiché n'est pas prêt. Le
-geste est perdu, silencieusement. Et la veille voit bien l'analyse se terminer (`scanning: false`
+geste est perdu, silencieusement. Et la veille voit bien l'analyse se terminer (`scanning: null`
 à `final`) : elle **voit**, et ne recharge rien. Le compteur de requêtes le prouve mieux qu'une
 lecture de code : après soixante secondes et un cycle complet de veille, l'écran portait encore
 exactement le même instantané.
