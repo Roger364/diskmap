@@ -169,9 +169,20 @@ verifier('au moins un volume dépasse le seuil — sinon la sonde ne teste rien'
 // 26/09/2026, les quatre volumes de cette machine dépassaient le seuil : la
 // branche « écart négligeable » n'a donc jamais tourné, et son vert ne prouvait
 // rien. On le dit, plutôt que de compter une assertion vide comme une preuve.
+//
+// Le 30/09, la branche a été MESURÉE au lieu d'être éprouvée : sur le volume
+// jetable, le seuil vaut 38 octets pour 15 Mo d'écart, et sur C: l'écart vaut
+// 33,8 Go pour un plafond de 20 Mio. Elle n'est donc pas inatteignable par
+// megarde : elle est inatteignable sur cette machine, et le registre des aveux
+// porte la raison avec ses trois nombres.
 if (sansEcart === 0) {
-  console.log(`      note : branche « écart négligeable » NON exercée — ` +
-    `${avecEcart} volume(s), tous au-dessus du seuil. Ce vert-là ne prouve rien.`);
+  // La MESURE vient avant la justification, et la justification vient en DERNIER :
+  // le harnais tronque les notes, donc une justification glissée au milieu serait
+  // coupée en deux, et une coupure se lit comme une absence. C est ce qu il a
+  //ilu au premier essai de cette note.
+  console.log(`      note : branche « écart négligeable » NON exercée — ${avecEcart} volume(s), `
+    + `tous au-dessus du seuil. Ce vert-là ne prouve rien. `
+    + 'structurel : le seuil de 0,5 % de la racine, plafonné à 20 Mio, n’est atteint sur aucun volume lisible.');
 }
 
 // ---------- 3. regroupement et actions ----------
@@ -236,7 +247,7 @@ if (api[cible].total > 0) {
   // Le geste du serveur est correct même si le ramasse-miettes a échoué : les deux
   // faits sont distincts, et confondre les deux ferait rater un vrai défaut.
   if (!rapport.neutre) {
-    noter('NE PAS MESURABLE — le guetteur de fenêtres n’a rien pu dire : '
+    noter('NE PAS MESURABLE — le guetteur de fenêtres n’a rien pu dire : structurel : l’ouverture de l’Explorateur ne se mesure pas en service continu. '
       + rapport.raison);
   } else {
     verifier('la révélation ne laisse aucune fenêtre à l’écran', rapport.fermees === rapport.neutralisees,

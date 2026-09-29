@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:863`) and the reason is printed (`tests/sondes/lancer.mjs:967`). A zero summary has its own door: `tests/sondes/lancer.mjs:862`, reason `tests/sondes/lancer.mjs:963`.
+(`tests/sondes/lancer.mjs:1019`) and the reason is printed (`tests/sondes/lancer.mjs:1149`). A zero summary has its own door: `tests/sondes/lancer.mjs:1018`, reason `tests/sondes/lancer.mjs:1145`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -392,6 +392,53 @@ checks green`, exit `1`, and the measurement it quotes is the real one (`HTTP 40
 count moves rather than sitting there as a literal. Both restored: `5/5`, then `20/20` with
 not one `SANS SYNTHESE` left in the log.
 
+**The third and fourth guards, found by asking what the harness could not see about itself —
+30/09/2026.** The two above watch a *probe*. Nothing watched the counts themselves: delete
+three assertions from a probe and no control in this repository turns red — the run prints
+`24/24 sondes vertes`, `npm test` passes, and the suite files a degradation as an improvement.
+Nothing constrained a probe's *confessions* either. On 29/09 the run carried
+`l'analyse n'a pas été vue en vol — scan_running non exercé ici`; on 30/09 it did not. A hole
+that vanishes on a lucky run is worse than a permanent one: the green run denies it, and nobody
+re-reads the log.
+
+So two instruments, both with a floor and both counter-proved on the real harness:
+
+- **A floor per probe** (`lancer.mjs:381`). Twenty-four values, each the *smallest* count
+  observed across the 29 and 30/09 runs, never the largest: a floor taken on a lucky run turns
+  red the day the machine changes. Two probes vary and the table says so — `tickets` is 9 or 10
+  depending on whether a scan was caught in flight, `elevation` is 18 here and 19 on the runner,
+  which is always elevated. The floor only speaks about **green** probes: a red one writes fewer
+  checks — it skips a whole block when a gesture fails — and its red is enough. Three controls
+  come with it, one of them free: a floor higher than what the probe wrote, a floor whose probe
+  **no longer exists** (a rename, leaving a guard that can never fire again), and a printed count
+  of how many green probes have *no* floor — a choice, and an invisible choice is not one.
+- **An admission register** (`lancer.mjs:432`). An admission must justify itself, and the
+  justification is verified. `couvert par <file> : <verification name>` means another probe
+  *asserts* the same thing: the file must be in the catalogue and its source must contain a
+  `verifier(` carrying that name — which is the answer to a third hole, *cited is not exercised*:
+  `scan_running` was named by six probes and triggered by none. `structurel : <reason>` means
+  nobody covers it, and the reason must be declared in `AVEURS_STRUCTURELS`: a **new** structural
+  hole cannot slip in, it has to be written once, in a place that gets read.
+
+The floor is *zero unjustified admissions*, not *zero admissions*: it bites, and it does not lie
+about how many holes there are — the run prints that count every time. Eight admissions in seven
+probes are now annotated. The detector was calibrated on the notes the past runs really wrote —
+sixteen distinct notes, **two admissions and fourteen explanations, no false positive**: *"c'est
+normal : un disque a des centaines de dossiers du même nom"* stays an explanation. Counter-proof:
+a note that admits without justifying prints `AVEUX SANS JUSTIFICATION : 1 — le run est ROUGE`,
+and the probes stay **2/2 green**. That is the only case where a green probe and a red run point
+the same way: the refusal is the harness's, not a probe's.
+
+**The branch that was measured instead of written.** I meant to add a probe for the
+`négligeable` gap branch, then measured it. The threshold is `min(0.5% of root, 20 MiB)`. On the
+disposable volume it is **38 bytes** against a **15 MB** gap — entirely NTFS and VHDX metadata the
+application cannot see, and is right not to see. On `C:` the gap is **33.8 GB** against a 20 MiB
+ceiling. No readable volume on this machine passes under the threshold, and none will: the branch
+needs a volume built to be entirely readable. A probe for it could never run, so its green would
+prove nothing — a report of holes wearing a probe's clothes. It is not written. The hole is in the
+register, with its three numbers, and the possible closure is named: a fillable disposable volume
+the application fills itself, which needs elevation and a volume this project does not have.
+
 **The second guard, found by looking for the first one's limit.** What precedes only
 forbids silence. A probe writing its count *before* its checks still passed: the word
 was there, correct, and wrong. The harness recounted nothing — it took the probe at its word.
@@ -401,8 +448,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:886`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:970`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:1042`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1152`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -867,9 +914,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:916`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1080`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1018`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1200`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

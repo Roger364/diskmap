@@ -240,7 +240,7 @@ const idApres = a2.path ? a2.path.at(-1).id : null;
   // calme, et le runner l'a montre le 28/09/2026.
   if (idApres === idAvant) {
     nonMesurables.push(1);
-    info(`NE PAS MESURABLE — identifiant ${idAvant} inchange apres reanalyse : `
+    info(`NE PAS MESURABLE — identifiant ${idAvant} inchange apres reanalyse : structurel : le support du volume n’a pas bougé entre les deux analyses. `
       + 'la demonstration est indisponible sur ce volume, le contrat ci-dessous reste etabli');
   } else {
     verifier('le support est réel — les identifiants ont changé de sens', true,

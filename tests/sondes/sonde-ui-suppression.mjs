@@ -419,7 +419,7 @@ verifier('le fichier du dossier personnel est listé', persoTrouve,
     ? `${await contenuLignes()} · fil : ${await filAriane()}`
     // Sans navigation, la mesure serait celle d'un autre écran. Le dire vaut
     // mieux que rapporter un vide qui n'est pas là où on le cherche.
-    : `non mesurable : le clic n'a pas navigué — ${await etatEcran()}`);
+    : `non mesurable : le clic n'a pas navigué — structurel : le clic n'a pas navigué, donc le geste a échoué et cette sonde est déjà rouge — ${await etatEcran()}`);
 
 if (persoTrouve) {
   await lignePerso.locator('.chk').check();

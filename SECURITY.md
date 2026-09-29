@@ -660,7 +660,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:863`) et le motif est écrit (`tests/sondes/lancer.mjs:967`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:862`, motif `tests/sondes/lancer.mjs:963`. Sans ce
+(`tests/sondes/lancer.mjs:1019`) et le motif est écrit (`tests/sondes/lancer.mjs:1149`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1018`, motif `tests/sondes/lancer.mjs:1145`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -676,8 +676,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:886`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:970`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:1042`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1152`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -717,9 +717,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:916`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1080`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1018`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1200`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -825,7 +825,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:384`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:540`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1191,9 +1191,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:863`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1019`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:862`, motif `tests/sondes/lancer.mjs:963`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:1018`, motif `tests/sondes/lancer.mjs:1145`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1235,7 +1235,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:613`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:769`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1523,5 +1523,106 @@ jobs (`windows`, `sondes`, `release`).
 ---
 
 
+
+---
+
+### 7/30 Les trous que le harnais ne pouvait pas voir dans son propre travail · **corrigé le 30/09/2026**
+
+Trois trous de la même famille que ceux de 7/28, mais portés par l'**outil de
+test** et non par le produit. Aucun n'était visible : ils consistent à ne pas
+pouvoir rougir.
+
+**1. Personne ne lisait les comptes.** Les nombres de vérifications étaient
+écrits dans ce document, vérifiés à la main, et personne ne les comparait à rien.
+Supprimer trois assertions d'une sonde ne fait rougir aucun contrôle du dépôt :
+le run affiche « 24/24 sondes vertes », `npm test` passe, et la suite encaisse
+une dégradation comme une amélioration.
+
+**2. Les aveux n'étaient contraints par rien.** Le 30/09, le run portait
+« branche « écart négligeable » NON exercée — 5 volume(s), tous au-dessus du
+seuil. Ce vert-là ne prouve rien. » Le 29/09, `tickets` portait un second aveu
+que le 30 ne portait plus. Un aveu qui disparaît sur un run chanceux est plus
+dangereux qu'un aveu permanent : le run vert le nie, et personne ne le relit.
+
+**3. Citer n'est pas éprouver.** `scan_running` est cité par six sondes et
+déclenché par aucune sur ce volume. Une citation ne devient une preuve que si
+quelque part elle devient une **assertion** — distinction que rien n'exigeait.
+
+Trois instruments, tous mesurés.
+
+**Le plancher des comptes** (`tests/sondes/lancer.mjs:381`). Vingt-quatre
+valeurs, prises comme le **plus petit** compte observé sur les logs du 29 et du
+30/09, jamais le plus grand : un plancher pris sur un run chanceux devient rouge
+le jour où la machine change. Deux sondes varient et le tableau le dit —
+`tickets` vaut 9 ou 10 selon qu'un scan a été surpris en vol, `elevation` vaut
+18 ici et 19 sur le runner, toujours élevé. Le plancher ne parle que des sondes
+**vertes** : une sonde rouge écrit moins de vérifications — elle saute un bloc
+entier quand un geste échoue — et son rouge suffit.
+
+Trois contrôles, dont un gratuit : un plancher plus haut que ce que la sonde
+écrit ; un plancher **sans sonde**, c'est-à-dire le plancher d'une sonde
+renommée, qui ne rendrait plus jamais ; et l'affichage de la couverture, parce
+qu'une sonde sans plancher est un choix, et qu'un choix invisible n'est pas un
+choix.
+
+*Contre-épreuves, sur le vrai `lancer.mjs` et non sur une copie de sa règle : un
+plancher de `corps` porté à 400 donne « PLANCHER : corps a ecrit 4
+verification(s), son plancher est 400 » et le run sort en 1 ; un plancher
+`zzsondenulle` donne « PLANCHER ROUGE : 1 plancher(s) sans sonde ». Les deux
+sortent en 1, et les deux fichiers ont été restaurés puis comparés par
+empreinte.*
+
+**Le registre des aveux** (`tests/sondes/lancer.mjs:432`). Un aveu doit se
+justifier, et la justification se **vérifie** :
+
+- `couvert par <fichier> : <nom de vérification>` — une autre sonde affirme la
+  même chose. Vérifié : le fichier est au catalogue, et son code contient un
+  `verifier(` du bon nom. C'est la réponse au troisième trou : une citation ne
+  compte que si elle devient une assertion, et le contrôle le demande par le nom.
+- `structurel : <raison>` — personne ne couvre, et voici pourquoi. Vérifié : la
+  raison est déclarée dans `AVEURS_STRUCTURELS`. Un trou structurel **neuf** ne
+  passe donc pas : il faut l'écrire, une fois, à un endroit qui se relit.
+
+Le plancher est « zéro aveu sans justification », pas « zéro aveu » : il mord, et
+il ne ment pas sur le nombre de trous, que le run affiche à chaque fois.
+
+*Huit aveux annotés dans sept sondes. Le détecteur a été calibré sur les notes
+réellement écrites par les runs passés — seize notes distinctes, **deux aveux et
+quatorze explications, aucun faux positif** : « c'est normal : un disque a des
+centaines de dossiers du meme nom » reste une explication. Contre-épreuve : une
+note qui avoue sans se justifier donne « AVEUX SANS JUSTIFICATION : 1 — le run
+est ROUGE » — et les sondes, elles, restent **2/2 vertes**. Le refus est celui du
+harnais, pas d'une sonde : c'est le seul cas où une sonde verte et un run rouge
+vont dans le même sens.*
+
+**La branche « écart négligeable » : mesurée, et refermée comme inatteignable.**
+Je comptais écrire une sonde pour elle ; la mesure l'a rendu inutile. Le seuil
+est `min(0,5 % de la racine, 20 Mio)`. Sur le volume jetable, il vaut **38
+octets** et l'écart vaut **15 Mo** — la différence est entièrement faite des
+métadonnées NTFS et du fichier de disque virtuel que l'application ne peut pas
+voir, et qu'elle a raison de ne pas voir. Sur `C:`, l'écart vaut **33,8 Go**
+pour un plafond de 20 Mio. Aucun volume lisible de cette machine ne passe sous
+le seuil, et il n'en est pas de plus : la branche a besoin d'un volume construit
+pour être entièrement lisible.
+
+Une sonde qui l'éprouverait serait donc un rapport de trous en forme de sonde —
+elle ne pourrait pas tourner, et son vert ne prouverait rien. Elle n'est pas
+écrite. Le trou est au registre, avec ses trois chiffres, et la fermeture
+possible est nommée : un volume jetable remplissable, que l'application remplit
+elle-même, ce qui suppose une elevation et un volume que le projet n'a pas.
+
+*Ce que je n'ai pas fait, et pourquoi : les vingt constats sans preuve de
+morsure listés par `verifier-preuves.mjs` — R1 à R14, R16 et 3.3 à 3.7 — restent
+toujours sans preuve. Une preuve à la main, c'est une demi-heure par constat,
+et c'est le chemin que ce document recommande d'abandonner. Le remplacer par
+une mesure par lots — neutraliser six gardes d'un coup, compiler une fois,
+mesurer quelles sondes mordent — est le travail suivant, et il n'est pas
+commencé.*
+
+*Un détail d'environnement, mesuré : sous Git Bash, `/tmp/...` existe pour le
+shell et pour Node sur la même machine, mais Node sur Windows lit `G:\tmp\...`.
+Un script qui lit un log par son chemin littéral croit donc avoir lu un fichier
+vide, et en conclut qu'il n'y avait aucune note. Les logs se passent désormais
+en argument.*
 
 ---

@@ -356,6 +356,162 @@ if (!retenues.length) {
   process.exit(2);
 }
 
+// ---------- plancher de verifications, par sonde ----------
+//
+// Ce que la regle interdit : une sonde VERTE qui a ecrit moins de
+// verifications qu elle n en ecrivait. Rien d autre ne le voit. Supprimer
+// trois assertions d une sonde ne fait rougir aucun controle du depot : le
+// run affiche « 24/24 sondes vertes », `npm test` passe, et la suite encaisse
+// une degradation comme une amelioration. C est R12 vu par l autre bout —
+// un angle mort sur le harnais lui-meme, et le plus facile a refermer de tout
+// le projet : le compte etait deja ecrit, il manquait seulement quelqu un
+// pour le lire.
+//
+// Les valeurs sont MESUREES, pas choisies : le plus petit compte observe sur
+// les logs du 29 et du 30/09/2026 (`/tmp/run-v5.log`, `/tmp/run.log`,
+// `/tmp/quad2.log`, `/tmp/run-final.log`). On garde le PLUS PETIT, jamais le
+// plus grand : un plancher quiivalence legerement plus bas reste vrai, alors
+// qu un plancher pris sur un run chanceux devient rouge le jour ou la machine
+// change. Deux sondes varient d un run a l autre et le tableau le dit :
+// `tickets` vaut 9 ou 10 selon qu un scan a ete surpris en vol, `elevation`
+// vaut 18 ici et 19 sur le runner, qui est TOUJOURS eleve et ajoute donc son
+// propre verdict de bandeau. Le plancher ne parle que des VERTES : une sonde
+// rouge ecrit moins de verifications — elle saute un bloc entier quand un
+// geste echoue — et son rouge suffit.
+const COMPTES_PLANCHER = {
+  aNommer: 27, arret: 9, 'arret-idle': 3, 'arret-running': 4, corps: 4,
+  csrf: 12, elevation: 18, entrees: 10, erreurs: 46, filet: 16,
+  generation: 6, host: 33, identifiant: 15, lot: 9, mot: 6, palier: 5,
+  plafond: 6, recherche: 25, rechercheGrande: 7, reelle: 38,
+  reversibilite: 8, suppression: 34, tickets: 9, ui: 39,
+};
+// Un plancher sans sonde est une garde qui ne garde rien : renommer une sonde
+// laisse son plancher derriere, il ne rend plus jamais, et personne ne le
+// remarque. C est le controle gratuit le plus utile du lot.
+const nomsConnus = new Set(SONDES.map((x) => x.nom));
+const sansSonde = Object.keys(COMPTES_PLANCHER).filter((n) => !nomsConnus.has(n));
+
+// ---------- les notes d aveu, et leur justification ----------
+//
+// Une note est une excuse. certaines sont justes — « c est normal : un disque a
+// des centaines de dossiers du meme nom » n accuse personne. D autres sont des
+// AVEUX : la sonde dit noir sur blanc que son vert ne prouve rien. Le 30/09,
+// le run en portait une : « branche « ecart negligeable » NON exercee — 5
+// volume(s), tous au-dessus du seuil. Ce vert-la ne prouve rien. »
+//
+// Le defaut n est pas le trou : c est que l aveu ne restraints a rien. Il est
+// ecrit dans un coin, le run affiche « 24/24 sondes vertes », et au run suivant
+// il disparait — les 29 et 30/09, `tickets` portait un aveu que le 30 ne portait
+// plus. Un trou qui s efface sur un run chanceux est plus Dangereux qu un trou
+// permanent : le run vert le nie.
+//
+// La regle, donc, n est pas « zero aveu » — elle serait rouge en permanence, et
+// un controle rouge en permanence n est plus consulte. La regle est : un aveu
+// doit se JUSTIFIER, et la justification se verifie.
+//
+//   couvert par <fichier> : <nom de verification>
+//       une autre sonde AFFIRME la meme chose. Verifie : le fichier existe au
+//       catalogue, et il contient un `verifier(` dont le nom contient le nom
+//       donne. C est la reponse a « citer n est pas eprouver » : une citation ne
+//       compte que si elle devient une assertion quelque part.
+//
+//   structurel : <raison>
+//       personne ne couvre ce trou, et voici pourquoi. Verifie : la raison est
+//       declaree dans `AVEURS_STRUCTURELS` ci-dessous. Un trou structurel
+//       nouveau ne passe donc pas : il faut l ecrire, ici, une fois.
+//
+// Le plancher est « zero aveu non justifie », pas « zero aveu ». Il mord, et il ne
+// ment pas sur le nombre de trous : le registre est affiche a chaque run.
+
+// Les trous structurels, avec la MESURE qui les etablit. Chaque ligne est une
+// dette ecrite, donc une dette qu on peut discuter — et non une excuse
+// forgotten dans la sortie d une sonde. La mesure de la premiere ligne est
+// dans SECURITY.md §7/30 : sur le volume jetable, le seuil vaut 38 octets et
+// l ecart vaut 15 Mo ; la branche « ecart negligeable » n est donc pas
+// inexercitee par megarde, elle est inatteignable sur cette machine.
+const AVEURS_STRUCTURELS = [
+  { motif: 'branche « écart négligeable » non exercée', pourquoi: 'le seuil vaut 0,5 % de la racine plafonné à 20 Mio ; sur V: il vaut 38 octets pour 15 Mo d’écart, et sur C: l’écart vaut 33,8 Go. Aucun volume lisible ne passe sous le seuil.' },
+  { motif: 'le guetteur de fenêtres n', pourquoi: 'l’ouverture de l’Explorateur n’est pas mesurable en service continu' },
+  { motif: 'le support du volume n', pourquoi: 'les identifiants ne bougent pas quand la surface d’un volume ne change pas' },
+  { motif: 'le volume est trop rapide', pourquoi: 'un scan dure moins d’une seconde sur le volume jetable : aucun scan en vol n’est observable' },
+  { motif: 'la coalescence reste prouvée côté Rust', pourquoi: 'le comportement existe et son test Rust le couvre ; la sonde navigateur ne peut pas le voir' },
+  { motif: 'exige un instantané', pourquoi: 'la garde a besoin d’un instantané, et le volume n’en a pas au moment de la requête' },
+  { motif: 'le clic n', pourquoi: 'la modale ne s’est pas ouverte : le geste a échoué et la sonde est déjà rouge' },
+];
+
+// Un aveu est reconnu par sa MARQUE, explicite de preference. Les formes
+// historiques restent reconnues, sinon un simple `NE PAS MESURABLE` passerait
+// sous le controle en changant trois lettres — un controle qu on contourne en
+// ecrivant autrement n est pas un controle.
+const MOT_AVEU = /ne prouve rien|non exerc[ée]e?|ne pas mesurable|non mesurable/i;
+const FORME_COUVERT = /couvert par\s+([\w.-]+\.mjs)\s*:\s*(.+)$/;
+const FORME_STRUCTUREL = /structurel\s*:\s*(.+)$/;
+
+// Les apostrophes typographiques ne sont pas une raison de manquer une
+// verification : `l'Analyse` et `l’Analyse` doivent etre le meme nom.
+const norm = (t) => String(t).toLowerCase().replace(/[’‘`]/g, "'")
+  .replace(/\s+/g, ' ').trim();
+
+// Les noms de verification d une sonde, lus dans son SOURCE et non dans sa
+// sortie : c est le code qui affirme, et un rapport peut mentir.
+const cacheNoms = new Map();
+function nomsDeVerification(fichier) {
+  if (cacheNoms.has(fichier)) return cacheNoms.get(fichier);
+  let noms = [];
+  try {
+    const src = fs.readFileSync(path.join(ICI, fichier), 'utf8');
+    noms = [...src.matchAll(/verifier\(\s*(['`])(.+?)\1/g)].map((m) => norm(m[2]));
+  } catch { /* un fichier absent ne couvre rien : c est traite plus bas */ }
+  cacheNoms.set(fichier, noms);
+  return noms;
+}
+
+/**
+ * Classe une note : explication, aveu justifie, ou aveu SANS JUSTIFICATION.
+ * La mesure est toujours le texte, parce qu un controle qui dit « non » sans
+ * dire pourquoi oblige a relire la sortie entiere.
+ */
+function classerNote(texte) {
+  if (!MOT_AVEU.test(texte)) return { sorte: 'explication' };
+  const couverte = texte.match(FORME_COUVERT);
+  if (couverte) {
+    const [, fichier, nom] = couverte;
+    const connu = SONDES.some((s) => s.fichier === fichier);
+    if (!connu) {
+      return { sorte: 'aveu nu', mesure: `${fichier} n’est pas une sonde du catalogue : elle ne peut rien couvrir` };
+    }
+    const noms = nomsDeVerification(fichier);
+    if (!noms.some((n) => n.includes(norm(nom)))) {
+      return {
+        sorte: 'aveu nu',
+        mesure: `${fichier} ne vérifie rien qui s’appelle « ${nom.trim()} » : la citation ne `
+          + 'devient une assertion nulle part',
+      };
+    }
+    return { sorte: 'aveu couvert', mesure: `couvert par ${fichier} : ${norm(nom)}` };
+  }
+  const structurel = texte.match(FORME_STRUCTUREL);
+  if (structurel) {
+    // Le motif du registre se cherche dans la NOTE ENTIERE, pas dans la seule
+    // raison. Premier essai, il ne cherchait que la raison — et comme l auteur
+    // ecrit l identifiant du trou AVANT (`branche « ecart negligeable »`) et la
+    // raison apres (`structurel : …`), le registre ne trouvait jamais son propre
+    // motif et déclarait huit aveux sur neuf injustifies. Le controle etait
+    // exact, la convention etait absurde : c est elle qu on a changee.
+    const declare = AVEURS_STRUCTURELS.find((a) => norm(texte).includes(norm(a.motif)));
+    if (!declare) {
+      return {
+        sorte: 'aveu nu',
+        mesure: `« ${structurel[1].trim()} » n’est pas dans le registre AVEURS_STRUCTURELS : `
+          + 'un trou structurel nouveau doit être écrit une fois, ici',
+      };
+    }
+    return { sorte: 'aveu structurel', mesure: declare.pourquoi };
+  }
+  return { sorte: 'aveu nu', mesure: 'ni « couvert par », ni « structurel » : un aveu sans justification' };
+}
+
+
 // ------------------------------------------------------------------- reseau
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -888,6 +1044,10 @@ function lireResidus(racines, volume) {
     const descompte = muette || descompteFaux;
     const code = descompte && sortie.code === 0 ? 1 : sortie.code;
     const resume = compte ? `${compte[1]}/${compte[2]}` : 'SANS SYNTHESE';
+    // Le plancher, calcule ICI parce que c est le seul endroit ou l on sait ce
+    // que la sonde a reellement ecrit, verdict par verdict.
+    const plancher = COMPTES_PLANCHER[s.nom];
+    const perte = code === 0 && plancher !== undefined && verdictsEcrits < plancher;
     // Ce que les sondes NOTENT, et qui n'apparait sur aucun run vert.
     //
     // Le 28/09/2026, une sonde a porte « (+1 non mesurable) » a son resume, et
@@ -912,15 +1072,37 @@ function lireResidus(racines, volume) {
       .filter((l) => /^note\s*:/i.test(l)
         || /^NE PAS MESURABLE/.test(l)
         || /\+\d+ non mesurable/.test(l))
-      .map((l) => l.replace(/^note\s*:\s*/i, '').slice(0, 120));
+      .map((l) => l.replace(/^note\s*:\s*/i, '')
+        .replace(/^NE PAS MESURABLE\s*[—-]\s*/i, '')
+        .replace(/\(\+\d+ non mesurable\(s\)\)\s*$/i, '')
+        .slice(0, 300))
+      .map((texte) => ({ texte, ...classerNote(texte) }));
     const mention = notes.length ? `  [!] ${notes.length} note(s)` : '';
+    // Le compte des AVEUX, des la ligne de resume : une note d aveu non justifiee
+    // doit se voir sur la ligne de la sonde, pas six pages plus loin.
+    const aveux = notes.filter((n) => n.sorte !== 'explication');
+    const aveuxNus = aveux.filter((n) => n.sorte === 'aveu nu');
+    if (aveux.length) {
+      const detail = aveux.length === 1 ? 'aveu' : 'aveux';
+      const marques = aveuxNus.length ? ` dont ${aveuxNus.length} SANS JUSTIFICATION` : '';
+      console.log(`           [${detail}] ${aveux.length} ${detail}${marques}`);
+    }
     // Le code forcé NE REMPLACE PAS les deux autres verdicts. Une sonde qui n a
     // pas pu tourner — volume absent, prérequis manquant — sort en 2 sans
     // écrire de résumé, et doit rester « PAS PU » : la confondre avec un produit
     // en défaut enverrait chercher le défaut du mauvais côté.
     const etatMot = code === 0 ? 'vert ' : code === 2 ? 'PAS PU' : 'ROUGE';
     console.log(`  ${etatMot}  ${s.nom.padEnd(15)} ${resume}${mention}`);
-    if (code !== 0) {
+    if (perte) {
+      // Le message nomme le NOMBRE, pas seulement la faute : « des assertions ont
+      // disparu » ne dit pas combien, et un plancher qu on ne peut pas chiffrer
+      // ne se corrige pas.
+      console.log(`           PLANCHER : ${s.nom} a ecrit ${verdictsEcrits} verification(s), son`);
+      console.log(`           plancher est ${plancher}. Une sonde verte qui en ecrit moins a`);
+      console.log('           perdu des assertions — et rien d autre dans ce depot ne le voit.');
+      code = 1;
+    }
+    if (code !== 0 || aveuxNus.length) {
       // Ce que la sonde a DIT, pas seulement les lignes qui ressemblent a un
       // motif. Le filtre d’avant guts le cas le plus difficile : une sonde qui
       // PLANTE n’ecrit aucun motif, elle sort en 1 — et le journal de la CI disait
@@ -980,7 +1162,7 @@ function lireResidus(racines, volume) {
       try { dedie.kill(); } catch { /* deja mort : c'est meme ce qu on attendait */ }
       dedie = null;
     }
-    resultats.push({ nom: s.nom, code, resume, notes });
+    resultats.push({ nom: s.nom, code, resume, notes, plancher, ecrit: verdictsEcrits });
     if (s.nom !== 'filet' && filet.incidents.length > incidentsAvant) {
       const nouveaux = filet.incidents.slice(incidentsAvant);
       console.log(`           FILET  ${nouveaux.length} incident(s) pendant « ${s.nom} »`);
@@ -1016,11 +1198,62 @@ const notees = resultats.filter((r) => r.notes && r.notes.length);
 if (notees.length) {
   const total = notees.reduce((n, r) => n + r.notes.length, 0);
   console.log(`  ${total} note(s) de ${notees.length} sonde(s) — rien n'est masque derriere un vert :`);
-  for (const r of notees) for (const n of r.notes) console.log(`           ${r.nom} : ${n}`);
+  for (const r of notees) {
+    for (const n of r.notes) {
+      const tag = n.sorte === 'explication' ? 'note' : `AVEU ${n.sorte.replace('aveu ', '')}`;
+      console.log(`           ${r.nom} [${tag}] ${n.texte}`);
+      if (n.sorte !== 'explication') console.log(`                    -> ${n.mesure}`);
+    }
+  }
 } else {
   console.log('  aucune note');
 }
+
+// Le registre des AVEUX, et le plancher. Le compte est affiche meme quand il
+// n est pas nul : un trou structurel declare est une dette, et une dette
+// qu on ne recompte pas est une dette qu on oublie.
+const tousAveux = resultats.flatMap((r) => (r.notes || [])
+  .filter((n) => n.sorte !== 'explication').map((n) => ({ ...n, sonde: r.nom })));
+const aveuxNus = tousAveux.filter((n) => n.sorte === 'aveu nu');
+const structurels = tousAveux.filter((n) => n.sorte === 'aveu structurel');
+const couverts = tousAveux.filter((n) => n.sorte === 'aveu couvert');
+console.log(`  aveux : ${tousAveux.length} — ${couverts.length} couvert(s) par une assertion, `
+  + `${structurels.length} structurel(s) declare(s), ${aveuxNus.length} SANS JUSTIFICATION`);
+if (structurels.length) {
+  console.log('           registre : un trou structurel n est pas une excuse, c est une dette ecrit');
+  for (const n of structurels) console.log(`           - ${n.sonde} : ${n.mesure}`);
+}
+if (aveuxNus.length) {
+  console.log(`  AVEUX SANS JUSTIFICATION : ${aveuxNus.length} — le run est ROUGE`);
+  console.log('    Un aveu qui ne dit ni qui le couvre, ni pourquoi il est structurel, n est');
+  console.log('    qu une excuse : il disparait au run suivant et le vert ne dit plus rien.');
+  console.log('    Deux formes acceptees : « couvert par <fichier> : <nom de verification> »');
+  console.log('    ou « structurel : <raison> », cette derniere devant figurer au registre.');
+  for (const n of aveuxNus) console.log(`    - ${n.sonde} : ${n.texte}\n      -> ${n.mesure}`);
+}
 if (pasPu.length) console.log(`  PAS PU EPROUVER : ${pasPu.map((r) => r.nom).join(', ')}`);
+
+// Le plancher, une derniere fois. Trois faits, dans l ordre de ce qu ils
+// interdent : un plancher qui ne nomme plus de sonde (renommage, donc garde
+// morte), une sonde VERTE sans plancher (donc sans rien dire quand elle perd une
+// assertion), et la couverture — combien de sondes en ont un. Les trois sont
+// des mesures, pas des intentions : le troisieme est ce qui permet de voir la
+// suite plutot que de la supposer couverte.
+if (sansSonde.length) {
+  console.log(`  PLANCHER ROUGE : ${sansSonde.length} plancher(s) sans sonde — ${sansSonde.join(', ')}`);
+  console.log('    Une sonde renommee laisse son plancher derriere : il ne rend plus');
+  console.log('    jamais, et rien ne le signale. Corriger le nom, ou retirer le plancher.');
+}
+const vertes = resultats.filter((r) => r.code === 0);
+const sansPlancher = vertes.filter((r) => r.plancher === undefined).map((r) => r.nom);
+const avecPlancher = vertes.filter((r) => r.plancher !== undefined).length;
+if (sansPlancher.length) {
+  console.log(`  ${avecPlancher}/${vertes.length} sondes vertes ont un plancher ; sans plancher :`);
+  console.log(`           ${sansPlancher.join(', ')} — une assertion perdue dans ces sondes ne`);
+  console.log('           rougirait rien. C est un choix, il doit etre visible.');
+} else {
+  console.log(`  plancher : ${avecPlancher}/${vertes.length} sondes vertes gardees, aucune sans`);
+}
 
 // Le filet a la parole. Un incident rend la run ROUGE même si toutes les sondes
 // sont vertes : une sonde a vu passer une suppression qu'elle n'aurait jamais
@@ -1044,3 +1277,5 @@ if (filet) {
 // eprouver » 2, sinon 0. Le harnais n a plus de coupure au milieu de sa
 // propre sortie -- c est lui aussi un processus qui a des sockets.
 process.exitCode = rouges.length ? 1 : (pasPu.length ? 2 : 0);
+if (sansSonde.length) process.exitCode = 1;
+if (aveuxNus.length) process.exitCode = 1;

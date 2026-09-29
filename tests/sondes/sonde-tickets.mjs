@@ -100,7 +100,7 @@ if (vuEnVol) {
     typeof vuEnVol.scan_running === 'number' && vuEnVol.scan_running >= 1,
     `scan_running=${JSON.stringify(vuEnVol.scan_running)} pendant le vol`);
 } else {
-  console.log('note : l’analyse n’a pas été vue en vol (volume trop rapide) — scan_running non exercé ici');
+  console.log('note : l’analyse n’a pas été vue en vol (volume trop rapide) — scan_running non exercé ici — couvert par sonde-arret.mjs : le serveur publie le numéro de l’analyse en vol');
 }
 verifier('à la publication du ticket, l’analyse en vol n’est plus annoncée',
   !publie || publie.scan_running === 0,
@@ -146,7 +146,7 @@ if (enVol) {
     !!publie3 && publie3.scan_completed >= t4,
     publie3 ? `la publication de ${t3} porte scan_completed=${publie3.scan_completed} < ${t4}` : 'jamais publié');
 } else {
-  console.log('note : coalescence pendant un scan en vol non exercée sur ce volume (trop rapide) — elle reste prouvée côté Rust');
+  console.log('note : coalescence pendant un scan en vol non exercée sur ce volume (trop rapide) — elle reste prouvée côté Rust — structurel : la coalescence a son test Rust, qu’un navigateur ne peut pas voir');
 }
 
 // --- 3. l'invariant de publication ------------------------------------------
