@@ -93,6 +93,27 @@ const EPREUVES = [
       + "et change d'un run à l'autre. Exiger une mesure instable ferait "
       + "échouer l'épreuve pour une raison étrangère à la garde.",
   },
+  {
+    nom: 'csrf',
+    quoi: "l'en-tête X-Diskmap exigé sur toute requête qui modifie",
+    fichier: 'src/main.rs',
+    avant: '    if method == "POST" && action != "1" {',
+    apres: '    if false && method == "POST" && action != "1" { // NEUTRALISE POUR L EPREUVE',
+    sonde: 'sonde-csrf-navigateur.mjs',
+    args: ['V'],
+    // La LIGNE ROUGE, pas son libellé seul : le libellé apparaît aussi dans les
+    // lignes `ok` du run normal, et l'exiger seul validerait l'épreuve sans
+    // que rien n'ait cédé. La preuve, c'est « ROUGE » ET le libellé, sur la même
+    // ligne.
+    mesure: new RegExp('ROUGE[^' + String.fromCharCode(10) + ']*effacer le fichier'),
+    preuve: '3.2',
+    pourquoi:
+      "C'est la garde la plus lourde du dépôt : sans elle, une page web tierce — "
+      + 'servie depuis le loopback, depuis l IP privée, ou ouverte en file:// — '
+      + 'efface un fichier du disque, sans confirmation et sans que rien ne se voie. '
+      + "Elle a ete mesuree dans un vrai navigateur le 26/09/2026, trois fois sur "
+      + 'trois, avant d etre refermee.',
+  },
 ];
 
 // ------------------------------------------------------------------ outillage
