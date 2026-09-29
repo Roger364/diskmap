@@ -436,6 +436,44 @@ application cannot see, and is right not to see. On `C:` the gap is **33.8 GB** 
 ceiling. No readable volume on this machine passes under the threshold, and none will: the branch
 needs a volume built to be entirely readable. A probe for it could never run, so its green would
 prove nothing — a report of holes wearing a probe's clothes. It is not written. The hole is in the
+**Asking which guard no probe sees, and measuring the answer — 30/09/2026.** `verifier-preuves.mjs` counted
+**3 of 23** findings with a replayable bite proof, and named the way to change it: `epreuve.mjs`, one guard at a
+time. That is the queue 7/28 recommends abandoning — half an hour of thought per finding, for one line of catalogue.
+
+The cost was never the compute. Measured: an incremental release build takes **4.3 s**. What cost was the
+*decision* — which probe sees which guard — and that decision is made blind whenever a proof is written without
+measuring it first. So the tool grew a `decouverte` mode: neutralise the guard, run **several candidate probes**
+against it, and record which ones go red **and what they say**. The red lines are the raw material for the strict
+`mesure`, written afterwards from an observed fact. And it has a floor: **an entry left in `decouverte` makes the
+tool exit red**. A permanent discovery is a catalogue that no longer requires anything.
+
+Six guards measured. **One had a witness.**
+
+| guard | finding | candidate probes | result |
+|---|---|---|---|
+| `hote_local` | 3.4 | `host` | **33/33 to 14/33** — promoted to a proof |
+| `gen_vue != snap.gen` | 3.1 | `generation` | red — **already proven**, same guard and same probe |
+| `escapeHtml(d.label)` | R1 | `ui`, `erreurs` | 39/39, 46/46 — **no witness** |
+| `mien !== requete` | R11 | `ui` | 39/39 — **no witness** |
+| `scan_completed >= ticket` | R15 | `tickets`, `ui` | 9/9, 39/39 — **no witness** |
+| purge of `pending` | R7 | `corps`, `suppression` | 4/4, 34/34 — **no witness** |
+
+`3/23` becomes **`4/23`**, on the strength of `hote_local` alone: its verdict on `127.0.0.1.evil.test` goes from
+*refused* to *refused **with HTTP 200***, and the `mesure` requires that 200 on the following line — the label
+alone reads "refused" either way, and would prove nothing.
+
+The result that matters is not the 4. It is the four holes **named**. R11 is the sharpest: its fix is
+`if (mien !== requete) return;`, three times in the interface, and the probe that measures paintings does not see
+it. The fix is real, the finding is real, and both would stay true if the guard vanished entirely. What each of the
+four would need is written out in SECURITY.md §7/31; the cheapest by far is R7, whose invariant is a **pure**
+`p.retain` on a `HashMap` — a Rust unit test would bite it in milliseconds, with no browser, no volume, no
+elevation. It does not exist.
+
+One pattern crosses the last three: the findings describe **interface-side** invariants, and their probes check the
+*state* without ever provoking the *race*. `3/23` understates the work — R1, R7, R11 and R15 have no proof because
+their probes have no scene, not because their fixes are doubtful. Naming the pattern is worth more than twenty
+hand-written proofs.
+
 register, with its three numbers, and the possible closure is named: a fillable disposable volume
 the application fills itself, which needs elevation and a volume this project does not have.
 

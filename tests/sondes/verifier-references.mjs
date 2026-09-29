@@ -111,6 +111,10 @@ const ATTENDU = {
     // garderait un texte, pas une regle.
     'tests/sondes/lancer.mjs:381': 'const COMPTES_PLANCHER = {',
     'tests/sondes/lancer.mjs:432': 'const AVEURS_STRUCTURELS = [',
+    // Section 7/31 : le mode decouverte de l outil d epreuves. Le symbole est
+    // la fonction qui porte la discipline de restauration — ecrite une fois,
+    // donc impossible a ecrire deux fois differemment.
+    'tests/sondes/epreuve.mjs:272': 'async function sousGardeNeutralisee',
   },
   'README.md': {
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',

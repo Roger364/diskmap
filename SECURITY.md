@@ -1626,3 +1626,83 @@ vide, et en conclut qu'il n'y avait aucune note. Les logs se passent désormais
 en argument.*
 
 ---
+
+### 7/31 Chercher les gardes que PERSONNE ne regarde, cette fois dans l’outil · **30/09/2026**
+
+`verifier-preuves.mjs` comptait **3 constats sur 23** pourvus d'une preuve de
+morsure, et nommait le moyen de changer ça : `epreuve.mjs`, « une garde à la
+fois ». C'est la file de corvées que ce document recommande d'abandonner depuis
+7/28 : une demi-heure de réflexion par constat, pour un résultat qui tient dans
+une ligne de catalogue.
+
+Le vrai coût n'était pas le calcul. Il est **mesuré** : la compilation
+incrémentale en release prend **4,3 s**. Ce qui coûtait, c'était la *décision* —
+quelle sonde verra quelle garde — et cette décision se prend à l'aveugle quand on
+écrit une preuve sans l'avoir mesurée.
+
+**L'instrument.** Un mode `decouverte` dans `epreuve.mjs`
+(`tests/sondes/epreuve.mjs:272`) : on neutralise la garde, on lance **plusieurs
+sondes candidates**, et on note lesquelles rougissent **et ce qu'elles disent**.
+Les lignes rouges affichées sont la matière première de la `mesure` stricte,
+écrite ensuite à partir d'un fait observé. La discipline de restauration est
+factorisée (`sousGardeNeutralisee`) : écrite une fois, donc impossible à écrire
+deux fois différemment.
+
+Et il a un plancher : **une entrée laissée en `decouverte` fait rouge le
+script**. Une découverte permanente serait un catalogue qui n'exige plus rien —
+le rapport de trous que 7/28 a condamné. Le chantier se referme dans la journée,
+ou il devient un échec visible.
+
+**Six gardes mesurées. Une seule avait un témoin.**
+
+| garde | constat | candidat mesuré | résultat |
+|---|---|---|---|
+| `hote_local` | 3.4 | `host` | **33/33 → 14/33** — preuve promue |
+| `gen_vue != snap.gen` | 3.1 | `generation` | rouge — **déjà prouvée** (même garde, même sonde) |
+| `escapeHtml(d.label)` | R1 | `ui`, `erreurs` | 39/39 et 46/46 — **aucun témoin** |
+| `mien !== requete` | R11 | `ui` | 39/39 — **aucun témoin** |
+| `scan_completed >= ticket` | R15 | `tickets`, `ui` | 9/9 et 39/39 — **aucun témoin** |
+| purge de `pending` | R7 | `corps`, `suppression` | 4/4 et 34/34 — **aucun témoin** |
+
+`3/23` devient **`4/23`**, par la seule preuve `hote_local` : son verdict sur
+`127.0.0.1.evil.test` passe de « refusé » à « refusé **avec HTTP 200** », et la
+`mesure` exige ce 200 sur la ligne d'après — le libellé seul contient « refusé »
+dans les deux cas, il ne prouverait rien.
+
+**Le résultat qui compte n'est pas le 4 : ce sont les quatre trous nommés.** Une
+garde sans témoin est une garde que rien n'éprouve, et R11 en est l'exemple le
+plus net : sa correction est `if (mien !== requete) return;`, trois fois dans
+l'interface, et la sonde qui mesure les peintures ne la voit pas. Le correctif
+est réel, le constat est réel, et l'un et l'autre seraient vrais si la garde
+disparaissait entièrement.
+
+Ce que chacun exigerait, pour devenir prouvé :
+
+- **R1** — un nom de volume contenant du HTML, et le verdict « le libellé est
+  du texte, pas un élément ». Le nom vient de `GetVolumeInformationW` : il faut
+  donc un volume dont le libellé est choisi, donc une clé formatée ou une image
+  montée — c'est le seul des quatre qui demande une élévation.
+- **R7** — l'invariant est une fonction **pure** (`p.retain` sur une `HashMap`).
+  Un test unitaire Rust le mordrait en quelques millisecondes, sans navigateur,
+  sans volume, sans élévation. C'est le témoin le moins cher des quatre, et il
+  n'existe pas.
+- **R11** — deux requêtes qui se chevauchent, la réponse ancienne arrivant **en
+  dernier**. Playwright sait retarder une requête à la demande ; la sonde sait
+  lire l'écran ; il manque le délai. C'est une demi-journée, pas une garde
+  impossible.
+- **R15** — un `/api/state` dont `scan_completed` reste **derrière** le ticket :
+  l'écran ne doit pas dire « terminée ». L'infrastructure de la sonde existe ; le
+  faux `/api/state` n'existe pas.
+
+Un motif traverse les trois dernières : les constats décrivent des invariants
+**côté interface**, et leurs sondes vérifient l'**état** sans jamais provoquer la
+**course**. Le compte 3/23 sous-estime le travail réel — R1, R7, R11 et R15
+n'ont pas de preuve parce que leurs sondes n'ont pas de scene declenchee, pas parce que
+leurs correctifs sont douteux. Nommer ce motif vaut mieux que vingt preuves
+écrites à la main.
+
+*Ce que je n'ai pas fait : R1 exigerait une élévation (formater une clé ou monter
+une image), et les trois autres ne sont que des sondes à écrire — une demi-journée
+chacune. La campagne a nommé les trous ; elle ne les a pas bouchés.*
+
+---
