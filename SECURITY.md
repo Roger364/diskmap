@@ -1097,6 +1097,8 @@ drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais
   scan → deux tickets distincts honorés par la même publication), et fichier créé avant la
   demande présent dans l'instantané publié sous ce ticket.
 
+**La garde de génération, éprouvée de la même façon.** Neutraliser `gen_vue != snap.gen` (`src/main.rs`) — le refus 409 qui empêche un sélecteur périmé de viser un autre fichier — fait passer `generation` de 6/6 à **5/6**, code 1. La mesure dit ce que le défaut produirait, pas seulement qu'il existe : l'aperçu a répondu `200` sur `V:\$RECYCLE.BIN\…\$I2NRAIU.txt` alors que la sonde demandait `perime/p2.txt`. C'est l'incident du 26/09 en une ligne — un fichier jamais montré, supprimable. Restaurée : 6/6, code 0. §7/23.
+
 **Une preuve, et pas une intention.** La publication du numéro en vol a été neutralisée pour l'épreuve : `ds.scan_running = ticket` est devenu `0` dans `src/main.rs`, et `arret-running` est passée de 4/4 à **3/4**, code de sortie 1, en mesurant `scanning = C, scan_running = 0` et un écran qui affiche « analyse en cours… » sans numéro. La première version de cette vérification interrogeait l'état APRÈS `/api/quit` — donc après la mort du serveur, où la requête échoue et où la vérification passe quoi qu'il arrive. Elle ne pouvait pas rougir ; elle a été remplacée par la capture en vol, avant l'arrêt. §7/22.
 
 **Ce qui reste une limite : plus rien sur ce point — et la moitié de ce qui était écrit
@@ -1275,6 +1277,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 | **20** | Le navigateur ne s'ouvre que pour un lancement interactif : un script qui lance le serveur n'a pas a ouvrir une fenetre sur le bureau de celui qui l'a lance | `src/main.rs` (`decider_le_navigateur`), `tests/sondes/lancer.mjs` | **fait** — 0 fenetre mesuree, 1 fenetre avec l'ancien comportement ; `--browser` force toujours |
 | **21** | Les modes `idle` et `running` de la sonde `arret` n'étaient jamais exercés : `running` appelle `POST /api/quit`, qui aurait tué le serveur unique du harnais | `tests/sondes/sonde-arret.mjs`, `tests/sondes/lancer.mjs` | **fait** — `serveurDedie` donne à ces deux sondes leur propre serveur sur un autre port ; le binaire ne verrouille que par port. `arret-idle` 3/3, `arret-running` 4/4, dont `scan_running` observé **en vol** et l'invariant « aucun scan_running collé après l'arrêt » |
 | **22** | Prouver que la publication du numéro d'analyse en vol mord, et non qu'elle passe par habitude | `tests/sondes/sonde-arret.mjs` | **fait** — neutraliser `ds.scan_running = ticket` (`src/main.rs`) fait passer `arret-running` de **4/4 à 3/4**, code 1 ; restaurée, 4/4 code 0 |
+| **23** | Prouver que la garde de génération d'instantané mord | `tests/sondes/sonde-generation.mjs`, `src/main.rs` | **fait** — neutraliser `gen_vue != snap.gen` fait passer `generation` de **6/6 à 5/6**, code 1, et la mesure nomme le fichier visé : l'aperçu répond 200 sur `V:\$RECYCLE.BIN\…\$I2NRAIU.txt` au lieu de `perime/p2.txt` — un sélecteur périmé qui désigne un fichier de corbeille. Restaurée : 6/6, code 0 |
 
 **Ce que les runs sur GitHub ont révélé — et qui ne concerne pas
 l'application.** Cinq échecs successifs, tous dans le harnais, tous masqués
