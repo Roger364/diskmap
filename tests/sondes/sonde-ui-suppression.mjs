@@ -22,7 +22,7 @@
 //           ↑ contre-épreuve : retire X-Diskmap au vol, et DOIT rougir.
 import fs from 'fs';
 
-import { chromium } from './navigateur.mjs';
+import { chromium, suivreRequetes } from './navigateur.mjs';
 import { dossier, aCorbeille, estEleve, aTaper, attendreFichier,
   VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
@@ -110,6 +110,8 @@ const page = await navig.newPage();
 const erreurs = [];
 page.on('console', m => { if (m.type() === 'error') erreurs.push(m.text()); });
 page.on('pageerror', e => erreurs.push('pageerror: ' + e.message));
+// Le reseau, comme le code et comme la console.
+const suivi = suivreRequetes(page, navig);
 
 if (CONTRE) {
   console.log('      contre-épreuve : X-Diskmap retiré au vol');
@@ -128,6 +130,11 @@ await page.waitForSelector('#drives .drive', { timeout: 20000 });
 // ce qui ressemblerait à une interface cassée.
 await page.click(`#drives .drive[data-letter="${VOL}"]`);
 await page.waitForTimeout(800);
+
+// Controle du collecteur, avant tout verdict reseau : un collecteur qui ne
+// mord pas ne prouve rien, et il faut le savoir tot plutot que froid.
+const ctl = await suivi.control();
+verifier('le collecteur voit une requete morte (controle)', ctl.vu, ctl.mesure);
 
 // --- le geste : chercher, entrer, cocher, demander à supprimer ---------------
 await page.fill('#q', NOM);
@@ -806,6 +813,11 @@ if (fichierTrouve) {
 
 verifier('aucune erreur JavaScript dans l’interface', erreurs.length === 0,
   JSON.stringify(erreurs.slice(0, 3)));
+// Une page dont la requete est tombee affiche une liste vide ou figee, et ne
+// leve AUCUNE erreur JavaScript : les deux verdicts du dessus la declarent
+// saine. Celui-ci est le seul qui la puisse voir.
+verifier('aucune requete de l’interface n a echoue', suivi.echecs.length === 0,
+  suivi.echecs.slice(0, 3).join(' | ') || 'aucune');
 
 await navig.close();
 console.log('');

@@ -615,9 +615,9 @@ peintures ne contient plus que les deux situations attendues.
 la **première** peinture. Le défaut se jouait deux secondes plus tard : son vert ne prouvait rien
 sur la dernière réponse, et son rouge ne tombait que par hasard de charge — une fois sur un run
 complet, jamais sur un volume rapide. Elle enregistre donc chaque peinture
-(`tests/sondes/sonde-ui-suppression.mjs:530`) et attend que l'écran se taise
-(`tests/sondes/sonde-ui-suppression.mjs:553`) avant de lire quoi que ce soit. Le verdict qui en
-découle (`tests/sondes/sonde-ui-suppression.mjs:773`) est le seul qui voie les peintures
+(`tests/sondes/sonde-ui-suppression.mjs:537`) et attend que l'écran se taise
+(`tests/sondes/sonde-ui-suppression.mjs:560`) avant de lire quoi que ce soit. Le verdict qui en
+découle (`tests/sondes/sonde-ui-suppression.mjs:780`) est le seul qui voie les peintures
 intermédiaires ; tous les autres lisent un instant, et cet instant peut précéder la dernière
 réponse.
 
@@ -660,7 +660,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:846`) et le motif est écrit (`tests/sondes/lancer.mjs:950`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:845`, motif `tests/sondes/lancer.mjs:946`. Sans ce
+(`tests/sondes/lancer.mjs:863`) et le motif est écrit (`tests/sondes/lancer.mjs:967`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:862`, motif `tests/sondes/lancer.mjs:963`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -676,8 +676,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:869`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:953`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:886`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:970`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -717,9 +717,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:899`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:916`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1001`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1018`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -825,7 +825,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:367`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:384`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1191,9 +1191,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:846`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:863`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:845`, motif `tests/sondes/lancer.mjs:946`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:862`, motif `tests/sondes/lancer.mjs:963`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1204,7 +1204,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   (`tests/sondes/sonde-ui-suppression.mjs:101`) : deux fichiers de **même taille**, créés dans
   l'ordre **inverse** de l'ordre alphabétique, donc un serveur sans départage les afficherait
   `zztaille-z` avant `zztaille-a`. Le verdict
-  (`tests/sondes/sonde-ui-suppression.mjs:711`) exige alors qu'à taille égale les noms soient
+  (`tests/sondes/sonde-ui-suppression.mjs:718`) exige alors qu'à taille égale les noms soient
   croissants — invariant **indépendant du serveur** : comparer l'écran à l'interface ne
   prouverait que leur accord, y compris s'ils ont tort ensemble.
 - **Une demande d'analyse n'est acceptée que si elle sera honorée.** `POST /api/scan`
@@ -1235,7 +1235,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:596`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:613`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1372,5 +1372,156 @@ n'atteint donc jamais l'application, et `sonde-host.mjs` le note au lieu de le m
 Le filet n'est pas transparent : il couvre le DELETE, et il se contente de relayer le
 reste. C'est le prix d'un point unique, et il est préférable à une vérification
 répliquée — donc oubliée — dans chacune des sondes.
+
+### 7/28 Un rapport de trous ne garde que le rapport · **corrigé le 29/09/2026**
+
+`verifier-libelles.mjs` extrait les gardes de `src/main.rs` et affiche celles dont
+aucune sonde ne cite le libellé. Le 29/09/2026, il en a affichées quatre, et il
+est sorti **en vert** — décision volontaire, écrite dans le fichier : « un contrôle
+rouge en permanence cesse d'être consulté ».
+
+L'argument est juste et la décision a produit exactement ce qu'elle annonçait :
+le rapport n'a jamais été consulté. Les quatre gardes sont restées nues.
+
+Il y a plus grave que la garde. Ces quatre entrées — « lettre manquante »
+(`src/main.rs:972`), « id invalide » (`src/main.rs:1012`), « chemin invalide »
+(`src/main.rs:1033`), « route inconnue » (`src/main.rs:1074`) — sont les
+validations du routeur, et **aucune requête ne les atteint jamais**. Un serveur
+qui refuse tout les produirait, aussi bien que le bon. C'est la définition
+d'une preuve absente, et elle était écrite en clair dans un fichier vert.
+
+Trois changements, dont deux mesurés :
+
+**1. Le contrôle exige au lieu de signaler.** `PLANCHER_SANS_REGARD` vaut 0, et
+une garde sans regard fait désormais rouge la chaîne. *Mesuré le 29/09 : une
+garde renommée en un libellé que personne ne cite fait passer le contrôle de
+6/6 à 5/6, et nomme `src/main.rs:1074`.* Le plancher est une arme, pas une
+déclaration.
+
+**2. Le contrôle a lui-même une embuscade.** Un contrôle qui n'a jamais rougi ne
+sait pas rougir, et « 0/0 muettes » est indiscernable d'une règle cassée qui
+n'en verrait aucune. Le script fabrique donc une garde muette et exige qu'elle
+soit vue, et une garde réellement citée qu'il ne range pas parmi les muettes
+(`tests/sondes/verifier-libelles.mjs:217`). Un contrôle qui ne sait dire ni
+« vu » ni « pas vu » ne sait rien.
+
+*L'embuscade a rougi le premier jour, pour une raison qui n'était pas un défaut
+de la règle : le leurre contenait « jamais » et « sonde », présents dans toutes
+les sondes, et la règle lax — deux mots de plus de quatre caractères — le
+comptait donc comme regardé. Le contrôle a rouge sur son propre leurre, et le
+diagnostic était juste : un test de contrôle qui n'est pas exact ne mesure
+rien.*
+
+**3. `sonde-entrees.mjs` couvre les quatre gardes.** Huit requêtes, un témoin
+par garde. Un témoin, parce qu'un statut seul ne prouve pas : « id invalide »
+et « dossier hors bornes » répondent tous deux 400, et seule la citation du
+libellé les distingue. Le témoin de « route inconnue » est le plus parlant —
+même 404, autre message, donc une sonde qui ne lirait que le statut
+compterait la route comme correctement refusée.
+
+*Mesuré le 29/09/2026 contre un serveur réel : 10/10 vertes. Contre-épreuve : la
+neutralisation de la garde « chemin invalide » — le `None` de `rsplit_once`
+devient impossible — fait passer la sonde à **9/10, rouge sur le bon cas**, avec
+la mesure attendue : `HTTP 404 · ce dossier n'existe plus`. La sonde mord, et
+l'application revient.*
+
+Le même jour, le conseil qui suivait ces travaux était d'abandonner la course
+aux preuves une par une — une demi-heure chacune, pour vingt constats — au profit
+de la recherche des gardes non regardées. C'est ce que la mesure a confirmé :
+ces quatre-là coûtaient une seconde chacune, et étaient invisibles précisément
+parce qu'elles ne faisaient pas de bruit.
+
+Avant l'ajout : `verifier-libelles.mjs` annonçait 37 gardes, dont **4 que
+personne ne regardait**. Après : 0. Le contrôle passe de 2 vérifications à 6 —
+les quatre nouvelles sont le leurre, la détection, la reconnaissance, et le
+plancher. `verifier-references.mjs` est monté de 196 à **208/208** : les
+insertions dans `lancer.mjs` avaient décalé dix-neuf références de la
+documentation, et le contrôle les a signalées toutes, une par une, avant que
+quiconque ne les remarque.
+
+### 7/29 Un rouge qui ne dit pas sa cause ne se laisse pas corriger · **corrigé le 30/09/2026**
+
+Le run complet du 29/09/2026 a rendu `elevation` **ROUGE 5/8**, après sept runs
+consécutifs où la même sonde rendait 16/16. Le compte est un fait ; le message,
+non : la sonde affichait `Failed to fetch | Failed to fetch` et trois lignes de
+listing. Ni la requête, ni la raison, ni le moment.
+
+La cause du ROUGE, je ne la connais toujours pas : isolée, sur un `V:` propre,
+la sonde repasse 16/16. Ce que j'ai cherché n'était pas la cause — c'est
+**pourquoi elle était invisible**.
+
+Les quatre sondes qui pilotent un navigateur (`sonde-elevation.mjs`,
+`sonde-erreurs.mjs`, `sonde-identifiant.mjs`, `sonde-ui-suppression.mjs`)
+n'écoutaient que `pageerror`, c'est-à-dire le **code** de la page. Or une
+requête qui n'aboutit pas ne lève aucune exception de ce côté : elle finit en
+`TypeError: Failed to fetch`, attrapé quelque part plus haut, puis en silence.
+Une page dont la requête est morte affiche une liste vide ou figée, passe le
+verdict « aucune erreur JavaScript », et le composant cassé se déclare sain. Une
+garde que personne ne regarde, de la même famille que celles de 7/28 : elle ne
+rougissait jamais, et sa matière première — la panne réseau — était déjà
+arrivée, une fois, devant elle.
+
+Trois changements, tous mesurés :
+
+**1. `suivreRequetes(page, navigateur)`** (`tests/sondes/navigateur.mjs:66`)
+écoute `requestfailed` et conserve `méthode URL — raison` : `net::
+ERR_CONNECTION_REFUSED`, `net::ERR_UNSAFE_PORT`, une coupe au milieu de la
+réponse. Le lieu est commun aux quatre sondes, parce que le faire quatre fois
+serait quatre endroits où l'oubli est possible.
+
+**2. Un verdict de plus par sonde** — « aucune requête de l'interface n'a échoué »
+— qui lit ce tableau. Il est distinct du verdict JavaScript, et il ne s'y
+substitue pas : une page muette et une page injoignable ne se ressemblent pas,
+et les deux verdicts du dessus ne peuvent voir que la première.
+
+**3. Un contrôle de même ligne dans chaque sonde.** Un test qui n'a jamais rougi
+ne sait pas rougir, et « 0 échec réseau » est, sans plus, indiscernable d'un
+écouteur qui n'écoute rien. Chaque sonde provoque donc un échec qu'elle connaît —
+une requête vers `127.0.0.1:1`, port que Chromium refuse lui-même avant toute
+connexion (`net::ERR_UNSAFE_PORT`, mesuré : ni DNS, ni serveur, ni réseau, donc
+le même verdict sur la machine de développement et sur le runner hors ligne) —
+et exige que le collecteur le voie.
+
+*Contre-épreuve du collecteur, 30/09 : le contrôle voit l'échec voulu, une
+requête morte non marquée est bien rapportée dans le tableau que la garde lit, et
+la console de la page mesurée reste vide. La garde n'est donc pas un rapport de
+trous : elle lit exactement ce que la contre-épreuve remplit.*
+
+**Le témoin a d'abord saliva sur la mesure.** Dans sa première version il
+s'exécutait sur la page mesurée. Un échec de ressource écrit aussi une ligne de
+console — `Failed to load resource: net::ERR_UNSAFE_PORT` — et deux des quatre
+sondes lisent cette console : `identifiant` et `ui` ont rougi sur le seul témoin
+(14/15 et 38/39), avec une mesure qui ne parle pas de la faute. Le témoin vit
+désormais sur une page jetable, avec son propre contexte. *Mesuré après
+correction : `identifiant` 15/15, `ui` 39/39, `elevation` 18/18, `erreurs` 46/46
+— deux vérifications de plus chacune, toutes vertes.*
+
+Un détail du même episode, mesuré : sur une page née de `browser.newPage()`,
+Playwright refuse d'en ouvrir une voisine (`Please use browser.newContext()`).
+Le navigateur est donc demandé en second argument, plutôt que déduit de la page.
+
+`verifier-references.mjs` est monté de 208 à **210/210**. Les quatre références
+à `sonde-ui-suppression.mjs` avaient glissé de sept lignes — les sept lignes du
+témoin et de son contrôle — et la nouvelle référence au collecteur a d'abord été
+refusée, faute d'entrée dans le tableau : un pointeur que rien ne garde n'est
+qu'un pointeur.
+
+Ce que ce travail ne fait **pas** : expliquer le ROUGE du 29/09. Il rend le
+prochain capable de le dire. C'est la même exigence que 7/28, appliquée à
+l'autre moitié du test — non plus la garde qu'on laisse nue, mais le témoin qui
+ne peut pas rendre son verdict muet.
+
+*Run complet du 30/09/2026, après les deux ajouts : **24/24 sondes vertes**,
+filet à 0 incident hors épreuve volontaire, aucun avertissement de volume sale.
+`entrees` 10/10, `identifiant` 15/15, `ui` 39/39, `elevation` 18/18, `erreurs`
+46/46 — les huit vérifications nouvelles, quatre contrôles et quatre verdicts
+réseau, y compris dans le run qui les anime toutes.*
+
+La CI qui a validé l'état précédent, `run 36531666709`, est verte sur ses trois
+jobs (`windows`, `sondes`, `release`).
+
+---
+
+
 
 ---

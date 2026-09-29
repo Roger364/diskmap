@@ -23,7 +23,7 @@
 // ouverte avant. Le 27/09/2026, sans ce guetteur, cette preuve a laissé 33
 // fenêtres « Bureau » sur l'écran de l'auteur de ces lignes.
 
-import { chromium } from './navigateur.mjs';
+import { chromium, suivreRequetes } from './navigateur.mjs';
 import { URL_DEFAUT } from './config.mjs';
 import { surveillerFenetres, mesurer } from './fenetres.mjs';
 
@@ -60,8 +60,14 @@ const ctx = await browser.newContext({ permissions: ['clipboard-read', 'clipboar
 const page = await ctx.newPage();
 const erreursJs = [];
 page.on('pageerror', e => erreursJs.push(String(e)));
+// Le reseau, comme le code : une requete tombee ne leve aucune exception de page.
+const suivi = suivreRequetes(page, browser);
 
 await page.goto(URL, { waitUntil: 'domcontentloaded' });
+
+// Controle du collecteur, avant de lire ses verdicts.
+const ctl = await suivi.control();
+verifier('le collecteur voit une requete morte (controle)', ctl.vu, ctl.mesure);
 
 // Attendre que C: ait FINI d'être analysé. « Il y a une carte » ne suffit pas :
 // la carte existe dès le premier rendu, avec le statut « analyse en cours ».
@@ -275,6 +281,8 @@ verifier('l\'état d\'élévation affiché correspond à l\'API',
   `affiché « ${chip} », API eleve=${etat.eleve}`);
 
 verifier('aucune erreur JavaScript', erreursJs.length === 0, erreursJs.join(' | ') || 'aucune');
+verifier('aucune requete de l’interface n a echoue', suivi.echecs.length === 0,
+  suivi.echecs.slice(0, 3).join(' | ') || 'aucune');
 
 await browser.close();
 

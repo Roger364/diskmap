@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:846`) and the reason is printed (`tests/sondes/lancer.mjs:950`). A zero summary has its own door: `tests/sondes/lancer.mjs:845`, reason `tests/sondes/lancer.mjs:946`.
+(`tests/sondes/lancer.mjs:863`) and the reason is printed (`tests/sondes/lancer.mjs:967`). A zero summary has its own door: `tests/sondes/lancer.mjs:862`, reason `tests/sondes/lancer.mjs:963`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -401,8 +401,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:869`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:953`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:886`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:970`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -867,9 +867,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:899`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:916`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1001`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1018`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,
@@ -897,7 +897,7 @@ was wrong. The support simply did not exist yet, so it could be made.
 Two files of the **same size**, written in the **reverse** of alphabetical order
 (`tests/sondes/sonde-ui-suppression.mjs:101`). A server without a tiebreak renders them
 `zztaille-z` before `zztaille-a`, because that is the order they were created in. The verdict
-(`tests/sondes/sonde-ui-suppression.mjs:711`) requires names to ascend within every group of
+(`tests/sondes/sonde-ui-suppression.mjs:718`) requires names to ascend within every group of
 identical displayed sizes, and goes red.
 
 The check is deliberately **independent of the server**. Asking "does the screen show what the

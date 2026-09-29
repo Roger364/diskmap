@@ -86,6 +86,23 @@ const SONDES = [
     quoi: 'Une taille de corps annoncee par le client ne tue plus le serveur',
   },
   {
+    // Les quatre validations d’entrée du routeur, et le premier jeu de sondes
+    // dont le refus est exige AU MOINS aussi qu un témoin. Chacune des quatre
+    // garde un message de refus different, et chacune a un jumeau qui prouve
+    // qu elle a bien parle : un 400 lu seul ne distingue pas « id invalide » de
+    // « dossier hors bornes », et une sonde qui ne verrait que le statut
+    // passerait sur un serveur qui refuse tout.
+    //
+    // Le 29/09/2026, ces quatre etaient les seules gardes du depot que
+    // `verifier-libelles.mjs` declarait « que personne ne regarde ». Elles ne
+    // coutaient qu une seconde chacune, et ne se perdaient pas dans le bruit du
+    // run : c est precisement ce qui les rendait invisibles. Un trou gratuit
+    // n est pas un trou qu on laisse.
+    nom: 'entrees', fichier: 'sonde-entrees.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'rien',
+    quoi: 'Les quatre gardes d’entree du routeur, chacune avec le temoin qui prouve qu elle a parle',
+  },
+  {
     nom: 'suppression', fichier: 'sonde-suppression.mjs', args: (c) => [c.url], ci: true, detruit: 'rien',
     quoi: 'En-tete exige, chemins proteges refuses, jeton — le tout en simulation',
   },

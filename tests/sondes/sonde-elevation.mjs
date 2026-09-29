@@ -38,7 +38,7 @@
 // Usage : node sonde-elevation.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { chromium } from './navigateur.mjs';
+import { chromium, suivreRequetes } from './navigateur.mjs';
 import { dossier, aCorbeille, estEleve, attendreFichier,
   VOLUME_DEFAUT, URL_DEFAUT } from './config.mjs';
 
@@ -129,6 +129,10 @@ const navigateur = await chromium.launch();
 const page = await navigateur.newPage();
 const erreursJs = [];
 page.on('pageerror', (e) => erreursJs.push(e.message));
+// Le reseau aussi. C'est ce qui manquait le 29/09/2026, ou cette sonde a rendu
+// ROUGE en n'affichant que « Failed to fetch » : un rouge qui ne dit pas quelle
+// requete est tombee, ni pourquoi, ne se laisse pas corriger.
+const suivi = suivreRequetes(page, navigateur);
 
 try {
   await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -138,6 +142,12 @@ try {
   // interface cassée.
   await page.click(`#drives .drive[data-letter="${VOL}"]`);
   await page.waitForTimeout(800);
+
+  // Le contrôle du collecteur, ICI et pas à la fin : s'il ne mord pas, tous les
+  // verdicts réseau de cette page ne prouvent rien, et mieux vaut l'apprendre
+  // avant de les regarder.
+  const ctl = await suivi.control();
+  verifier('le collecteur voit une requete morte (controle)', ctl.vu, ctl.mesure);
 
   // --- LA BANNIÈRE, premier fait mesuré -------------------------------------
   // Le bandeau doit être présent SI ET SEULEMENT SI l'instance est élevée. Une
@@ -302,6 +312,10 @@ try {
 
 verifier('aucune erreur JavaScript dans l’interface', erreursJs.length === 0,
   erreursJs.slice(0, 3).join(' | '));
+// Le meme fait, par la porte du reseau : une page muette et une page injoignable
+// ne se ressemblent pas, et seule la seconde fait peur.
+verifier('aucune requete de l’interface n a echoue', suivi.echecs.length === 0,
+  suivi.echecs.slice(0, 3).join(' | ') || 'aucune');
 
 fs.rmSync(DOSSIER, { recursive: true, force: true });
 await post(`/api/scan/${VOL}`, {});

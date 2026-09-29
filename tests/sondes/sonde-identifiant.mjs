@@ -31,7 +31,7 @@
 // Usage : node sonde-identifiant.mjs http://127.0.0.1:8990/ V
 import fs from 'fs';
 
-import { chromium } from './navigateur.mjs';
+import { chromium, suivreRequetes } from './navigateur.mjs';
 import { dossier, racine, URL_DEFAUT, VOLUME_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
@@ -123,9 +123,16 @@ const page = await nav.newPage();
 const erreurs = [];
 page.on('pageerror', (e) => erreurs.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
+// Le reseau aussi : c'est par la que « Failed to fetch » entrait sans que rien
+// ne dise quelle requete avait disparu.
+const suivi = suivreRequetes(page, nav);
 
 try {
   await page.goto(BASE, { waitUntil: 'networkidle' });
+  // Controle du collecteur : sans lui, le verdict reseau du dessous serait un
+  // rapport de trous — vrai par defaut, incapable de rougir.
+  const ctl = await suivi.control();
+  verifier('le collecteur voit une requete morte (controle)', ctl.vu, ctl.mesure);
   await page.evaluate((l) => select(l), VOL);
   await page.waitForFunction(() => document.querySelectorAll('#rows tr .nm').length > 0,
     null, { timeout: 60000 });
@@ -298,6 +305,11 @@ const idApres = a2.path ? a2.path.at(-1).id : null;
   info(`erreurs console : ${autres.length} inattendue(s), ${benignes.length} 404 attendu(s)`);
   verifier('aucune erreur JavaScript inattendue dans l’interface', autres.length === 0,
     autres.slice(0, 2).join(' | ') || 'aucune');
+  // Les 404 ATTENDUS ci-dessus sont des REPONSES : le serveur a repondu. Une
+  // requete tombee n'a pas de statut, et le navigateur n'en leve pas d'erreur
+  // de page : sans cet ecoute, elle ne se voyait nulle part.
+  verifier('aucune requete de l’interface n a echoue', suivi.echecs.length === 0,
+    suivi.echecs.slice(0, 3).join(' | ') || 'aucune');
   } else {
     info('phases non mesurees : le dossier de la sonde n a pas ete atteint');
   }
