@@ -101,6 +101,23 @@ for (const [chemin, entetes, nom] of POSTS) {
   verifier(`POST ${chemin} (${nom}) → refusé`, r.status === 403, `HTTP ${r.status} · ${r.corps.slice(0, 90)}`);
 }
 
+// Les POST ci-dessus portaient `Host: evil.test` : leur refus venait de la garde
+// de l'en-tête Host, pas de celle de l'en-tête X-Diskmap. Les deux sont voisines
+// et se ressemblent dans un refus — même 403, même forme — si bien que la seconde
+// n'était éprouvée par AUCUNE sonde : pas une seule requête directe n'était posée
+// avec un nom légitime et sans X-Diskmap.
+//
+// Le navigateur ne comble pas ce trou. Lui bloque la requête avant qu'elle
+// n'atteigne le serveur (un en-tête personnalisé déclenche un préflight que le
+// serveur ne sert pas), si bien que `csrf` reste verte même garde neutralisée.
+// Une garde peut donc être réellement utilisée, et rester sans vérification
+// visible : ce n'est que le serveur, et non le navigateur, qui doit la tenir.
+const sansX = await requete('POST', '/api/state', `127.0.0.1:${PORT}`);
+verifier('un POST sans X-Diskmap est refusé, même sur un nom légitime',
+  sansX.status === 403,
+  `HTTP ${sansX.status} · ${sansX.corps.slice(0, 90)}`);
+
+
 const refus = await requete('GET', '/api/state', `evil.test:${PORT}`);
 verifier('le refus nomme la cause', /Host refus/i.test(refus.corps), JSON.stringify(refus.corps.slice(0, 120)));
 
