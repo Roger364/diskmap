@@ -462,7 +462,15 @@ const AVEURS_STRUCTURELS = [
 // de verdicts perdus ne se devine donc pas : il se LIT dans le registre, la ou le
 // trou se declare. Une sonde ne peut pas acheter son plancher : elle peut
 // seulement declarer le trou qu elle a nomme, une fois, ici.
- { motif: 'branches du débordement non exercée — plafond non mesurable', couts: 4, pourquoi: 'mesuré : `corbeille_plafond` vaut null, et la section 1 saute alors son troisieme verdict ; les trois verdicts de la branche de débordement sont donc hors d atteinte' },
+
+// Un second trou de la meme espece, revele le 30/09 par la reparation du premier :
+// corriger le crash rendait au harnais le droit de parler, et il a immediatement
+// trouve autre chose a dire. La sonde le disait depuis toujours — en deux lignes
+// que le collecteur ne comptait pas, dans un dialecte (« non éprouvé ») qui ne
+// correspond a aucune des marques reconnues.
+  { motif: 'le palier de vingt gigaoctets non exercée', couts: 4, pourquoi: 'mesuré le 30/09 sur le runner : aucun dossier de plus de 20 Go n existe, la sonde n écrit donc que son unique verdict de coherence ; la branche à cinq verdicts reste couverte par les tests unitaires, qui la vérifient à 74,2 Go' },
+
+  { motif: 'branches du débordement non exercée — plafond non mesurable', couts: 4, pourquoi: 'mesuré : `corbeille_plafond` vaut null, et la section 1 saute alors son troisieme verdict ; les trois verdicts de la branche de débordement sont donc hors d atteinte' },
  { motif: 'branches du débordement non exercée — plafond au-delà de la borne d écriture de 256 mio', couts: 3, pourquoi: 'mesuré le 30/09 : le plafond du volume jetable de la CI dépasse 256 Mio, alors qu il vaut 51 Mio sur les volumes locaux ; exercer la branche demanderait d écrire plus que la borne d écriture que la sonde s est donnée' },
 ];
 
@@ -638,6 +646,7 @@ if (tableFaux.length) {
 // relache du nombre que le registre DECLARE.
 const NON_EXERCEE = 'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : le plafond de corbeille n est pas mesurable';
 const TROP_LARGE = 'branches du débordement NON EXERCÉE — plafond au-delà de la borne d écriture de 256 Mio — structurel : la borne est dépassée';
+const LE_PALIER = 'le palier de vingt gigaoctets NON EXERCÉE — structurel : aucun dossier de plus de 20 Go n existe sur cette machine';
 const SANS_MARQUE = 'branches du débordement NON ÉPROUVÉE — structurel : une raison parfaitement suffisante';
 const TRONQUEE = 'branches du débordement NON EXERCÉE — structurel :';
 const NON_DECLARE = 'branches du débordement NON EXERCÉE — un trou neuf — structurel : une raison parfaitement suffisante';
@@ -649,6 +658,7 @@ const TABLE_PLANCHER = [
   [6, notes(SANS_MARQUE), 6, '« éprouvé » n est pas une marque d aveu : rien ne se relache'],
   [6, notes(TRONQUEE), 6, 'une justification tronquee ne relache rien'],
   [6, notes(NON_DECLARE), 6, 'un trou absent du registre ne relache rien'],
+  [5, notes(LE_PALIER), 1, 'un trou declare de 4 verdicts ramene le plancher de 5 a 1, ce qu ecrit reellement une sonde sans dossier de 20 Go'],
   [6, notes(TROP_LARGE, NON_EXERCEE), 0, 'deux trous cumulent leurs couts, et le plancher est borne a zero'],
   [undefined, notes(TROP_LARGE), undefined, 'une sonde sans plancher en garde reste sans plancher : une relaxation n en cree pas un'],
 ];

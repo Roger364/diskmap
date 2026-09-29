@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:1174`) and the reason is printed (`tests/sondes/lancer.mjs:1381`). A zero summary has its own door: `tests/sondes/lancer.mjs:1173`, reason `tests/sondes/lancer.mjs:1326`.
+(`tests/sondes/lancer.mjs:1184`) and the reason is printed (`tests/sondes/lancer.mjs:1391`). A zero summary has its own door: `tests/sondes/lancer.mjs:1183`, reason `tests/sondes/lancer.mjs:1336`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -478,12 +478,19 @@ hand-written proofs.
 **red**. It is the first time the CI has had a verdict on the harness itself, and it pointed at
 the harness rather than the product. Three defects, one of them mine.
 
-*A floor that lied about what it measured.* On the runner `plafond` wrote **3 verdicts out of 6**;
-here, across five volumes, it writes 6. Past a 256 MiB trash ceiling the probe skips the overflow
-branch — worth three verdicts — and the CI's disposable volume is past it. The floor of 6 was
-therefore wrong on the machine that used it most. A control that reds a healthy probe is not
-"permanently red" in any harmless sense: it is a control you have learned not to believe, and the
-day it reds for real, nobody will look.
+*A floor that lied about what it measured.* The number is in the probe's own admission: the trash
+ceiling of `D:` on the runner is **9727 MiB**, **38×** the 256 MiB bound the probe gave itself. Past
+that bound the overflow branch is skipped — three verdicts that will not be written there. A floor of
+6 was therefore **unsatisfiable by construction** on that machine, while here it is exact and
+`plafond` writes all 6. A floor cannot be true everywhere: it has to say *which* one, and say it from
+a measurement.
+
+*And a correction, to that very paragraph.* The first version claimed "3 verdicts out of 6 on the
+runner". That is a **reconstruction** from the probe's structure, not a measurement: the `windows`
+job of the previous run never executed a single probe, `D:` having produced no snapshot. The right
+figure is in the 30/09 log — `plafond 4/4`, floor relaxed by `6 - 3 = 3`. Passing a reconstruction off
+as a measurement is precisely the sort of thing this document condemns elsewhere, and catching
+oneself is no easier than catching code.
 
 *The harness died exactly when it had to speak.* The floor message printed, then
 `TypeError: Assignment to constant variable`: `code` was declared `const` and reassigned further
@@ -538,6 +545,57 @@ than by a run.
 *What I did not do: `plafond` still has a floor of 6, and the overflow branch remains unexercised on
 any machine whose trash exceeds 256 MiB. Relaxing the floor makes the run honest; it does not close
 the hole.*
+**Fixing a crash reveals the defect it was hiding — 30/09/2026.** Run `36606537220` confirmed the
+relaxation works: `plafond 4/4`, `6 - 3 = 3`, one more structural admission in the register, and the
+seven probes the `TypeError` had killed all ran. `windows` stayed **red** for an unexpected reason,
+and that is what this is about.
+
+**The harness, returned to itself, immediately had something else to say.** With the crash repaired,
+`palier` went red: **1 verdict written, 5 in the floor**. The same defect as `plafond`, on the same
+kind of machine, for a different reason — the twenty-gigabyte threshold rule can only be exercised if
+a folder above 20 GB exists, and on the runner none does. The probe has been saying so all along:
+
+> `palier non éprouvé : aucun dossier de plus de 20 Go trouvé sur cette machine`
+
+in two lines, in a dialect (`non **éprouvé**`) that matches none of the marks `MOT_AVEU` recognises,
+and without the `note :` line the collector expects. The same pattern, the same consequence: **the
+probe tells the truth, and the truth is not in a shape the control can read.**
+
+The hole is now declared like `plafond`'s, with its cost: four verdicts, a floor taken from 5 to 1.
+That is 7/32's mechanism applied to the second case, with no new code.
+
+**What this episode costs, and why it gets written down.** The `TypeError` did not only kill seven
+probes. It killed the harness **at the first floor**, so it **hid** every floor further down the
+list. `palier` was already wrong on that machine; it was not *red*, it was *unseen*. The first defect
+served as cover for the second, and the second would have been caught on the first run without the
+first.
+
+It is the counterpart of a defect this document has already written down: *a hole that vanishes on a
+lucky run is worse than a permanent one*. Here it was not a hole that vanished, it was a **red** that
+ate a red. A control that dies before the end protects nothing after it — and the fact that it died
+*red* makes it easier to ignore, not harder.
+
+**The second red was a different thing entirely.** The `sondes` job failed for a reason that
+predates all of this: `D:` produced no usable snapshot within 900 s.
+
+```
+analyse de D: et de C: ... delai de 900s dépassé / C: 207137 dossiers, 1196647 fichiers
+Le volume D n'a pas produit d'instantané exploitable (delai de 900s dépassé).
+```
+
+And it is **intermittent**: the same `D:` produced its snapshot in the `windows` job of the very same
+run, minutes earlier. `D:` is not accepted because it is virtual — it is accepted on **declaration**
+(`DISKMAP_SONDE_MACHINE_EPHEMERE`), and the log says so in as many words. A volume accepted on
+declaration is one whose snapshot nothing guarantees, and the 900 s limit is a constant, not a
+measurement.
+
+I did not touch the timeout: raising it to 1800 s would move the failure to the next step rather than
+fix it, and a longer timeout on a slow runner is not a correction, it is waiting. The finding stands:
+**the availability of the test infrastructure is not measured by this repository**, and none of its
+controls can see it.
+
+*What I did not do: `palier` still has a floor of 5, and its branch stays unexercised on any machine
+without a 20 GB folder. Relaxing the floor makes the run honest; it does not close the hole.*
 
 register, with its three numbers, and the possible closure is named: a fillable disposable volume
 the application fills itself, which needs elevation and a volume this project does not have.
@@ -551,8 +609,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:1197`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1333`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:1207`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1343`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1017,9 +1075,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1258`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1268`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1381`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1391`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

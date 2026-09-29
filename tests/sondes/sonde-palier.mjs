@@ -129,8 +129,16 @@ for (const drive of ['C', 'G', VOL]) {
 }
 
 if (!trouve) {
-  console.log(`      palier non éprouvé : aucun dossier de plus de 20 Go trouvé sur cette machine`);
-  console.log('      (la règle reste couverte par les tests unitaires, qui la vérifient à 74,2 Go)');
+  // Un AVEU, dans le dialecte du registre : la marque (`non exercée`) et la
+  // justification (`structurel : …`) sur UNE seule ligne, sinon le collecteur la
+  // classe en explication et l avale. Mesuré le 30/09 sur le runner : aucun
+  // dossier de plus de 20 Go n existe, donc 1 verdict sur les 5 du plancher — et
+  // la sonde le disait deja, en deux lignes que personne ne comptait.
+  console.log('      note : ' + [
+    'le palier de vingt gigaoctets NON EXERCÉE — structurel : aucun dossier de plus',
+    'de 20 Go n existe sur cette machine ; la règle reste couverte par les tests',
+    'unitaires, qui la vérifient à 74,2 Go, et ce trou coûte 4 verdicts',
+  ].join(' '));
 } else {
   const { drive, ap, nom } = trouve;
   console.log(`      ${drive}:\\${nom} — ${(ap.total_size / Go).toFixed(1)} Go, lot de ${ap.deletable} élément(s)`);

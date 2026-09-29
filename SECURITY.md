@@ -660,7 +660,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:1174`) et le motif est écrit (`tests/sondes/lancer.mjs:1381`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1173`, motif `tests/sondes/lancer.mjs:1326`. Sans ce
+(`tests/sondes/lancer.mjs:1184`) et le motif est écrit (`tests/sondes/lancer.mjs:1391`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:1183`, motif `tests/sondes/lancer.mjs:1336`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -676,8 +676,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:1197`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1333`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:1207`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1343`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -717,9 +717,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1258`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1268`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1381`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1391`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -825,7 +825,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:692`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:702`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1191,9 +1191,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1174`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:1184`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:1173`, motif `tests/sondes/lancer.mjs:1326`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:1183`, motif `tests/sondes/lancer.mjs:1336`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1235,7 +1235,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:924`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:934`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1748,11 +1748,23 @@ Le run `36598186930` est **rouge**. C'est la première fois que la CI tranche, e
 elle tranche dans le sens qu'on redoutait : non pas sur un défaut du produit, mais
 sur le harnais qui devait le garder. Trois défauts, dont un mien.
 
-**1. Un plancher qui mentait sur ce qu'il mesurait.** Sur le runner, `plafond` a
-écrit **3 verdicts sur 6**. Ici, sur cinq volumes, elle en écrit 6. La cause est
-dans `sonde-corbeille-plafond.mjs` : au-delà de 256 Mio de plafond de corbeille,
-la branche du débordement est sautée, et elle vaut trois verdicts. Or c'est
-exactement le cas du volume jetable de la CI.
+**1. Un plancher qui mentait sur ce qu'il mesurait.** Mesuré le 30/09, et le
+chiffre est dans l'aveu de la sonde elle-même : le plafond de corbeille de `D:`
+sur le runner vaut **9727 Mio**, soit **38 fois** la borne de 256 Mio que la sonde
+s'est donnée. Au-delà, la branche du débordement est sautée — trois verdicts qui
+ne s'écriront donc pas, là-bas. Un plancher de 6 y était **insatisfaisable par
+construction** ; ici il est exact, et `plafond` écrit ses 6 verdicts. Un plancher
+ne peut pas être vrai partout : il faut donc dire **lequel**, et le dire d'après une
+mesure.
+
+*Et une correction, sur ce paragraphe même.* La première version annonçait « 3
+verdicts sur 6 sur le runner ». C'est une **reconstruction** tirée de la structure
+de la sonde, pas une mesure : le job `windows` du run précédent n'a jamais exécuté
+une seule sonde, `D:` n'ayant produit aucun instantané. Le chiffre juste est dans
+le log du 30/09 : `plafond 4/4`, plancher relâché de `6 - 3 = 3`. Présenter une
+reconstruction comme une mesure est exactement l'ascension que ce document
+condamne ailleurs — et il n'est pas plus facile de s'attraper soi-même que
+d'attraper le code.
 
 Le plancher de 6 était donc faux sur la machine qui l'a le plus servi. Un
 contrôle qui rougit une sonde saine n'est pas plus « rouge en permanence » qu'un
@@ -1783,7 +1795,7 @@ du dépôt dit déjà que le défaut n'est pas le trou, c'est l'excuse.
 **Ce qui change, et pourquoi ce n'est pas un plancher plus permissif.**
 
 Le champ `couts` entre au registre `AVEURS_STRUCTURELS`
-(`tests/sondes/lancer.mjs:465`) : un trou structurel ne se contente plus de se
+(`tests/sondes/lancer.mjs:473`) : un trou structurel ne se contente plus de se
 nommer, il **déclare** ce qu'il coûte en verdicts. Le plancher se relâche
 d'autant — et d'autant seulement, parce qu'un aveu nu ne détend rien.
 
@@ -1833,5 +1845,69 @@ un run.
 *Ce que je n'ai pas fait : `plafond` reste à 6 verdicts de plancher, et la
 branche du débordement reste non éprouvée sur toute machine dont la corbeille
 dépasse 256 Mio. La relaxer rend le run honnête, elle ne comble pas le trou.*
+
+---
+### 7/33 Corriger un crash révèle le défaut qu'il masquait · **30/09/2026**
+
+Le run `36606537220` a vérifié la détente du plancher : `plafond 4/4`, `6 - 3 = 3`,
+un aveu structurel de plus au registre, et les sept sondes que le `TypeError`
+avait tuées ont tourné. Le `windows` est resté **rouge**, pour une raison
+inattendue, et c'est le sujet de cette section.
+
+**Le harnais, rendu à lui-même, a trouvé autre chose à dire.** Aussitôt le crash
+réparé, `palier` rougit : **1 verdict écrit, 5 au plancher**. Exactement le même
+défaut que `plafond`, sur une autre machine et pour une autre raison : la règle du
+palier de vingt gigaoctets ne s'exerce que si un dossier de plus de 20 Go existe,
+et sur le runner il n'y en a pas. La sonde le disait depuis toujours —
+
+> `palier non éprouvé : aucun dossier de plus de 20 Go trouvé sur cette machine`
+
+— en deux lignes, dans un dialecte (« non **éprouvé** ») qui ne correspond à
+aucune des marques que `MOT_AVEU` reconnaît, et sans la ligne `note :` que le
+collecteur attend. Le même motif, la même conséquence : **la sonde dit la vérité,
+et la vérité n'est pas dans le format que le contrôle sait lire.**
+
+Le trou est donc déclaré, comme celui de `plafond`, avec son coût : quatre
+verdicts, un plancher ramené de 5 à 1. C'est le mécanisme de 7/32 appliqué au
+second cas, sans nouveau code.
+
+**Ce que cet épisode coûte, et qu'il faut écrire.** Le `TypeError` ne faisait pas
+que tuer sept sondes. Il **tuait le harnais au premier plancher**, donc il
+**masquait** tous les planchers situés plus loin dans la liste. `palier` était
+déjà faux sur cette machine avant aujourd'hui ; il n'était pas **rouge**, il
+n'était pas **vu**. Le premier défaut a servi de couverture au second, et le
+second aurait été trouvé dès le premier run sans le premier.
+
+C'est le pendant d'un défaut déjà écrit dans ce document : *un trou qui
+s'efface sur un run chanceux est plus dangereux qu'un trou permanent*. Ici ce
+n'est pas un trou qui s'est effacé, c'est un **rouge** qui a mangé un rouge. Un
+contrôle qui meurt avant la fin ne protège plus rien de ce qui suit — et le fait
+qu'il soit mort en **rouge** le rend plus facile à ignorer, pas moins.
+
+**Le second reds n'était pas le même, lui.** Le job `sondes` a échoué sur un
+autre motif, antérieur à tout ce travail : `D:` n'a produit aucun instantané
+exploitable en 900 s.
+
+```
+analyse de D: et de C: ... delai de 900s dépassé / C: 207137 dossiers, 1196647 fichiers
+Le volume D n'a pas produit d'instantané exploitable (delai de 900s dépassé).
+```
+
+Et il est **intermittent** : le même `D:` a produit son instantané dans le job
+`windows` du même run, quelques minutes plus tôt. `D:` n'est pas accepté parce
+qu'il est virtuel — il est accepté sur **déclaration**
+(`DISKMAP_SONDE_MACHINE_EPHEMERE`), le log le dit en toutes lettres. Un volume
+accepté sur déclaration est un volume dont l'instantané n'est garanti par rien,
+et le délai de 900 s est une constante, pas une mesure.
+
+Je n'ai pas touché à ce délai : le porter à 1800 s ferait passer l'étape au
+prochain échec au lieu de la faire passer, et un délai allongé sur un runner
+lent n'est pas une correction, c'est de l'attente. Le constat tient : **la
+disponibilité de l'infrastructure de test n'est pas mesurée par ce dépôt**, et
+aucun de ses contrôles ne peut le voir.
+
+*Ce que je n'ai pas fait : `palier` garde un plancher de 5, et sa branche reste
+non exercée sur toute machine sans dossier de 20 Go. La détente rend le run
+honnête, elle ne comble pas le trou.*
 
 ---
