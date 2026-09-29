@@ -132,25 +132,6 @@ if (MODE === 'idle') {
 
 // ---------------------------------------------------- arrêt pendant une analyse
 if (MODE === 'running') {
-  // On lance un parcours et on attend l'accusé de réception : à cet instant le
-  // serveur a déjà marqué le volume « en cours », donc le refus 409 est certain.
-  const attente = page.waitForResponse(r => r.url().includes('/api/scan/'));
-  await page.locator('.drive').first().locator('button').click();
-  await attente;
-
-  await page.locator('#stop').click();
-  await page.waitForSelector('#smodal:not(.hidden)', { timeout: 5000 });
-  const texte = await page.locator('#sbody').innerText();
-  // « Nomme » doit vouloir dire : dit DE QUEL volume il s'agit. Une phrase
-  // générique du type « une analyse est en cours » passerait un test qui se
-  // contenterait de chercher les mots « analyse en cours ».
-  verifier('la confirmation nomme le volume analysé',
-    /[A-Z]: analyse en cours/.test(texte), `texte = ${JSON.stringify(texte.slice(0, 90))}`);
-  // Une boîte qui dit « vraiment ? » sans chiffre serait une question vide.
-  verifier('la confirmation CHIFFRE ce qui serait perdu',
-    /dossiers/.test(texte) && /\d/.test(texte),
-    `texte = ${JSON.stringify(texte.slice(0, 90))}`);
-
   const lire = () => page.evaluate(async () => {
     try {
       const r = await fetch('/api/state', { headers: { 'X-Diskmap': '1' } });
@@ -158,47 +139,98 @@ if (MODE === 'running') {
     } catch { return null; }
   });
 
-  const avantArret = await lire();
-  const annonce = Math.max(0, ...(avantArret?.drives || []).map((d) => d.scan_running || 0));
-  console.log(annonce > 0
-    ? `      constat : un volume annonçait une analyse en vol (scan_running = ${annonce})`
-    : `      constat : scan_running déjà rendu à 0 avant la lecture — l'analyse a été trop`
-      + ` rapide pour être observée ici ; l'invariant ci-dessous reste mesurable`);
+  // On lance un parcours et on attend l'accusé de réception : à cet instant le
+  // serveur a déjà marqué le volume « en cours », donc le refus 409 est certain.
+  const attente = page.waitForResponse((r) => r.url().includes('/api/scan/'));
+  await page.locator('.drive').first().locator('button').click();
+  await attente;
+
+  // --- ce que le serveur publie PENDANT l'analyse ----------------------------
+  //
+  // La capture se fait ICI, dans la boucle qui suit la demande, et jamais apres.
+  // Deux raisons, et la seconde vient de ce fichier :
+  //
+  // 1. Lue apres coup, une analyse deja terminee ne laisse que son instantane ;
+  //    l'absence se lirait « l'analyse en vol n'existe pas » — un verdict faux
+  //    sur un defaut qui n'y est pas. Le 28/09, `sonde-tickets` a commis
+  //    exactement cette erreur.
+  //
+  // 2. Interroger l'etat APRES `/api/quit` ne prouve rien : le serveur est mort,
+  //    la requete echoue, et la verification passait quoi qu'il arrive. Elle ne
+  //    pouvait pas rougir. Une verification qui ne peut pas echouer n'en est pas
+  //    une — et celle que ce fichier portait le 29/09 en etait une. Elle
+  //    affirmait un invariant qu'aucune panne du serveur n'aurait pu contredire.
+  //
+  // Le tri n'est pas « vu / pas vu » : c'est « vu / le serveur analyse sans
+  // publier / l'analyse a fini ». `scanning` est le fait indépendant : il dit
+  // qu'une analyse court, sans dépendre du numéro. Sans lui, neutraliser la
+  // publication ne faisait pas ROUGE — la sonde croyait à un volume trop rapide
+  // et passait en 3/3. C'est mesuré : garde neutralisée, sortie 0. Une
+  // vérification qui se dégonfle en note quand on lui retire ce qu'elle prouve
+  // n'est pas une vérification.
+  let annonce = 0;
+  let enCours = false;
+  let lettre = null;
+  let affiche = '';
+  for (let i = 0; i < 40; i++) {
+    const etat = await lire();
+    // `scanning` n'est pas un booleen : c'est la LETTRE du volume en cours, et
+    // `null` quand rien ne tourne. Mesure : `scanning = 'C'` pendant l'analyse de
+    // C:. Comparer a `true` ne pouvait donc jamais etre vrai — et `d.scanning`, par
+    // volume, vaut toujours `null` : les deux sont des predicats impossibles, et
+    // le second fait croire a un fait disponible.
+    lettre = typeof etat?.scanning === 'string' ? etat.scanning : null;
+    enCours = lettre !== null;
+    annonce = Math.max(0, ...(etat?.drives || []).map((d) => d.scan_running || 0));
+    if (enCours || annonce > 0) {
+      affiche = await page.locator('.drive').first().innerText();
+      break;
+    }
+    await page.waitForTimeout(50);
+  }
+
+  // « analyse en cours… » passerait aussi, et ne prouverait rien : c'est le
+  // libelle du cas ou le serveur ne publie AUCUNE analyse. Le NUMERO est ce qui
+  // distingue une analyse en vol d'un texte d'interface. Neutraliser la
+  // publication du ticket fait donc passer cette verification au rouge — ce que
+  // la version precedente ne pouvait pas faire.
+  const prefixe = 'analyse n°';
+  const i = affiche.indexOf(prefixe);
+  const nombre = i < 0 ? NaN : Number(affiche.slice(i + prefixe.length).split(' ')[0]);
+  const mesure = `scanning = ${lettre === null ? 'aucun' : lettre}`
+    + `, scan_running = ${annonce},`
+    + ` écran = ${JSON.stringify(affiche.slice(0, 110))}`;
+
+  if (annonce > 0) {
+    verifier('le serveur publie le numéro de l’analyse en vol',
+      Number.isFinite(nombre) && nombre > 0, mesure);
+  } else if (enCours) {
+    // Le fait est établi — une analyse court — et le numéro manque. C'est un
+    // défaut de l'application, pas une limite de la mesure : l'écran ne peut
+    // alors distinguer une analyse de la précédente, et rien ne dit à l'utilisateur
+    // laquelle il attend.
+    verifier('le serveur publie le numéro de l’analyse en vol', false, mesure);
+  } else {
+    console.log('note : l’analyse s’est terminée avant d’être observée sur ce volume'
+      + ' (trop rapide) — la publication du numéro n’est pas exercée ici');
+  }
+
+  await page.locator('#stop').click();
+  await page.waitForSelector('#smodal:not(.hidden)', { timeout: 5000 });
+  const texte = await page.locator('#sbody').innerText();
+  // « Nomme » doit vouloir dire : dit DE QUEL volume il s'agit. Une phrase
+  // generique du type « une analyse est en cours » passerait un test qui se
+  // contenterait de chercher les mots « analyse en cours ».
+  verifier('la confirmation nomme le volume analysé',
+    /[A-Z]: analyse en cours/.test(texte), `texte = ${JSON.stringify(texte.slice(0, 90))}`);
+  // Une boite qui dit « vraiment ? » sans chiffre serait une question vide.
+  verifier('la confirmation CHIFFRE ce qui serait perdu',
+    /dossiers/.test(texte) && /\d/.test(texte),
+    `texte = ${JSON.stringify(texte.slice(0, 90))}`);
+
   await page.locator('#sdo').click();
   await page.waitForSelector('#stopped:not(.hidden)', { timeout: 5000 });
   verifier('« Arrêter maintenant » arrête bien', true, '');
-
-  // --- l'état annoncé ne survit pas à l'arrêt --------------------------------
-  // Le serveur PUBLIE `scan_running` tant qu'un volume est en cours, et l'écran
-  // affiche « analyse n°N en cours » dessus. Une valeur laissée collée par
-  // l'arrêt afficherait un compte éternel — et, pire, la file refuserait toute
-  // nouvelle demande : `start_scan` refuse tant qu'un volume est en cours.
-  // L'application deviendrait alors inutilisable sans redémarrage.
-  //
-  // La lecture se fait par l'API, pas par le DOM : ce n'est pas l'affichage qu'on
-  // éprouve, c'est l'état que le serveur refuse de laisser mentir.
-
-  // AVANT l'arrêt, dans la même boucle que l'arrêt lui-même : lu après coup, un
-  // volume rapide a déjà rendu `scan_running` à 0, et l'absence se lirait
-  // « l'analyse en vol n'existe pas » — un verdict faux sur un défaut qui n'y
-  // est pas. Le 28/09, la sonde `tickets` a commis exactement cette erreur.
-
-
-  // APRÈS l'arrêt, deux issues, et aucune n'est un cas non mesuré : soit le
-  // serveur répond encore et aucun volume ne doit annoncer d'analyse, soit il est
-  // arrêté et l'invariant est tenu par sa disparition — ce qui se DIT, au lieu
-  // d'être compté comme une mesure d'état.
-  const apresArret = await lire();
-  if (apresArret === null) {
-    verifier('l’arrêt ne laisse aucun volume annoncer une analyse en vol', true,
-      'le serveur ne répond plus : aucun état ne peut être affiché, donc rien ne peut rester collé');
-  } else {
-    const restes = (apresArret.drives || [])
-      .filter((d) => (d.scan_running || 0) > 0)
-      .map((d) => `${d.letter}:${d.scan_running}`);
-    verifier('l’arrêt ne laisse aucun volume annoncer une analyse en vol', restes.length === 0,
-      `scan_running encore publié — ${restes.join(', ')}`);
-  }
 }
 
 console.log('');
