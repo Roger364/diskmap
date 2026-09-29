@@ -463,7 +463,7 @@ const AVEURS_STRUCTURELS = [
 // Le COUT d un trou, en verdicts. Un aveu structurel ne se contente pas de nommer
 // ce qui n a pas ete eprouve : il DECLARE combien de verifications la sonde n ecrira
 // pas a cause de ca, et c est ce nombre qui detend son plancher. Mesure le 30/09 :
-// `plafond` ecrivait 6 verdicts ici et 3 sur le runner, et son plancher fixe de 6
+// `plafond` ecrivait 6 verdicts ici et 4 sur le runner, et son plancher fixe de 6
 // le faisait rougir a tort — un controle qui ment sur ce qu il mesure. Le nombre
 // de verdicts perdus ne se devine donc pas : il se LIT dans le registre, la ou le
 // trou se declare. Une sonde ne peut pas acheter son plancher : elle peut
@@ -483,7 +483,7 @@ const AVEURS_STRUCTURELS = [
   { motif: 'le palier de vingt gigaoctets non exercée', couts: 4, pourquoi: 'mesuré le 30/09 sur le runner : aucun dossier de plus de 20 Go n existe, la sonde n écrit donc que son unique verdict de coherence ; la branche à cinq verdicts reste couverte par les tests unitaires, qui la vérifient à 74,2 Go' },
 
   { motif: 'branches du débordement non exercée — plafond non mesurable', couts: 4, pourquoi: 'mesuré : `corbeille_plafond` vaut null, et la section 1 saute alors son troisieme verdict ; les trois verdicts de la branche de débordement sont donc hors d atteinte' },
- { motif: 'branches du débordement non exercée — plafond au-delà de la borne d écriture de 256 mio', couts: 3, pourquoi: 'mesuré le 30/09 : le plafond du volume jetable de la CI dépasse 256 Mio, alors qu il vaut 51 Mio sur les volumes locaux ; exercer la branche demanderait d écrire plus que la borne d écriture que la sonde s est donnée' },
+ { motif: 'branches du débordement non exercée — plafond au-delà de la borne d écriture de 256 mio', couts: 2, pourquoi: 'mesuré le 30/09, run 36606537220 : le plafond du volume jetable de la CI dépasse 256 Mio, alors qu il vaut 51 Mio sur les volumes locaux ; la sonde y écrit 4 verdicts sur 6, donc la perte est de 2, pas de 3 — un cout plus haut pardonnerait un verdict perdu sans aveu' },
 ];
 
 // Un aveu est reconnu par sa MARQUE, explicite de preference. Les formes
@@ -637,6 +637,16 @@ const TABLE_RECONNAISSANCE = [
     'explication',
     'une note qui n avoue rien est une explication, pas un aveu',
   ],
+  [
+    'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : trop court',
+    'aveu nu',
+    'une justification de moins de douze caracteres garde sa ligne mais perd sa raison : la garde de longueur a besoin de sa propre ligne, sinon la retirer ne casse rien',
+  ],
+  [
+    'branches du débordement NON EXERCÉE — non mesurable — couvert par sonde-inconnue.mjs : un nom de verification',
+    'aveu nu',
+    'une justification qui cite un fichier hors catalogue ne couvre rien : la branche « couvert par » a besoin de sa propre ligne, sinon on ne sait pas qu elle rend avant le registre',
+  ],
 ];
 const tableFaux = TABLE_RECONNAISSANCE
   .filter(([texte, attendu]) => classerNote(texte).sorte !== attendu)
@@ -644,8 +654,12 @@ const tableFaux = TABLE_RECONNAISSANCE
 if (tableFaux.length) {
   console.error(`  LA TABLE DE RECONNAISSANCE DES AVEUX EST FAUSSE : ${tableFaux.length}`);
   for (const m of tableFaux) console.error(`    - ${m}`);
-  'Le classifieur ne tient plus sa promesse, donc plus aucun aveu du depot',
-  'n est comptable. Corriger avant de lire un run vert.',
+  // Une expression a virgules : elle evaluait les deux chaines sans jamais les
+  // afficher, et le run sortait en 1 en gardant le silence. Un controle qui refuse
+  // de dire pourquoi il vient de mourir est un controle que personne ne peut
+  // reparer. Le 30/09, un modele adverse l a trouve en lisant ces lignes.
+  console.error('    Le classifieur ne tient plus sa promesse, donc plus aucun aveu' +
+    ' du depot n est comptable. Corriger avant de lire un run vert.');
   process.exit(1);
 }
 
@@ -653,7 +667,7 @@ if (tableFaux.length) {
 // verdicts ne doit pas etre rougee — mais une sonde qui en perd plus qu elle
 // ne dit pas, si. Ces entrees sont les MESURES du 30/09, pas des intentions :
 // `plafond` ecrivait 6 verdicts sur un volume dont la corbeille tient sous
-// 256 Mio, et 3 sur celui de la CI, dont la corbeille est plus large. Le meme
+// 256 Mio, et 4 sur celui de la CI, dont la corbeille est plus large. Le meme
 // plancher ne peut pas etre vrai sur les deux — donc il se relache, et il se
 // relache du nombre que le registre DECLARE.
 const NON_EXERCEE = 'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : le plafond de corbeille n est pas mesurable';
@@ -667,7 +681,7 @@ const NON_DECLARE = 'branches du débordement NON EXERCÉE — un trou neuf — 
 const notes = (...textes) => textes.map((t) => ({ texte: t, ...classerNote(t) }));
 const TABLE_PLANCHER = [
   [6, notes(), 6, 'sans note, le plancher ne bouge pas'],
-  [6, notes(TROP_LARGE), 3, 'un trou declare de 3 verdicts relache de 3 (mesure : 3 verdicts ecrits sur le runner)'],
+  [6, notes(TROP_LARGE), 4, 'un trou declare de 2 verdicts relache de 2 (mesure : la sonde ecrit 4 verdicts sur le runner, donc la perte est de 2)'],
   [6, notes(NON_EXERCEE), 2, 'un trou declare de 4 verdicts relache de 4'],
   [6, notes(SANS_MARQUE), 6, '« éprouvé » n est pas une marque d aveu : rien ne se relache'],
   [6, notes(TRONQUEE), 6, 'une justification tronquee ne relache rien'],

@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:1201`) and the reason is printed (`tests/sondes/lancer.mjs:1408`). A zero summary has its own door: `tests/sondes/lancer.mjs:1200`, reason `tests/sondes/lancer.mjs:1353`.
+(`tests/sondes/lancer.mjs:1215`) and the reason is printed (`tests/sondes/lancer.mjs:1422`). A zero summary has its own door: `tests/sondes/lancer.mjs:1214`, reason `tests/sondes/lancer.mjs:1367`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -480,7 +480,8 @@ the harness rather than the product. Three defects, one of them mine.
 
 *A floor that lied about what it measured.* The number is in the probe's own admission: the trash
 ceiling of `D:` on the runner is **9727 MiB**, **38×** the 256 MiB bound the probe gave itself. Past
-that bound the overflow branch is skipped — three verdicts that will not be written there. A floor of
+that bound the overflow branch is skipped — the probe's own summary reads `4/4` there, so **two** of
+the six verdicts are not written. A floor of
 6 was therefore **unsatisfiable by construction** on that machine, while here it is exact and
 `plafond` writes all 6. A floor cannot be true everywhere: it has to say *which* one, and say it from
 a measurement.
@@ -488,7 +489,7 @@ a measurement.
 *And a correction, to that very paragraph.* The first version claimed "3 verdicts out of 6 on the
 runner". That is a **reconstruction** from the probe's structure, not a measurement: the `windows`
 job of the previous run never executed a single probe, `D:` having produced no snapshot. The right
-figure is in the 30/09 log — `plafond 4/4`, floor relaxed by `6 - 3 = 3`. Passing a reconstruction off
+figure is in the 30/09 log — `plafond 4/4`, floor relaxed by `6 - 2 = 4`. Passing a reconstruction off
 as a measurement is precisely the sort of thing this document condemns elsewhere, and catching
 oneself is no easier than catching code.
 
@@ -546,7 +547,7 @@ than by a run.
 any machine whose trash exceeds 256 MiB. Relaxing the floor makes the run honest; it does not close
 the run honest; it does not close the hole.*
 **Fixing a crash reveals the defect it was hiding — 30/09/2026.** Run `36606537220` confirmed the
-relaxation works: `plafond 4/4`, `6 - 3 = 3`, one more structural admission in the register, and the
+relaxation works: `plafond 4/4`, `6 - 2 = 4`, one more structural admission in the register, and the
 seven probes the `TypeError` had killed all ran. `windows` stayed **red** for an unexpected reason,
 and that is what this is about.
 
@@ -649,8 +650,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:1224`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1360`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:1238`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1374`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1115,9 +1116,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1285`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1299`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1408`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1422`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,
