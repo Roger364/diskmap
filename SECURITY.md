@@ -237,7 +237,7 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 
 ### R1 — XSS stockée via le nom de volume → effacement arbitraire · **Haute** · *corrigé*
 
-`ui/index.html:519-520` :
+`ui/index.html:524-525` :
 
 ```js
 <span class="lbl">${d.label || ''}</span>
@@ -261,12 +261,12 @@ aucun nœud texte cassé.
 
 ### R2 — L'aperçu montre 25 chemins, l'exécution en supprime N · **Haute** · *corrigé*
 
-`ui/index.html:1087` : `for (const it of d.items.slice(0, 25))`, suivi de
+`ui/index.html:1110` : `for (const it of d.items.slice(0, 25))`, suivi de
 `… et ${d.items.length - 25} autre(s)`. Rien n'empêche l'exécution de traiter les N.
 
 « Tout sélectionner » dans un dossier de 200 entrées affiche donc 175 chemins que
 l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
-(`ui/index.html:1076`) est lui aussi purement client, et ne couvre pas le *nombre*.
+(`ui/index.html:1099`) est lui aussi purement client, et ne couvre pas le *nombre*.
 
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
@@ -586,11 +586,11 @@ arrivée**.
 > Une seule réponse a le droit de peindre : la dernière demandée. Une réponse périmée ne touche
 > même pas l'état — sinon la suivante hérite d'un état déjà mêlé.
 
-**Le correctif.** Un jeton par requête (`ui/index.html:704`), incrémenté au départ de `load()` et
-de `search()`, comparé à l'arrivée (`ui/index.html:763` et `ui/index.html:957`). La réponse
+**Le correctif.** Un jeton par requête (`ui/index.html:727`), incrémenté au départ de `load()` et
+de `search()`, comparé à l'arrivée (`ui/index.html:763` et `ui/index.html:980`). La réponse
 périmée rend la main sans rien écrire. Son **erreur** non plus n'est pas dite : la parler ferait
 remonter d'un cran un dossier qui n'a pas disparu, puisque le chemin à remonter serait celui de la
-requête périmée (`ui/index.html:740`).
+requête périmée (`ui/index.html:786`).
 
 **Épreuves, les deux sens.** Jeton retiré, 2 s de latence injectée sur `/api/tree` : deux verdicts
 rougissent, et le nouveau — « l'ordre demandé n'a jamais été contredit à l'écran » — nomme la
@@ -644,9 +644,9 @@ faisait échouer, donc rien ne pouvait être corrigé.
 
 **Le correctif, en deux morceaux qui se répondent.** La sonde passe par un `verifier()` commun
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
-(`tests/sondes/sonde-generation.mjs:157`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
+(`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:781`) et le motif est écrit (`tests/sondes/lancer.mjs:885`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:881`. Sans ce
+(`tests/sondes/lancer.mjs:802`) et le motif est écrit (`tests/sondes/lancer.mjs:906`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:801`, motif `tests/sondes/lancer.mjs:902`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -662,8 +662,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:804`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:888`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:825`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:909`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -703,9 +703,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:834`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:855`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:930`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:951`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -811,7 +811,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:336`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:345`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -913,9 +913,9 @@ qui n'existait pas — et un écran « corrigé » qui resterait faux.
 > l'utilisateur a été perdu en route.
 
 **Le correctif.** Un repère unique : l'écran note, à chaque peinture, le `finished_ms` du volume
-qu'il montre (`ui/index.html:422`). La veille compare (`ui/index.html:1833`) : tant que le
+qu'il montre (`ui/index.html:427`). La veille compare (`ui/index.html:1862`) : tant que le
 repère vaut celui de l'état, elle ne fait rien ; dès qu'il diffère, elle recharge
-(`ui/index.html:1838`). Le rechargement passe par `rechargerTri()` et non `load()` : la
+(`ui/index.html:1867`). Le rechargement passe par `rechargerTri()` et non `load()` : la
 **sélection** se garde — c'est une cible de suppression, et un rechargement de fond n'a pas le
 droit de la déplacer — et une recherche en cours reste une recherche.
 
@@ -1053,12 +1053,30 @@ chemin, qui est unique par construction.
 
 Un nom n'est une adresse que tant qu'il est rare. Un chemin en est une.
 
-**Limite restante.** `attendreDossier` et `attendreFichier` vérifient le fait dans l'instantané,
-mais utilisent encore `!scanning` comme porte avant la requête à `/api/tree`. À l'inverse,
-`attendreAnalyse` peut, avec son argument par défaut, conclure sur le seul état `!scanning` ;
-c'est une attente indirecte et elle reste utilisée pour les rescan/retry de `lot`. Cette limite
-n'est pas corrigée par R16 : les sondes qui attendent un dossier ou un fichier doivent continuer
-à vérifier ce fait directement, sans remplacer cette preuve par un drapeau.
+**Le ticket, consommé par les clients — 29/09/2026.** Le correctif côté serveur restait une
+promesse que personne n'encaissait : l'interface et les sondes continuaient d'attendre le
+drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais :
+
+- `POST /api/scan` répond `{ok, ticket}`, et chaque client attend **son** ticket :
+  `attendreTicket` (`tests/sondes/config.mjs:452`) boucle sur `scan_completed >= ticket` et ne
+  consulte jamais `!scanning` pour conclure ;
+- l'interface note le ticket rendu (`ui/index.html:675`) et `poll()` s'arrête sur sa publication
+  (`ui/index.html:693`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
+  l'exécution (`ui/index.html:1560`) ;
+- `generation` demande son analyse et attend son ticket (`tests/sondes/sonde-generation.mjs:71`)
+  — l'attente par le fait, plus bas, reste sa preuve d'existence ;
+- la sonde `tickets` (`tests/sondes/sonde-tickets.mjs:62`) éprouve le contrat du point de vue
+  client : ticket rendu, publication, coalescence mesurée (deux demandes rapprochées pendant un
+  scan → deux tickets distincts honorés par la même publication), et fichier créé avant la
+  demande présent dans l'instantané publié sous ce ticket.
+
+**Ce qui reste une limite.** `attendreDossier` et `attendreFichier` vérifient le fait dans
+l'instantané, mais utilisent encore `!scanning` comme porte avant la requête à `/api/tree`.
+À l'inverse, `attendreAnalyse` (`tests/sondes/config.mjs:413`) peut, avec son argument par
+defaut, conclure sur le seul état `!scanning` ; c'est une attente indirecte et elle reste
+utilisée pour les rescan/retry de `lot`. Ces deux limites ne sont pas corrigées : les sondes qui
+attendent un dossier ou un fichier doivent continuer à vérifier ce fait directement, sans
+remplacer cette preuve par un drapeau ni par un ticket.
 
 ---
 
@@ -1121,7 +1139,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **La cible est figée à l'aperçu.** `Montre` porte le chemin résolu ; `execute` ne résout
   plus rien. C'est la bonne architecture : la seule façon de supprimer reste de décider ce
   qu'on supprime.
-- **Une seule réponse peint** (`ui/index.html:704`). Une requête périmée rend la main sans
+- **Une seule réponse peint** (`ui/index.html:727`). Une requête périmée rend la main sans
   toucher l'état, et son erreur non plus n'est pas dite — R11. Le même refus que pour la cible :
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
@@ -1133,9 +1151,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:781`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:802`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:881`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:801`, motif `tests/sondes/lancer.mjs:902`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1162,7 +1180,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   étrangère laissait donc l'écran afficher un instantané que le serveur ne servait plus, sans un
   mot — et un geste de l'utilisateur survenu **pendant** l'analyse était perdu sans bruit,
   mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
-  chaque peinture (`ui/index.html:422`), comparé par la veille (`ui/index.html:1833`) — R14.
+  chaque peinture (`ui/index.html:427`), comparé par la veille (`ui/index.html:1862`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
   (`src/main.rs:205`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
@@ -1177,7 +1195,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:553`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:574`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1139`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le

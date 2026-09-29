@@ -379,9 +379,9 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 > to speak.
 
 The fix has to be in two places, or it does not hold. The probe keeps a count
-(`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:157`).
+(`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:781`) and the reason is printed (`tests/sondes/lancer.mjs:885`). A zero summary has its own door: `tests/sondes/lancer.mjs:780`, reason `tests/sondes/lancer.mjs:881`.
+(`tests/sondes/lancer.mjs:802`) and the reason is printed (`tests/sondes/lancer.mjs:906`). A zero summary has its own door: `tests/sondes/lancer.mjs:801`, reason `tests/sondes/lancer.mjs:902`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -401,8 +401,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:804`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:888`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:825`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:909`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -531,8 +531,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:422`). The watch compares (`ui/index.html:1833`) and reloads
-(`ui/index.html:1838`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:427`). The watch compares (`ui/index.html:1862`) and reloads
+(`ui/index.html:1867`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -606,8 +606,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:422`). The watch compares (`ui/index.html:1833`) and reloads
-(`ui/index.html:1838`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:427`). The watch compares (`ui/index.html:1862`) and reloads
+(`ui/index.html:1867`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -731,11 +731,29 @@ addresses the folder by path, which is unique by construction.
 
 A name is an address only while it is rare. A path is one.
 
-**Remaining limit.** `attendreDossier` and `attendreFichier` check the fact in the snapshot,
-but still use `!scanning` as the gate before requesting `/api/tree`. `attendreAnalyse` may,
-with its default argument, return on `!scanning` alone; some probes also keep their own
-`!scanning` loops. R16 does not fix those indirect waits: each use still needs review, and when
-a specific fact exists, the probe should wait for that fact rather than treating the flag as proof.
+**The ticket, now consumed by clients — 29/09/2026.** The server-side fix was a promise no one
+cashed: the UI and the probes kept waiting on the global flag, which measurement shows lies
+between two scans. Now:
+
+- `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
+  `attendreTicket` (`tests/sondes/config.mjs:452`) loops on `scan_completed >= ticket` and never
+  consults `!scanning` to conclude;
+- the UI records the returned ticket (`ui/index.html:675`) and `poll()` stops on its publication
+  (`ui/index.html:693`); the rescan after a deletion waits on the `scan_ticket` returned by the
+  execution (`ui/index.html:1560`);
+- `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
+  — the fact-based wait below remains its proof of existence;
+- the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the
+  client side: ticket returned, publication, measured coalescence (two close requests during a
+  scan → two distinct tickets honoured by the same publication), and a file created before the
+  request present in the snapshot published under that ticket.
+
+**What remains a limit.** `attendreDossier` and `attendreFichier` check the fact in the snapshot,
+but still use `!scanning` as the gate before requesting `/api/tree`. Conversely,
+`attendreAnalyse` (`tests/sondes/config.mjs:413`) may, with its default argument, return on
+`!scanning` alone; it remains used for the rescan/retry loops of `lot`. Neither is fixed here:
+probes waiting for a folder or a file must keep checking that fact directly — replacing the
+proof with a flag or a ticket would be the same mistake twice.
 
 ### R16 — A negative ceiling invalidates the positive-cost verdict
 
@@ -832,9 +850,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:834`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:855`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:930`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:951`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

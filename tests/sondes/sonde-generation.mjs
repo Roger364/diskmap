@@ -20,7 +20,7 @@
 // Usage : node sonde-generation.mjs http://127.0.0.1:8990/ G
 import fs from 'fs';
 
-import { URL_DEFAUT, VOLUME_DEFAUT, attendreDossier, dossier } from './config.mjs';
+import { URL_DEFAUT, VOLUME_DEFAUT, attendreDossier, attendreTicket, dossier } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_DEFAUT).toUpperCase();
@@ -43,21 +43,13 @@ function verifier(nom, cond, mesure) {
 const post = (c, corps) => fetch(BASE + c, { method: 'POST', headers: H, body: JSON.stringify(corps) })
   .then(async r => ({ status: r.status, texte: await r.text() }));
 
-async function repos() {
-  for (let i = 0; i < 400; i++) {
-    const s = await (await fetch(`${BASE}/api/state`)).json();
-    if (!s.scanning) return;
-    await new Promise(r => setTimeout(r, 300));
-  }
-}
-
 // Le nom ET la génération : c'est l'ensemble que le client détient. On retient
 // le `sel` et non le `id` brut : c'est lui que l'interface renvoie, et lui seul
 // porte le type (voir `scan::BIT_FICHIER`).
 //
 // Attendre le DOSSIER, pas la fin d'une analyse.
 //
-// Le 28/09/2026, cette fonction lisait l'instantane des que `repos()` rendait
+// Le 28/09/2026, cette fonction lisait l'instantane des que le scan rendait
 // la main, puis levait `TypeError: Cannot read properties of undefined` quand le
 // dossier n'y etait pas. Deux defauts dans les six caracteres de `.id` : elle
 // mesurait le mauvais instantane -- celui d'avant ses propres ecritures -- et
@@ -67,6 +59,26 @@ async function repos() {
 //
 // L'attente se fait donc sur le fait, par `attendreDossier`, et l'absence est
 // un resultat : elle revient `null` et la sonde la dit.
+// Analyser ET attendre SON analyse : la réponse porte le ticket, et l'attente
+// porte sur lui.
+//
+// Mesuré le 28/09/2026, avant les tickets : cette sonde POSTait un scan, puis
+// attendait `!scanning` — vrai dans l'intervalle entre la fin du scan en vol et
+// le début du sien. Elle lisait alors l'instantané du run PRÉCÉDENT : le dossier
+// `perime` existait sur le disque, `/api/search` affirmait `exact=true`, et il
+// n'y était pas. L'attente par ticket fait de ce scénario un cas impossible par
+// construction ; l'attente par le fait, plus bas, reste la preuve d'existence.
+async function analyserEtAttendre() {
+  const r = await post(`/api/scan/${VOL}`, {});
+  const rep = JSON.parse(r.texte);
+  if (r.status !== 200 || typeof rep.ticket !== 'number') {
+    throw new Error(`POST /api/scan a répondu ${r.status} sans ticket : ${r.texte.slice(0, 120)}`);
+  }
+  const publie = await attendreTicket(BASE, VOL, rep.ticket);
+  if (!publie) throw new Error(`le ticket ${rep.ticket} n'a jamais été publié`);
+  return rep.ticket;
+}
+
 async function listing() {
   // Le dossier, adresse par son CHEMIN. Par son NOM il se perdait parmi 356
   // `experimental` : la recherche est plafonnee, et un nom courant sort de la
@@ -88,8 +100,7 @@ async function listing() {
 fs.mkdirSync(DOSSIER, { recursive: true });
 for (const n of ['p1.txt', 'p2.txt', 'p3.txt', 'p4.txt', 'p5.txt']) fs.writeFileSync(`${DOSSIER}/${n}`, `${n}\n`);
 
-await post(`/api/scan/${VOL}`, {});
-await repos();
+await analyserEtAttendre();
 
 // --- Instantané A : le client lit ici les identifiants ET la génération ------
 const A = await listing();
@@ -102,8 +113,7 @@ verifier('la réponse /api/tree porte une génération', typeof A.gen === 'numbe
 // --- Le disque change, et une ré-analyse rebase les positions ---------------
 fs.unlinkSync(`${DOSSIER}/p1.txt`);
 fs.writeFileSync(`${DOSSIER}/zzz-neuf.txt`, 'arrivé après\n');
-await post(`/api/scan/${VOL}`, {});
-await repos();
+await analyserEtAttendre();
 
 const B = await listing();
 const nomMaintenant = [...B.ids.entries()].find(([, id]) => id === idP1)?.[0];

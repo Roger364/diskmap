@@ -100,6 +100,15 @@ const SONDES = [
     quoi: 'Un identifiant est une position : la generation le rend verifiable',
   },
   {
+    // Sans cette sonde, le contrat `{ok, ticket}` de R15 n'était éprouvé nulle
+    // part : écrit côté serveur, ignoré par chaque client. Elle ne conclut sur
+    // aucun drapeau — l'attente par ticket est son sujet, et l'attente par le
+    // fait verdit avec elle.
+    nom: 'tickets', fichier: 'sonde-tickets.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
+    quoi: 'Un ticket demandé est publié, coalescé, et couvre ce qui précède la demande',
+  },
+  {
     nom: 'reelle', fichier: 'sonde-suppression-reelle.mjs', args: (c) => [c.url, c.volume], ci: true,
     detruit: 'les siennes',
     quoi: 'Le mode corbeille tient vraiment sa promesse de reversibilite',
@@ -383,14 +392,26 @@ async function demarrer(binaire, port) {
  */
 async function analyser(url, lettre, limiteSecondes) {
   const base = url.replace(/\/$/, '');
-  await fetch(`${base}/api/scan/${lettre}`, { method: 'POST', headers: { 'X-Diskmap': '1' } });
+  // Le POST rend le ticket de CETTE demande ; l'attente porte sur sa
+  // publication (`scan_completed >= ticket`), pas sur le statut seul : un
+  // `ready` peut être publié par une analyse en file qui a démarré AVANT la
+  // demande — le même défaut que R15, côté harnais. Sans ticket dans la
+  // réponse (serveur ancien), le repli reste le statut, faute de mieux.
+  let ticket = null;
+  try {
+    const rep = await fetch(`${base}/api/scan/${lettre}`, { method: 'POST', headers: { 'X-Diskmap': '1' } });
+    const corps = await rep.json().catch(() => null);
+    if (rep.ok && corps && typeof corps.ticket === 'number') ticket = corps.ticket;
+  } catch { /* le repli statut ci-dessous dira ce qu'il aura vu */ }
   const limite = Date.now() + limiteSecondes * 1000;
   let vu = null;
   while (Date.now() < limite) {
     const e = await etat(url);
     const d = e && (e.drives || []).find((x) => x.letter === lettre);
     if (d) vu = d;
-    if (d && d.status === 'ready') return { ...d, delai: false };
+    if (d && d.status === 'ready' && (ticket === null || d.scan_completed >= ticket)) {
+      return { ...d, delai: false };
+    }
     if (d && d.status === 'error') return { ...d, delai: false };
     await attendre(400);
   }
@@ -551,7 +572,7 @@ function racinesDuFilet(volume, retenues) {
 function nettoyer() {
   const base = racine(opt.volume);
   const connus = ['csrf', 'ui', 'perime', 'reversibilite', 'sans-corbeille', 'plafond',
-    'mot-exige', 'palier', 'lot-cout', 'lot-coherence', 'suppression-reelle'];
+    'mot-exige', 'palier', 'lot-cout', 'lot-coherence', 'suppression-reelle', 'tickets'];
   let n = 0;
   for (const nom of connus) {
     const cible = `${base}/${nom}`;

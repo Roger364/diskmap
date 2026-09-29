@@ -376,6 +376,11 @@
 const $ = s => document.querySelector(s);
 let state = { drives: [], scanning: null };
 let cur = { drive: null, chemin: null, path: [], sort: 'size', order: 'desc', view: 'table', rows: [], sel: new Set(), gen: 0,
+  // Le ticket de la demande d'analyse EN COURSE d'attente : rendu par le POST
+  // d'analyse ou porté par la réponse d'une suppression (`scan_ticket`). `null`
+  // veut dire « aucune promesse à attendre » — l'attente retombe alors sur le
+  // drapeau, faute de mieux observable. Voir `poll()` et R15.
+  ticket: null,
   // Le compte RÉEL des correspondances d'une recherche, et le fait qu'il
   // soit complet. Avant le 27/09/2026, l'interface ne pouvait rien dire de ce
   // qu'elle ne montrait pas : elle écrivait « tronqué » quand la page était
@@ -661,8 +666,13 @@ async function select(letter) {
 }
 
 async function startScan(letter) {
-  await api(`/api/scan/${letter}`, { method: 'POST' });
+  // La réponse porte le ticket de CETTE demande. L'attendre plutôt que le
+  // drapeau global : `!scanning` est vrai dans l'intervalle entre la fin du
+  // scan en cours et le début du nôtre — l'écran y aurait affiché un
+  // instantané qui ne couvrait pas la demande (mesuré le 28/09, R15).
+  const rep = await api(`/api/scan/${letter}`, { method: 'POST' });
   cur.drive = letter;
+  cur.ticket = rep && typeof rep.ticket === 'number' ? rep.ticket : null;
   await refreshState();
   poll();
 }
@@ -673,8 +683,21 @@ function poll() {
   pollTimer = setInterval(async () => {
     if (arrete) { clearInterval(pollTimer); return; }
     await refreshState();
-    if (!state.scanning) {
+    const d = cur.drive && state.drives.find(x => x.letter === cur.drive);
+    // La fin attendue est CELLE DU TICKET, pas celle du drapeau. Sans ticket
+    // (analyse déclenchée par le serveur, réanalyse après suppression), le
+    // drapeau reste la seule chose observable — et le rechargement final ne
+    // s'appuie jamais sur lui seul : `load()` re-demande l'arbre, donc mesure
+    // l'instantané, qui est le fait.
+    const fini = d && (
+      (cur.ticket !== null && d.scan_completed >= cur.ticket)
+      || (cur.ticket === null && !state.scanning)
+    );
+    if (fini) {
       clearInterval(pollTimer);
+      // Le ticket est consommé : la prochaine analyse déclenchée ailleurs ne
+      // doit pas être jugée sur l'ancien.
+      cur.ticket = null;
       // Le drapeau vaut « une analyse lancée d'ici est en cours ». Le laisser
       // vrai après l'arrêt ferait croire à la veille qu'une analyse suit, et
       // elle ne rechargerait plus jamais l'écran.
@@ -1530,7 +1553,13 @@ async function doDelete() {
     cur.sel.clear();
     pendingDry = null;
     refreshState();
-    if (res.rescan) poll(); else load();
+    // La réanalyse après suppression porte SON ticket : la réponse du serveur
+    // le dit (`scan_ticket`). L'attendre plutôt que le drapeau — même course
+    // que pour une analyse demandée à la main (R15).
+    if (res.rescan) {
+      cur.ticket = typeof res.scan_ticket === 'number' ? res.scan_ticket : null;
+      poll();
+    } else load();
   };
 }
 

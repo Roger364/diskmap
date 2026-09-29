@@ -424,6 +424,50 @@ export async function attendreAnalyse(base, vol, attendus = 0, tours = 600) {
 }
 
 /**
+ * Attend que l'analyse promise à UN ticket soit publiée.
+ *
+ * L'inverse du problème historique : `attendreAnalyse` conclut sur `!scanning`,
+ * qui est vrai dans l'intervalle entre la fin du scan en vol et le début de
+ * celui qu'on vient de demander — le harnais mesurait alors l'instantané du
+ * run précédent. Ici, l'attente porte sur la promesse EXPLICITE que le serveur
+ * rend à la demande : `POST /api/scan` renvoie `{ok, ticket}`, et `/api/state`
+ * publie `scan_completed` avec l'instantané qu'il achève, sous les mêmes
+ * verrous. `scan_completed >= ticket` signifie donc : l'analyse qui couvre
+ * cette demande a été publiée, avec son instantané.
+ *
+ * `ticket` n'est PAS optionnel : une attente sans ticket serait retombée sur
+ * le drapeau, c'est-à-dire sur l'attente fausse que cette fonction existe pour
+ * remplacer. L'appelant qui n'a pas de ticket doit le dire, et chercher le fait
+ * (`attendreFichier`, `attendreDossier`) — la preuve d'existence n'a jamais
+ * résidé dans un drapeau.
+ *
+ * `>=` et non `==` : une analyse coalescée porte le DERNIER ticket demandé au
+ * moment où elle démarre ; si une autre demande est arrivée entre-temps, elle
+ * franchit aussi la borne. `==` attendrait un scan qui n'arrivera jamais.
+ *
+ * Un `!s.scanning` est lu comme garde-fou de SERVICE, jamais comme preuve :
+ * le serveur a pu être arrêté pendant l'attente — sans lui, la boucle tournerait
+ * six cents fois pour rien. Le verdict reste la borne sur `scan_completed`.
+ */
+export async function attendreTicket(base, vol, ticket, tours = 600) {
+  if (!Number.isFinite(ticket)) throw new Error(`attendreTicket : ticket invalide (${ticket})`);
+  const lettre = String(vol).toUpperCase();
+  for (let i = 0; i < tours; i++) {
+    const s = await (await fetch(`${base}/api/state`)).json();
+    const d = (s.drives || []).find((x) => x.letter === lettre);
+    if (d && d.scan_completed >= ticket) return d;
+    if (s && s.scanning === null && !d) return null;
+    if (s && !s.scanning && d && d.status === 'empty' && d.scan_completed < ticket) {
+      // Le volume a été annulé (arrêt, purge de la file) : sa demande ne sera
+      // jamais honorée. `attendreTicket` le dit plutôt que d'expirer en silence.
+      return null;
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+
+/**
  * Attend qu'un DOSSIER soit PUBLIE, adresse par son CHEMIN.
  *
  * C'est le fait minimal : `/api/tree` le rend, donc il fait partie de
