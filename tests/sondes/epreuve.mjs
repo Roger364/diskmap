@@ -81,8 +81,10 @@ const EPREUVES = [
     pourquoi:
       "C'est le garde-fou de l'incident du 26/09/2026 : un sélecteur périmé "
       + "désignait alors un autre fichier, jamais montré, et supprimable. "
-      + 'La mesure attendue ne dit pas seulement « ça a cassé » : elle nomme le '
-      + 'fichier que la garde protégeait.',
+      + "L'épreuve exige le STATUT — 409 quand la garde tient, 200 quand elle a "
+      + 'cédé — et non le chemin visé : celui-ci dépend du contenu de la corbeille '
+      + "et change d'un run à l'autre. Exiger une mesure instable ferait "
+      + "échouer l'épreuve pour une raison étrangère à la garde.",
   },
 ];
 
