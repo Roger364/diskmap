@@ -599,6 +599,17 @@ const norm = (t) => String(t).toLowerCase().replace(/[’‘`]/g, "'")
  */
 function classerNote(texte) {
   if (!MOT_AVEU.test(texte)) return garde('explication', { sorte: 'explication' });
+  // Sonnet 5.5 (effort extra), dossier 5 du 01/10/2026 : un aveu par MARQUE
+  // sans AUCUNE forme (« non mesurable : … » sans « couvert par » ni
+  // « structurel : ») tombait dans « explication » — vert silencieux, jamais
+  // comptable. Le chemin restait invisible au contrôle méta : aucune ligne de
+  // table ne le traversait, donc il ne se déclarait jamais, et le plancher de
+  // déclarations ne voyait rien (un chemin inéprouvé n'abaisse pas le compte).
+  // Fermeture par construction : le chemin se déclare au point de rendu et une
+  // ligne de TABLE_RECONNAISSANCE l'éprouve (morsure + rôle), comme les autres.
+  if (/non mesurable/i.test(texte) && !FORME_COUVERT.test(texte) && !FORME_STRUCTUREL.test(texte)) {
+    return garde('aveu par marque seule', { sorte: 'aveu nu', mesure: 'un aveu par marque seule (« non mesurable ») sans « couvert par » ni « structurel » est un aveu sans justification' });
+  }
   const couverte = texte.match(FORME_COUVERT);
   if (couverte) {
     const [, fichier, nom] = couverte;
@@ -824,6 +835,12 @@ const TABLE_RECONNAISSANCE = [
     'aveu nu',
     'une justification repoussee a la ligne suivante perd sa raison',
     { garde: 'aveu sans forme' },
+  ],
+  [
+    'branches du débordement NON EXERCÉE — non mesurable : la sonde n a rien pu dire',
+    'aveu nu',
+    'un aveu par MARQUE seule (« non mesurable ») sans « couvert par » ni « structurel » n est pas une explication : la marque avoue, l absence de forme ne l excuse pas — la ligne qui l éprouve n existait pas, donc le chemin ne se déclarait jamais (dossier 5, 01/10/2026)',
+    { garde: 'aveu par marque seule' },
   ],
   [
     'branches du débordement NON EXERCÉE — un trou que personne n a declare — structurel : une raison suffisamment longue',
@@ -1085,7 +1102,7 @@ if (sortieFaux.length) {
 // declare que RIEN n a traverse. Et le pire des deux mondes : plus aucune
 // declaration du tout, qui ferait taire le controle entier. Les deux se
 // verifient tout seuls :
-const GARDES_MINIMALES = 19;
+const GARDES_MINIMALES = 20; // 19 du 30/09 (vague 2) + 1 : l aveu par marque seule, declare et eprouve depuis le dossier 5 (01/10/2026)
 if (GARDES.length < GARDES_MINIMALES) {
   console.error(`  CONTROLE META DES GARDES : ${GARDES.length} chemin(s) declares, il en faut au moins ${GARDES_MINIMALES} — les declarations ont-elles ete retirees ?`);
   process.exit(1);

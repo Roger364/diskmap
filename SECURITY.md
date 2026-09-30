@@ -659,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:751`) et le motif est écrit (`tests/sondes/lancer.mjs:1817`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:744`, motif `tests/sondes/lancer.mjs:1758`. Sans ce
+(`tests/sondes/lancer.mjs:762`) et le motif est écrit (`tests/sondes/lancer.mjs:1834`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:755`, motif `tests/sondes/lancer.mjs:1775`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -675,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:751`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1769`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:762`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1786`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -715,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1690`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1707`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1817`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1834`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -822,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1130`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1147`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1188,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:751`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:762`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:744`, motif `tests/sondes/lancer.mjs:1758`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:755`, motif `tests/sondes/lancer.mjs:1775`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1232,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1362`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1379`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1165`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -2659,6 +2659,54 @@ nommés, run sain passe. Plancher de déclarations : **12 → 19**.
 code, résumé muet, décompte incohérent) restent hors déclaration — elles
 décident en aval de `compterSortie`, sur des états qu'elle rend. La vague 3,
 si un défaut y dort un jour, suivra le même chemin.*
+
+
+---
+
+
+### 7/47 La quinzième instance : l'aveu par marque seule — trouvée par Sonnet 5.5, effort extra · **01/10/2026**
+
+Le dossier 5 — l'extrait 529-1102 du harnais, le contrôle méta des gardes
+lui-même, jamais attaqué — revient avec un cas **exécuté dans un vrai
+harnais** : l'aveu par marque seule. Une note qui porte la marque (« non
+mesurable : … ») sans « couvert par » ni « structurel : » tombait dans
+`explication` : la branche d'aveu la refuse, et rien ensuite ne la rattrape —
+elle sort verte, jamais comptable, exactement le vert silencieux que tout le
+contrôle promet d'interdire.
+
+Le chemin restait **invisible au contrôle méta par construction** : aucune
+ligne de table ne le traversait, donc il ne se déclarait jamais au point de
+rendu, et le plancher de déclarations ne voit jamais un chemin inéprouvé —
+un chemin ajouté n'abaisse pas le compte, il ne peut que le satisfaire.
+Suivre la convention à la lettre (le return neuf porte sa garde) n'y change
+rien : la déclaration n'existe qu'une fois la ligne exécutée. Et l'aveu nu
+promis ne se lisait que dans un commentaire — c'est Sonnet qui l'a dit,
+marqué honnêtement `[non vérifiable ici]`, et vérifié ici sur le vrai code
+(`sorte === 'explication'` sort du filtre des aveux au verdict final).
+
+Fermeture par construction, le schéma de la maison : le chemin se déclare au
+point de rendu — **clé neuve** `aveu par marque seule` — et une **ligne
+dédiée de TABLE_RECONNAISSANCE** l'éprouve, morsure + rôle. La clé neuve et
+le plancher font paire : une clé réutilisée eût été absorbée par la
+déduplication par clé (une seule entrée mordue pour deux sites, aucune
+contradiction de rôle — la ligne de TRONQUEE mord pour lui), et seul le
+plancher relevé l'eût dénoncée. Aucune sonde réelle n'écrit ce texte nu
+aujourd'hui : le trou était devant, pas derrière — la fermeture ne change
+aucun run existant. Plancher de déclarations : **19 → 20**.
+
+**Les épreuves, trois mutations** : M1, la modification exacte de Sonnet
+(déclaration neutralisée) → « la ligne annonce mordre sur « aveu par marque
+seule » mais la sortie vient de « aveu sans forme » », exit 1 ; M2, le rôle
+de la ligne dédiée faussé → la même contradiction, nommée à l'envers ; M3,
+la ligne de table retirée → « 19 chemin(s) déclarés, il en faut au moins
+20 ». Trois exit 1 nommés ; le run sain affiche « 20 chemins déclarés, tous
+traversés par les tables avant les sondes » et sort 24/24 vert.
+
+*Note de méthode : la preuve a coûté trois allers-retours d'édition — une
+accolade avalée par un remplacement trop large, un rôle de ligne écrasé —
+chaque diff repéré par `node --check` avant tout run, et les mutations n'ont
+jamais dormi dans le dépôt. Le contrôle méta a donc subi exactement ce qu'il
+inflige : être réparé à l'aveugle, puis relu.*
 
 
 ---
