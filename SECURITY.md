@@ -2244,3 +2244,68 @@ trois attendent le run de preuve qui accompagnera la fin du balayage
 
 ---
 
+### 7/39 Balayer `elevation` : deux moitiés, un plancher, et un piège que la note elle-même tendrait · **30/09/2026**
+
+Troisième sonde du balayage : `elevation`, la seule qui a **deux moitiés
+exclusives** — 17 verdicts communs, plus le jeu de l'instance normale (1) ou
+celui de l'instance élevée (4). Le modèle adversaire a compté les deux chemins,
+puis trouvé trois choses — et tendu un piège que la correction naïve serait
+tombée.
+
+**1. Le plancher repose sur le chemin le plus court, et rien ne le dit.** 18
+est le compte de l'instance **normale**. Sur le runner — toujours élevé — la
+sonde en écrit **21**. Aucune note n'accompagne l'un ou l'autre chemin : la
+moitié non jouée n'est déclarée nulle part, alors que l'en-tête de la sonde
+reconnaît lui-même la limite (« Aucune des deux exécutions ne peut valider
+l'autre ») et que le journal dit l'instance sans le dire au dialecte. C'est la
+même famille que `host` : une preuve **remplacée** par son opposite selon la
+machine, invisible au compte parce qu'aucun verdict n'est perdu.
+
+Et le modèle a trouvé une vraie divergence de compte : le commentaire du
+harnais dit « 18 ici et **19** sur le runner », or le décompte du fichier donne
+**21** sur un chemin élevé (17 communs, +1 bandeau, +3 bouton). L'un des deux
+compte faux — c'est à trancher sur un run de runner, pas en relisant.
+
+**2. Le piège : la note juste rendrait le plancher faux.** Écrire la note
+d'aveu de la moitié non jouée — la bonne pratique partout ailleurs — ferait
+tomber le plancher de 18 à 14 **sur cette machine**, alors que les 4 verdicts
+n'y sont pas perdus : ils **n'existent pas** dans cette moitié. Le modèle l'a
+vu avant moi : sur une sonde à moitiés exclusives, la détente ne doit pas
+s'additionner au chemin déjà le plus court. La correction n'est pas « écris la
+note » : c'est plaquer le plancher sur le chemin **long** (22) et laisser la
+note détendre de 4 ou de 1 selon la moitié — le compte effectif reste juste sur
+les deux, et la moitié non jouée devient une dette écrite au lieu d'un silence.
+*C'est la première fois de la campagne qu'un modèle arrête ma correction
+d'un défaut avant qu'elle ne crée le sien.*
+
+**3. Un vert vide sur l'instance normale.** `.catch(() => '')` transforme un
+jeton introuvable en chaîne vide, et `/administrateur/i.test('') === false`
+égalise `ELEVE` faux : le vert est atteint par **l'absence** de l'élément autant
+que par sa bonne réponse. L'étalon (`erreurs`) exige un mot positif sur chaque
+branche — la correction est d'écrire le mot attendu du côté normal
+(`/utilisateur/`), pas de détendre quoi que ce soit. Le modèle a refusé la note
+ici encore, avec la bonne raison : le trou vient de la sonde, pas de la machine.
+
+**4. « corbeille présente » est lue, jamais exigée.** `A_CORBEILLE` est
+imprimé, repris dans la mesure du ROUGE, mais ne commande **aucune** branche :
+trois verdicts assertent la loi « corbeille présente, lot sous le palier » sans
+que la prémisse soit testée. Sur une instance élevée **sans** corbeille,
+`/corbeille/i` peut matcher un message qui dirait l'inverse, et LA LOI passerait
+pour une raison étrangère à sa prémisse. Même famille que `Z:` : une
+précondition admise, non mesurée.
+
+**Ce que ce troisième balayage ajoute à la carte.** Les muettes ne sont pas
+toutes muettes du même défaut : `host` avait une preuve remplacée, `entrees`
+avait le dialecte absent, `elevation` a **un plancher posé sur le mauvais
+chemin** — et une correction naïve aurait cassé le plancher en le voulant
+conforme. Trois sondes, trois mécanismes différents, un point commun : aucun
+n'était visible par le compte des verdicts.
+
+*Ce que je n'ai pas fait : ni la note ni le plaquage du plancher à 22 ne sont
+écrits — la divergence 19/21 doit être tranchée par un run de runner d'abord,
+et le plaquage change le plancher effectif sur le runner. Le vert vide du jeton
+et la prémisse corbeille sont des corrections de sonde, à faire au run de
+preuve de fin de balayage.*
+
+---
+
