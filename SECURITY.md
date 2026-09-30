@@ -659,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:743`) et le motif est écrit (`tests/sondes/lancer.mjs:1720`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:736`, motif `tests/sondes/lancer.mjs:1661`. Sans ce
+(`tests/sondes/lancer.mjs:751`) et le motif est écrit (`tests/sondes/lancer.mjs:1817`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:744`, motif `tests/sondes/lancer.mjs:1758`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -675,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:743`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1672`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:751`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1769`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -715,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1593`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1690`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1720`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1817`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -822,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1024`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1130`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1188,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:743`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:751`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:736`, motif `tests/sondes/lancer.mjs:1661`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:744`, motif `tests/sondes/lancer.mjs:1758`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1232,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1256`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1362`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1165`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -2620,6 +2620,45 @@ sur le vrai binaire au run 45 : `entrees 12/12`, 24/24 vertes. Plancher
 *Coût de l'exercice : un helper, six blocs remplacés, un témoin, un plancher.
 Aucun changement de comportement sur les cas normaux : un volume connu sans
 instantané reçoit toujours son 409.*
+
+
+### 7/46 La vague 2 : le collecteur et les portes de lecture se déclarent · **30/09/2026**
+
+La vague 1 déclarait les fonctions pures ; le code qui tourne **pendant** les
+sondes restait hors contrôle — et c'est précisément là qu'avaient vécu deux
+défauts de la semaine : le collecteur retirait le préfixe `NE PAS MESURABLE`
+en emportant la marque avec lui (§7/36), et `entrees` écrivait ses notes par
+`info()`, sans préfixe ni fonction (§7/38). Le mécanisme s'étend :
+
+- **`toucher(clé)`** : déclarer un chemin qui ne rend pas d'objet — les
+  formes de ramassage et les états de lecture sont des décisions sans valeur
+  de retour, elles se marquent par leur seule traversée.
+- **`collecterNotes(tout)`**, extraite en pure de la boucle : ses **trois
+  formes** de ramassage (`note :`, `NE PAS MESURABLE`, marqueur du résumé
+  `(+N non mesurable(s))`) sont trois gardes déclarées. Une forme retirée du
+  filtre n'est plus jamais marquée, et le verdict du contrôle méta la nomme ;
+  une forme élargie ramasse trop, et la table voit le texte déraper.
+- **`compterSortie` instrumentée** : ses quatre chemins de lecture
+  (saine, muette, décompte incohérent, rouge écrit) se déclarent — la
+  conjonction des trois négations est un chemin, pas une absence de décision ;
+  sans elle, une fusion des branches en une seule ne se verrait nulle part.
+- **`TABLE_COLLECTE`, oracle littéral** : le texte exact attendu après
+  retrait du préfixe, pas un classement aval. Un `.replace` élargi drappe
+  sur la chaîne qu'il modifie. Elle a mordu **aussitôt** : le retrait du
+  marqueur `(+…)` laissait une espace finale, et l'oracle l'a nommée — le
+  collecteur est propre depuis. La ligne négative existe aussi : une phrase
+  qui ressemble à une note n'en est pas une.
+
+**Les épreuves, trois mutations** : une forme de ramassage retirée → LA
+TABLE DE COLLECTE EST FAUSSE ; le marquage neutralisé → le plancher minimal
+attrape le trou (19 déclarations requises, les gardes de sortie ne sont plus
+poussées) ; le `trim` retiré → l'oracle revoit l'espace. Trois `exit=1`
+nommés, run sain passe. Plancher de déclarations : **12 → 19**.
+
+*Frontière assumée : les portes descompte du corps de boucle (forçage du
+code, résumé muet, décompte incohérent) restent hors déclaration — elles
+décident en aval de `compterSortie`, sur des états qu'elle rend. La vague 3,
+si un défaut y dort un jour, suivra le même chemin.*
 
 
 ---

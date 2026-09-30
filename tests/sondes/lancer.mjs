@@ -550,6 +550,14 @@ const garde = (cle, chemin) => {
   if (!GARDES.some((g) => g.cle === cle)) GARDES.push({ cle, mordue: false });
   return { ...chemin, __garde: cle };
 };
+// Marquer un chemin qui ne rend pas d objet : les formes de ramassage du
+// collecteur et les états de lecture d une sortie sont des DECISIONS sans
+// valeur de retour — elles se déclarent par leur seule traversée.
+const toucher = (cle) => {
+  let g = GARDES.find((x) => x.cle === cle);
+  if (!g) { g = { cle, mordue: false }; GARDES.push(g); }
+  g.mordue = true;
+};
 let GARDE_FAIL = '';
 // Les noms de verification d une sonde, lus dans son SOURCE et non dans sa
 // sortie : c est le code qui affirme, et un rapport peut mentir. Deplace ici
@@ -742,7 +750,47 @@ function compterSortie(tout) {
   const verdictsEcrits = lignesVerdict.length;
   const descompteFaux = !!compte
     && (Number(compte[1]) !== nOk || Number(compte[2]) !== verdictsEcrits);
-  return { compte, vide, muette, nOk, verdictsEcrits, descompteFaux, rougeEcrit: verdictsEcrits !== nOk };
+  const rougeEcrit = verdictsEcrits !== nOk;
+  // Les quatre chemins de lecture se déclarent : muette, décompte incohérent,
+  // rouge écrit — et le chemin SILENCIEUX, celui d une sortie honnête, qui
+  // n est pas une absence de décision mais la conjonction des trois négations.
+  // Sans sa déclaration, une fusion des trois branches en une seule ne se
+  // verrait nulle part.
+  if (muette) toucher('sortie muette');
+  if (descompteFaux) toucher('decompte incoherent');
+  if (rougeEcrit) toucher('rouge ecrit');
+  if (!muette && !descompteFaux && !rougeEcrit) toucher('sortie saine');
+  return { compte, vide, muette, nOk, verdictsEcrits, descompteFaux, rougeEcrit };
+}
+
+// ---------- le ramassage des notes, en pur ----------
+//
+// Le collecteur vit ICI, hors de la boucle des sondes : c est lui qui ramassait
+// le prefixe `NE PAS MESURABLE` en emportant la marque avec lui (§7/36), et
+// `entrees` ecrivait ses notes par `info()`, sans prefixe ni fonction — deux
+// defauts vecus, dans le code que personne ne regardait parce qu il tournait
+// PENDANT les sondes. Ses trois formes de ramassage sont des gardes : une
+// forme retiree du filtre n est plus jamais marquee et le verdict du controle
+// meta le nomme ; une forme elargie ramasse trop, et la table de collecte voit
+// le texte exact deraper. Deux formes historiques : la ligne `note :` et le
+// marqueur du resume (`(+N non mesurable(s))`) — le TEXTE est retenu, pas
+// seulement un nombre, et la marque de l aveu doit SURVIVRE au retrait du
+// prefixe, dans le corps du texte.
+function collecterNotes(tout) {
+  return tout.split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => {
+      if (/^note\s*:/i.test(l)) { toucher('forme note :'); return true; }
+      if (/^NE PAS MESURABLE/.test(l)) { toucher('forme NE PAS MESURABLE'); return true; }
+      if (/\+\d+ non mesurable/.test(l)) { toucher('forme resume non mesurable'); return true; }
+      return false;
+    })
+    .map((l) => l.replace(/^note\s*:\s*/i, '')
+      .replace(/^NE PAS MESURABLE\s*[—-]\s*/i, '')
+      .replace(/\(\+\d+ non mesurable\(s\)\)\s*$/i, '')
+      .trim()
+      .slice(0, 300))
+    .map((texte) => ({ texte, ...classerNote(texte) }));
 }
 
 // ---------- la table de reconnaissance, eprouvee a chaque run ----------
@@ -938,6 +986,64 @@ if (GARDE_FAIL) {
   process.exit(1);
 }
 
+// ---------- la table de collecte, eprouvee a chaque run ----------
+//
+// Les formes de ramassage sont des gardes, donc elles ont leur table. L oracle
+// est LITERAL : le texte exact attendu apres retrait du prefixe — un .replace
+// elargi drape ici, sur la chaine qu il modifie, pas sur un classement aval.
+// La ligne 2 porte le piege du §7/36 : la marque de l aveu doit SURVIVRE au
+// retrait du prefixe, donc vivre dans le corps du texte. La ligne 4 est la
+// negative : une phrase qui ressemble a une note n en est pas une.
+const TABLE_COLLECTE = [
+  [
+    'note : branche « x » NON exercée — 2 vérifications sautées. structurel : la raison tient sur la ligne',
+    ['branche « x » NON exercée — 2 vérifications sautées. structurel : la raison tient sur la ligne'],
+    { garde: 'forme note :' },
+  ],
+  [
+    'NE PAS MESURABLE — non mesurable : le guetteur de fenêtres n’a rien pu dire. structurel : l’ouverture de l’Explorateur ne se mesure pas en service continu',
+    ['non mesurable : le guetteur de fenêtres n’a rien pu dire. structurel : l’ouverture de l’Explorateur ne se mesure pas en service continu'],
+    { garde: 'forme NE PAS MESURABLE' },
+  ],
+  [
+    'ok   a\n14/14 vérifications (+1 non mesurable(s))',
+    ['14/14 vérifications'],
+    { garde: 'forme resume non mesurable' },
+  ],
+  [
+    'aucune note ici : la sonde dit tout à voix haute',
+    [],
+    { garde: 'forme note :' },
+  ],
+];
+const collecteFausse = [];
+for (const [entree, attendu, role] of TABLE_COLLECTE) {
+  const obtenu = collecterNotes(entree).map((n) => n.texte);
+  if (JSON.stringify(obtenu) !== JSON.stringify(attendu)) {
+    collecteFausse.push(`attendu ${JSON.stringify(attendu)}, mesuré ${JSON.stringify(obtenu)} sur « ${entree.slice(0, 60)} »`);
+  }
+  const g = GARDES.find((x) => x.cle === role.garde);
+  if (!g) {
+    GARDE_FAIL += `    - TABLE_COLLECTE annonce « ${role.garde} », qui n est pas déclarée\n`;
+  } else {
+    g.mordue = true;
+  }
+}
+if (collecteFausse.length) {
+  console.error(`  LA TABLE DE COLLECTE EST FAUSSE : ${collecteFausse.length}`);
+  for (const m of collecteFausse) console.error(`    - ${m}`);
+  console.error('    Le collecteur décide de ce que le harnais voit des notes d une sonde :' +
+    ' un ramassage faux, c est un aveu qui disparaît — ou une phrase qui devient un aveu.');
+  process.exit(1);
+}
+if (GARDE_FAIL) {
+  console.error('  GARDES NON DECLAREES OU NON EPROUVEES (collecte) :');
+  console.error(GARDE_FAIL);
+  console.error('    Toute garde doit avoir sa ligne de table. Une garde sans epreuve est' +
+    ' celle que PERSONNE ne regarde.');
+  process.exit(1);
+}
+
 // La MEME demarche, sur ce que le harnais LIT dans la sortie d une sonde. Ces
 // quatre entrees sont des sorties REELLES en forme : trois d entre elles sont
 // des formes qu aucune sonde n ecrit aujourd hui, et c est precisement le
@@ -979,7 +1085,7 @@ if (sortieFaux.length) {
 // declare que RIEN n a traverse. Et le pire des deux mondes : plus aucune
 // declaration du tout, qui ferait taire le controle entier. Les deux se
 // verifient tout seuls :
-const GARDES_MINIMALES = 12;
+const GARDES_MINIMALES = 19;
 if (GARDES.length < GARDES_MINIMALES) {
   console.error(`  CONTROLE META DES GARDES : ${GARDES.length} chemin(s) declares, il en faut au moins ${GARDES_MINIMALES} — les declarations ont-elles ete retirees ?`);
   process.exit(1);
@@ -1562,16 +1668,7 @@ function lireResidus(racines, volume) {
     // Le TEXTE est retenu, pas seulement le nombre : un compteur seul dit
     // qu il y a un probleme sans dire lequel, et un diagnostic jete par l outil
     // cense l afficher est un diagnostic absent.
-    const notes = sortie.tout.split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => /^note\s*:/i.test(l)
-        || /^NE PAS MESURABLE/.test(l)
-        || /\+\d+ non mesurable/.test(l))
-      .map((l) => l.replace(/^note\s*:\s*/i, '')
-        .replace(/^NE PAS MESURABLE\s*[—-]\s*/i, '')
-        .replace(/\(\+\d+ non mesurable\(s\)\)\s*$/i, '')
-        .slice(0, 300))
-      .map((texte) => ({ texte, ...classerNote(texte) }));
+    const notes = collecterNotes(sortie.tout);
     // Le plancher, calcule ICI et pas plus tot : c est le seul endroit ou l on sait
     // a la fois ce que la sonde a reellement ecrit, verdict par verdict, ET ce
     // qu elle a dit n avoir pas ecrit.

@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:743`) and the reason is printed (`tests/sondes/lancer.mjs:1720`). A zero summary has its own door: `tests/sondes/lancer.mjs:736`, reason `tests/sondes/lancer.mjs:1661`.
+(`tests/sondes/lancer.mjs:751`) and the reason is printed (`tests/sondes/lancer.mjs:1817`). A zero summary has its own door: `tests/sondes/lancer.mjs:744`, reason `tests/sondes/lancer.mjs:1758`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -678,6 +678,19 @@ to the parent), and no navigation flow can meet an uncatalogued letter. `entrees
 `/api/open` on the *derived* unknown letter must 404 like the scan — measured 12/12 on the real
 binary, floor raised 10 → 12, 24/24 green.
 
+**Wave 2: the collector and the reading gates declare themselves — 30/09/2026.** Wave 1 declared the pure
+functions; the code that runs **during** the probes stayed outside the control — and that is where two
+defects of the week had lived (the prefix eaten with its mark, a probe writing notes without a prefix).
+`toucher(key)` now declares paths that return no object: the collector's **three pickup forms** and
+`compterSortie`'s **four reading states** (healthy, mute, mismatched count, red written — the conjunction
+of the three negations is a path, not an absence of decision). `collecterNotes` is extracted pure, with
+a literal-oracle table: the exact text expected after prefix removal, not a downstream classification.
+The table bit **immediately** — removing the `(+N non mesurable(s))` marker left a trailing space, named
+on sight. Three mutations, three bites (pickup form removed → table false; marking neutralised → the
+minimum-declarations floor catches it; the trim removed → the oracle sees the space); healthy run
+passes. Declarations: **12 → 19**. Named limit: the descompte gates of the loop body stay outside —
+a wave 3, if a defect ever sleeps there.
+
 **The tenth instance, found by the "extra" tier — 30/09/2026.** A one-page dossier — the 451-900 slice of
 the harness, one closed question, one answer — produced the first defect the campaign had missed: the
 `couts` register control tested **presence, not validity**. `=== undefined` let `null`, `NaN`, `''` and
@@ -747,8 +760,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:743`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1672`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:751`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1769`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1213,9 +1226,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1593`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1690`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1720`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1817`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,
