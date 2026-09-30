@@ -1011,12 +1011,7 @@ fn route(
                 .and_then(|s| s.parse().ok())
                 .ok_or(("400 Bad Request", "id invalide".into()))?;
             let kind = q.get("kind").cloned().unwrap_or_else(|| "dir".into());
-            let snap = {
-                let d = app.drives.lock().unwrap();
-                d.get(&letter)
-                    .and_then(|s| s.snap.clone())
-                    .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
-            };
+            let snap = snap_de(app, letter)?;
             // Un chemin venu du client n'est ouvert que s'il est dans l'index,
             // et c'est le chemin de l'INDEX qui part vers l'explorateur : la
             // garde répond à la même question que pour un identifiant — « ce
@@ -1072,6 +1067,25 @@ fn route(
         }
 
         _ => Err(("404 Not Found", "route inconnue".into())),
+    }
+}
+
+/// Résout un volume et rend son instantané ANALYSÉ — ou l'erreur honnête.
+///
+/// Deux états, deux réponses : une lettre hors du catalogue est INCONNUE
+/// (404, aligné sur la garde du scan, qui refuse avant tout démarrage
+/// d'analyse) ; un volume connu sans instantané est « pas encore analysé »
+/// (409, un état normal au démarrage, pas une faute du client). Confondre
+/// les deux faisait dire « pas encore analysé » à un volume qui n'existera
+/// jamais — le message trompait, et la sonde `entrees` l'a relevé le 30/09.
+fn snap_de(app: &Arc<App>, letter: char) -> Result<Arc<scan::Snapshot>, (&'static str, String)> {
+    let d = app.drives.lock().unwrap();
+    match d.get(&letter) {
+        None => Err(("404 Not Found", "volume inconnu".into())),
+        Some(s) => s
+            .snap
+            .clone()
+            .ok_or(("409 Conflict", "volume pas encore analysé".into())),
     }
 }
 
@@ -1209,12 +1223,7 @@ fn tree(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         .min(50_000);
     let offset: usize = q.get("offset").and_then(|s| s.parse().ok()).unwrap_or(0);
 
-    let snap = {
-        let d = app.drives.lock().unwrap();
-        d.get(&letter)
-            .and_then(|s| s.snap.clone())
-            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
-    };
+    let snap = snap_de(app, letter)?;
     // Le dossier demandé est désigné par son CHEMIN. Un identifiant est une
     // POSITION dans l'instantané, et une position ne survit pas à une
     // ré-analyse : mesuré le 27/09/2026, l'identifiant 8 est passé du dossier
@@ -1600,12 +1609,7 @@ fn delete(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
         .next()
         .ok_or(("400 Bad Request", "drive manquant".into()))?
         .to_ascii_uppercase();
-    let snap = {
-        let d = app.drives.lock().unwrap();
-        d.get(&letter)
-            .and_then(|s| s.snap.clone())
-            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
-    };
+    let snap = snap_de(app, letter)?;
     // Les identifiants sont des POSITIONS dans l'instantané, et une position ne
     // vaut que dans l'instantané qui l'a produite : re-résoudre un identifiant
     // contre un instantané plus récent revient à viser un AUTRE fichier.
@@ -2742,12 +2746,7 @@ fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(500)
         .min(20_000);
-    let snap = {
-        let d = app.drives.lock().unwrap();
-        d.get(&letter)
-            .and_then(|s| s.snap.clone())
-            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
-    };
+    let snap = snap_de(app, letter)?;
 
     // La garde de MEMoire, distincte de la borne d'AFFICHAGE.
     //
@@ -2828,12 +2827,7 @@ fn reveal(app: &Arc<App>, body: &[u8]) -> Result<Resp, (&'static str, String)> {
         .next()
         .ok_or(("400 Bad Request", "drive manquant".into()))?
         .to_ascii_uppercase();
-    let snap = {
-        let d = app.drives.lock().unwrap();
-        d.get(&letter)
-            .and_then(|s| s.snap.clone())
-            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
-    };
+    let snap = snap_de(app, letter)?;
     if !snap.unreadable.iter().any(|u| *u.path == req.path) {
         return Err((
             "400 Bad Request",
@@ -2956,12 +2950,7 @@ fn unreadable(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         .and_then(|s| s.chars().next())
         .ok_or(("400 Bad Request", "drive manquant".into()))?
         .to_ascii_uppercase();
-    let snap = {
-        let d = app.drives.lock().unwrap();
-        d.get(&letter)
-            .and_then(|s| s.snap.clone())
-            .ok_or(("409 Conflict", "volume pas encore analysé".into()))?
-    };
+    let snap = snap_de(app, letter)?;
     let items: Vec<UnreadableJson> = snap
         .unreadable
         .iter()

@@ -383,7 +383,7 @@ if (!retenues.length) {
 // geste echoue — et son rouge suffit.
 const COMPTES_PLANCHER = {
   aNommer: 27, arret: 9, 'arret-idle': 3, 'arret-running': 4, corps: 4,
-  csrf: 12, elevation: 22, entrees: 10, filet: 16,
+  csrf: 12, elevation: 22, entrees: 12, filet: 16,
   generation: 6, host: 33, identifiant: 15, lot: 9, mot: 6, palier: 5,
   plafond: 6, recherche: 25, rechercheGrande: 7, reelle: 38,
   reversibilite: 8, suppression: 34, tickets: 9, ui: 39,

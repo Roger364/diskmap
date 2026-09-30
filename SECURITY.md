@@ -88,7 +88,7 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1631`) ; `execute` ne résout plus rien et ne supprime que les chemins
+(`src/main.rs:1635`) ; `execute` ne résout plus rien et ne supprime que les chemins
 figés par l'aperçu (`struct Montre`, `src/main.rs:110`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
@@ -228,7 +228,7 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1496`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1505`) — voir R5 |
 
 ---
 
@@ -270,7 +270,7 @@ l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1496`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1505`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -415,7 +415,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2714`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2718`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -440,11 +440,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1767` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1772`) n'était
-appelé que dans `execute` (`src/main.rs:1816`). Des aperçus répétés sans confirmation
+`src/main.rs:1771` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1776`) n'était
+appelé que dans `execute` (`src/main.rs:1820`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1768`).
+endroit (`src/main.rs:1776`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -513,7 +513,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2104`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2108`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -1233,7 +1233,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
   (`tests/sondes/lancer.mjs:1256`) : `rm -rf` y serait un bug, et le code le dit.
-- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1165`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
   serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
@@ -1382,7 +1382,7 @@ le rapport n'a jamais été consulté. Les quatre gardes sont restées nues.
 
 Il y a plus grave que la garde. Ces quatre entrées — « lettre manquante »
 (`src/main.rs:972`), « id invalide » (`src/main.rs:1012`), « chemin invalide »
-(`src/main.rs:1033`), « route inconnue » (`src/main.rs:1074`) — sont les
+(`src/main.rs:1028`), « route inconnue » (`src/main.rs:1069`) — sont les
 validations du routeur, et **aucune requête ne les atteint jamais**. Un serveur
 qui refuse tout les produirait, aussi bien que le bon. C'est la définition
 d'une preuve absente, et elle était écrite en clair dans un fichier vert.
@@ -1392,7 +1392,7 @@ Trois changements, dont deux mesurés :
 **1. Le contrôle exige au lieu de signaler.** `PLANCHER_SANS_REGARD` vaut 0, et
 une garde sans regard fait désormais rouge la chaîne. *Mesuré le 29/09 : une
 garde renommée en un libellé que personne ne cite fait passer le contrôle de
-6/6 à 5/6, et nomme `src/main.rs:1074`.* Le plancher est une arme, pas une
+6/6 à 5/6, et nomme `src/main.rs:1069`.* Le plancher est une arme, pas une
 déclaration.
 
 **2. Le contrôle a lui-même une embuscade.** Un contrôle qui n'a jamais rougi ne
@@ -2585,6 +2585,41 @@ ligne de sonde affiche `vert` **avant** que la perte de plancher ne force le
 code à 1 : le verdict du produit et le verdict du plancher sont deux verdicts
 différents, c'est voulu — mais la lecture rapide peut y voir une
 contradiction ; le bloc PLANCHER sous la ligne dit la vérité.
+
+
+### 7/45 L'alignement du 409 : un volume inconnu n'est pas « pas encore analysé » · **30/09/2026**
+
+La correction d'affichage consignée en §7/44 est faite, et elle a grandi en
+la relisant : **six routes** résolvaient un volume par le même bloc —
+`/api/open`, `/api/tree`, la suppression (dry et exécution), `/api/unreadable`
+et sa liste — et toutes répondaient `409 « volume pas encore analysé »` à une
+lettre **hors catalogue**. Un volume qui n'existera jamais n'est pas « pas
+encore analysé » : le message trompait, et il se confondait avec l'état
+normal d'un volume réel au démarrage.
+
+**La fermeture, en un helper unique.** `snap_de(app, letter)` distingue
+maintenant les deux états : lettre absente du catalogue → `404 « volume
+inconnu »`, aligné sur la garde du scan (qui refuse avant tout démarrage
+d'analyse) ; volume connu sans instantané → `409 « volume pas encore
+analysé »`, inchangé car légitime. La preuve que le remplacement est complet
+se compte : **7 − 6 = 1** — il restait exactement un `409 Conflict`, celui
+du helper, et les autres 409 du fichier (arrêt en cours, jeton expiré,
+arrêt refusé) portent d'autres sémantiques, non touchées.
+
+**L'UI était déjà prête.** Sa branche 409 (`index.html:1189`) dit « analyse
+en cours, on peut insister » ; sa branche 404 (`index.html:775`) remonte au
+dossier parent. Les flux 404 de navigation ne peuvent pas rencontrer une
+lettre hors catalogue (le catalogue ne liste que des volumes montés), donc
+le changement ne crée aucun faux « dossier disparu ».
+
+**L'épreuve.** La sonde `entrees` ajoute un témoin : `/api/open` sur la
+lettre **déduite** hors catalogue doit répondre 404, comme le scan. Mesuré
+sur le vrai binaire au run 45 : `entrees 12/12`, 24/24 vertes. Plancher
+`entrees` relevé de 10 à 12 (deux verdicts de déduction et de témoin).
+
+*Coût de l'exercice : un helper, six blocs remplacés, un témoin, un plancher.
+Aucun changement de comportement sur les cas normaux : un volume connu sans
+instantané reçoit toujours son 409.*
 
 
 ---

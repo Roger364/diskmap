@@ -665,6 +665,19 @@ After restructure: 24/24, `elevation 15/15`, both debts written (`22 - 4 - 3 = 1
 404 would be more honest; and the per-probe line prints `vert` before the floor loss forces the code
 to 1 — two verdicts, deliberately distinct.
 
+**The 409 alignment: an unknown volume is not "not yet scanned" — 30/09/2026.** The display flaw noted
+in §7/44 was fixed, and grew while being reread: **six routes** resolved a volume through the same
+block — `/api/open`, `/api/tree`, both delete legs, `/api/unreadable` and its list — and all answered
+`409 "volume pas encore analysé"` for a letter **outside the catalogue**. A volume that will never
+exist is not "not yet scanned": the message lied, and it collided with the legitimate start-up state
+of a real volume. One helper, `snap_de(app, letter)`, now separates the two states: unknown letter →
+`404 "volume inconnu"`, aligned with the scan guard; known volume without a snapshot → unchanged 409.
+The completeness proof is arithmetic: exactly **7 − 6 = 1** `409 Conflict` remains — the helper's own.
+The UI was already ready (its 409 branch says "scan running, you may insist"; its 404 branch walks up
+to the parent), and no navigation flow can meet an uncatalogued letter. `entrees` gained a witness —
+`/api/open` on the *derived* unknown letter must 404 like the scan — measured 12/12 on the real
+binary, floor raised 10 → 12, 24/24 green.
+
 **The tenth instance, found by the "extra" tier — 30/09/2026.** A one-page dossier — the 451-900 slice of
 the harness, one closed question, one answer — produced the first defect the campaign had missed: the
 `couts` register control tested **presence, not validity**. `=== undefined` let `null`, `NaN`, `''` and

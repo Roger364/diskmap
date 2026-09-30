@@ -116,6 +116,17 @@ verifier('témoin : une lettre valide atteint la garde suivante, elle',
   lettreAbsente.status === 404 && /volume inconnu/.test(lettreAbsente.texte),
   `HTTP ${lettreAbsente.status} · ${lettreAbsente.texte.slice(0, 90)}`);
 
+// Le témoin de la garde 404 SUR LA ROUTE /api/open : avant le 30/09, une
+// lettre hors catalogue y recevait un 409 « volume pas encore analysé » — un
+// message qui trompait (le volume n'existera jamais) et se confondait avec
+// l'état normal d'un volume réel pas encore analysé. L'application distingue
+// maintenant : inconnu → 404 « volume inconnu », connu sans instantané → 409.
+// GET, car la route ouvre sans corps ; la lettre est toujours la déduite.
+const ouvertureInconnue = await fetch(`${BASE}/api/open?drive=${absente}&id=0&kind=dir`);
+verifier('témoin : /api/open refuse une lettre hors catalogue comme le scan',
+  ouvertureInconnue.status === 404,
+  `HTTP ${ouvertureInconnue.status}`);
+
 // ---- 2. id invalide ---------------------------------------------------------
 const idAbime = await poster(`/api/open?drive=${VOL}&id=zzz`);
 verifier('un identifiant illisible est refusé, et nommé',
