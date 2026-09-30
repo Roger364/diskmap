@@ -504,12 +504,24 @@ const AVEURS_STRUCTURELS = [
 // Zéro est une reponse legitime — `le clic n` ne coute rien, la sonde est déjà
 // rouge par ailleurs — mais il faut l ECRIRE, parce qu un cout omis et un cout
 // zero se lisent pareil et ne se comportent pas pareil.
-const MOTIF_SANS_COUTS = AVEURS_STRUCTURELS.filter((a) => a.couts === undefined);
+// La VALIDITE, pas la presence. Le 30/09, un modele adverse (niveau extra) a
+// trouve la faille en une reponse : ce filtre ne regardait que `=== undefined`,
+// donc null, NaN, '' ou '1' (chaine) passaient le controle — et chacun
+// continuait sa vie plus bas : `|| 0` transformait un cout inutilisable en
+// zero silencieux (le faux rouge que le controle promettait d'empecher), et
+// `a + n.couts` CONCATENAIT deux chaines en '011' (plancher ecrase a zero,
+// faux vert). Un cout omis et un cout zero se lisent pareil et ne se
+// comportent pas pareil ; un cout NON NOMBRE se comporte comme le hasard
+// decide. La validite se verifie a la declaration, et la meme garde re-mord
+// au point d'usage — dans plancherEffectif, plus bas.
+const MOTIF_SANS_COUTS = AVEURS_STRUCTURELS.filter((a) =>
+  a.couts === undefined || typeof a.couts !== 'number' || !Number.isFinite(a.couts) || a.couts < 0);
 if (MOTIF_SANS_COUTS.length) {
-  console.error(`  REGISTRE DES AVEUX : ${MOTIF_SANS_COUTS.length} motif(s) sans couts déclaré :`);
-  for (const a of MOTIF_SANS_COUTS) console.error(`    - ${a.motif}`);
-  console.error('    Un motif sans couts classe l aveu sans jamais detendre le plancher :' +
-    ' la sonde qui declare son trou rougit a tort. Ecris le cout, meme zero.');
+  console.error(`  REGISTRE DES AVEUX : ${MOTIF_SANS_COUTS.length} motif(s) a couts absent ou non nombre :`);
+  for (const a of MOTIF_SANS_COUTS) console.error(`    - ${a.motif} : ${JSON.stringify(a.couts)}`);
+  console.error('    Un cout non nombre passe le controle de presence puis se comporte' +
+    ' au hasard plus bas : null ou chaine devient zero par ||, deux chaines se' +
+    ' CONCATENENT dans la somme. Ecris un nombre fini positif ou nul, meme zero.');
   process.exit(1);
 }
 
@@ -670,6 +682,18 @@ function classerNote(texte) {
  * regarde.
  */
 function plancherEffectif(brut, notes) {
+  // Le cout se verifie AU POINT D'USAGE, pas seulement a la declaration : la
+  // table ci-dessous re-verifie le controle lui-meme, donc un controle affine
+  // en amont ne suffit pas si la fonction aval accepte n'importe quoi. Une
+  // valeur non nombre est une PANNE, pas une absence : elle force le chemin
+  // « plancher intact » a echouer vers le rouge (plancher -1), jamais vers le
+  // vert — un plancher a zero serait precisement le faux vert que la
+  // concatenation de chaines produisait.
+  const coutsFous = (notes || []).filter((n) => n.sorte === 'aveu structurel'
+    && n.couts !== undefined && (typeof n.couts !== 'number' || !Number.isFinite(n.couts)));
+  if (coutsFous.length) return garde('couts non nombre', {
+    plancher: -1, trous: coutsFous, dispense: NaN,
+  });
   const trous = (notes || []).filter((n) => n.sorte === 'aveu structurel' && n.couts);
   const dispense = trous.reduce((a, n) => a + n.couts, 0);
   if (brut === undefined) return garde('plancher sans garde', { plancher: undefined, trous, dispense });
@@ -860,6 +884,12 @@ const TABLE_PLANCHER = [
   [12, notes(LE_CSRF, LE_CSRF), 6, 'deux cas muets detachent 6 : le cout s cumule, il ne s ecrit qu une fois', { garde: 'plancher relâché' }],
   [9, notes(LE_TICKETS), 8, 'un scan en vol non observe detache le seul verdict conditionnel : 9 - 1 = 8, ce qu ecrit la sonde sur un volume rapide', { garde: 'plancher relâché' }],
   [5, notes(LE_PALIER), 1, 'un trou declare de 4 verdicts ramene le plancher de 5 a 1, ce qu ecrit reellement une sonde sans dossier de 20 Go', { garde: 'plancher relâché' }],
+  [6, [{ texte: 'cout chaine', sorte: 'aveu structurel', couts: '1' }], -1,
+    'un cout non nombre est une PANNE : le verrou echoue vers -1, jamais vers zero — deux chaines se concatenaient en 011 et ecrasaient le plancher',
+    { garde: 'couts non nombre' }],
+  [6, [{ texte: 'cout null', sorte: 'aveu structurel', couts: null }], -1,
+    'null passe la garde && puis vaut zero par || : le faux rouge que le controle de declaration devait empecher, ici rendu impossible',
+    { garde: 'couts non nombre' }],
   [6, notes(TROP_LARGE, NON_EXERCEE), 0, 'deux trous cumulent leurs couts, et le plancher est borne a zero'],
   [undefined, notes(TROP_LARGE), undefined, 'une sonde sans plancher en garde reste sans plancher : une relaxation n en cree pas un', { garde: 'plancher sans garde' }],
 ];
@@ -877,6 +907,8 @@ for (const [brut, ns, attendu, , role] of TABLE_PLANCHER) {
   const g = GARDES.find((x) => x.cle === obtenu.__garde);
   if (!g) {
     GARDE_FAIL += `    - TABLE_PLANCHER produit une sortie ${JSON.stringify(obtenu)} que la fonction ne declare pas\n`;
+  } else if (obtenu.plancher < 0 && obtenu.plancher !== -1) {
+    GARDE_FAIL += `    - TABLE_PLANCHER produit un plancher ${obtenu.plancher} : la panne echoue vers -1 exactement, pas vers une autre valeur negative\n`;
   } else {
     g.mordue = true;
     if (role && role.garde && role.garde !== g.cle) {
@@ -940,7 +972,7 @@ if (sortieFaux.length) {
 // declare que RIEN n a traverse. Et le pire des deux mondes : plus aucune
 // declaration du tout, qui ferait taire le controle entier. Les deux se
 // verifient tout seuls :
-const GARDES_MINIMALES = 11;
+const GARDES_MINIMALES = 12;
 if (GARDES.length < GARDES_MINIMALES) {
   console.error(`  CONTROLE META DES GARDES : ${GARDES.length} chemin(s) declares, il en faut au moins ${GARDES_MINIMALES} — les declarations ont-elles ete retirees ?`);
   process.exit(1);

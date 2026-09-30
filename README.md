@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:718`) and the reason is printed (`tests/sondes/lancer.mjs:1681`). A zero summary has its own door: `tests/sondes/lancer.mjs:711`, reason `tests/sondes/lancer.mjs:1622`.
+(`tests/sondes/lancer.mjs:742`) and the reason is printed (`tests/sondes/lancer.mjs:1713`). A zero summary has its own door: `tests/sondes/lancer.mjs:735`, reason `tests/sondes/lancer.mjs:1654`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -648,6 +648,21 @@ qualified as acceptance (`corps`: the `null` from a dead server and the `null` f
 were the same value). The count of verdicts saw none of it — it measures losses, and these probes
 had none. **A probe that always writes its count is not a probe that proves what it says.**
 
+**The tenth instance, found by the "extra" tier — 30/09/2026.** A one-page dossier — the 451-900 slice of
+the harness, one closed question, one answer — produced the first defect the campaign had missed: the
+`couts` register control tested **presence, not validity**. `=== undefined` let `null`, `NaN`, `''` and
+`'1'` through, and each went on to live downstream: `null` became a zero cost through `|| 0` (the exact
+false red the control promised to prevent), while two string costs **concatenated** in the reduce —
+`0 + '1' + '1'` is `'011'` — crushing the floor to zero: a false green, the dangerous direction.
+Reproduced on the real file before believing it: both mutations cross the control and the run carries
+on. The closure is three layers, per house doctrine: validity at declaration (finite number, >= 0,
+offender named), a lock at the point of use (a non-number cost is a **failure, not an absence** —
+`plancherEffectif` fails toward red with `plancher: -1`, never toward green), and two table lines
+pinning the contract (`'1'` and `null` both expected at `-1`) that inject values directly into the
+function, so the lock is exercised even if the upstream control is weakened later. Proven by
+mutations: all four bad types refused by name at declaration; the lock removed → the floor table
+bites; healthy run passes.
+
 **The meta-control of the guards — 30/09/2026.** The root cause named three times this week: nothing
 verified that every decision path of the harness is crossed by a table. Each exit path of `classerNote`
 (8) and `plancherEffectif` (3) now declares itself at the point of return (`garde(cle, …)`), and after
@@ -702,8 +717,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:718`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1633`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:742`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1665`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1168,9 +1183,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1554`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1586`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1681`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1713`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

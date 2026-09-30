@@ -659,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:718`) et le motif est écrit (`tests/sondes/lancer.mjs:1681`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:711`, motif `tests/sondes/lancer.mjs:1622`. Sans ce
+(`tests/sondes/lancer.mjs:742`) et le motif est écrit (`tests/sondes/lancer.mjs:1713`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:735`, motif `tests/sondes/lancer.mjs:1654`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -675,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:718`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1633`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:742`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1665`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -715,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1554`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1586`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1681`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1713`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -822,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:985`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1017`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1188,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:718`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:742`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:711`, motif `tests/sondes/lancer.mjs:1622`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:735`, motif `tests/sondes/lancer.mjs:1654`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1232,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1217`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1249`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -2481,6 +2481,59 @@ rendu** — deux familles de faux verts ne peuvent plus renaître.
 préfixes, les portes descompte) reste ouverte — mêmes mécanismes, à poser
 quand la vague 1 aura tenu un run de CI. Les préconditions Z: et corbeille
 attendent toujours leur arbitrage de conception (§7/41).*
+
+
+### 7/43 La dixième instance : le contrôle de présence avalait les types — trouvée par le niveau « extra » · **30/09/2026**
+
+Le mini-dossier d'une page (extrait 451-900, une seule question, effort
+« extra ») a produit en une réponse le premier défaut que la campagne n'avait
+pas vu : **le contrôle du registre `couts` testait la présence, jamais la
+validité.** Son filtre ne regardait que `=== undefined` — donc `null`, `NaN`,
+`''` ou `'1'` (chaine) passaient, et chacun continuait sa vie plus bas :
+
+- `null` → `|| 0` dans `classerNote` : aveu classé « structurel » à coût
+  zéro — **le faux rouge que le contrôle promettait d'empêcher**, celui du
+  §7/36, de retour par un seul caractère.
+- `'1'` → `a + n.couts` dans le `reduce` : deux notes se **concatènent** en
+  `'011'`, la dispense vaut onze au lieu de deux, le plancher s'écrase à
+  zéro — **faux vert**, le sens dangereux.
+
+**Reproduit sur le vrai code avant d'être cru** : deux mutations (`couts: 1`
+→ `null`, et → `'1'`) traversent le contrôle et le run continue (`exit=2`,
+arrêt plus loin sur le volume absent) ; la concaténation mesurée mot pour
+mot — `dispense = "011"` → plancher 0 au lieu de 4. Le modèle adverse avait
+tout vu, y compris la ligne de table manquante : les constantes de
+TABLE_PLANCHER ne traversent que cinq des quatorze motifs, le motif muté
+n'était comparé à aucune valeur attendue.
+
+**La fermeture, en trois couches** — la doctrine du dépôt appliquée à une
+valeur qui coule dans une arithmétique :
+
+1. **La validité à la déclaration.** Le contrôle exige maintenant un nombre
+   fini positif ou nul (`typeof === 'number'` + `Number.isFinite` + `>= 0`),
+   et nomme la valeur fautive dans le refus.
+2. **Le verrou au point d'usage.** `plancherEffectif` re-vérifie : un coût
+   non nombre est une **panne**, pas une absence — il force le chemin
+   « plancher intact » à échouer vers le rouge (`plancher: -1`, déclaré
+   douzième garde), jamais vers le vert. Zéro serait précisément le faux vert
+   que la concaténation produisait.
+3. **Deux lignes de table qui figent le contrat** : une note à `couts: '1'`
+   et une à `couts: null`, toutes deux attendues à `-1`. Elles injectent la
+   valeur directement dans la fonction — sans passer par le registre — donc
+   le verrou est éprouvé même si le contrôle amont est affaibli plus tard.
+
+**La preuve, par mutations sur copies jetables** : `null`, `'1'`, `NaN`,
+`-2` → quatre refus nommés à la déclaration (`exit=1`) ; verrou retiré →
+**la table des planchers est fausse** (les lignes du contrat mordent) ;
+run sain → passe et continue. La boucle des planchers refuse aussi toute
+valeur négative autre que `-1` exactement — la panne a une signature.
+
+**La leçon.** Un contrôle de présence sur une valeur qui coule dans une
+arithmétique est un contrat de type à moitié signé : la garde du §7/36
+disait *écris le coût*, elle ne disait pas *écris un nombre*. La même
+question bornée — une page, un contrôle jeune, une seule réponse, le niveau
+« extra » — a fait en un message ce que trois campagnes n'avaient pas vu
+sur ce contrôle. Le format tient : il mérite les prochains contrôles jeunes.
 
 
 ---
