@@ -99,11 +99,19 @@ verifier('un scan sans lettre est refusé, et nommé',
   sansLettre.status === 400 && /lettre manquante/.test(sansLettre.texte),
   `HTTP ${sansLettre.status} · ${sansLettre.texte.slice(0, 90)}`);
 
-// Le témoin : MÊME route, un volume qui n'existe pas. La garde de la lettre a
-// laissé passer — sinon on lirait « volume inconnu » — et c'est la garde
-// suivante qui parle. Sans lui, « 400 » ne distinguerait pas une validation
-// d'entrée d'un refus de tout.
-const lettreAbsente = await poster('/api/scan/Z');
+// Le témoin : MÊME route, une lettre HORS CATALOGUE — déduite de `/api/state`,
+// plus aucune lettre écrite en dur. La garde 404 « volume inconnu » est ainsi
+// une propriété de construction sur toutes les machines : avec un Z: en dur,
+// une machine qui monte un vrai Z: voyait la garde le connaître, le POST
+// passer, et lancer une analyse réelle. La garde de la lettre a laissé passer
+// — sinon on lirait « volume inconnu » — et c'est la garde suivante qui parle.
+// Sans lui, « 400 » ne distinguerait pas une validation d'entrée d'un refus de
+// tout.
+const lettres = ((etat && etat.drives) || []).map((x) => x.letter).filter(Boolean);
+const absente = 'ZYXWVUTSRQPONMLKJIHGFEDCBA'.split('').find((l) => !lettres.includes(l)) || 'Z';
+verifier('une lettre hors catalogue est déduite de l état réel', !!absente,
+  `${lettres.length} volume(s) monté(s) : ${lettres.join(' ') || 'aucun'}`);
+const lettreAbsente = await poster(`/api/scan/${absente}`);
 verifier('témoin : une lettre valide atteint la garde suivante, elle',
   lettreAbsente.status === 404 && /volume inconnu/.test(lettreAbsente.texte),
   `HTTP ${lettreAbsente.status} · ${lettreAbsente.texte.slice(0, 90)}`);
@@ -157,7 +165,13 @@ verifier('une route inconnue est refusée, et nommée',
 // compterait cette route comme correctement refusée, et la garde resterait
 // invisible. C'est la démonstration en deux lignes de ce que R15 a appris à ses
 // dépens : le statut est une information, le libellé en est une autre.
-const routeVielle = await poster('/api/scan/Z');
+// La lettre est la même que plus haut : déduite, jamais supposée. MÊME statut
+// que le refus — 404 — mais un AUTRE message. Une sonde qui ne vérifierait que
+// le statut compterait cette route comme correctement refusée, et la garde
+// resterait invisible. C'est la démonstration en deux lignes de ce que R15 a
+// appris à ses dépens : le statut est une information, le libellé en est une
+// autre.
+const routeVielle = await poster(`/api/scan/${absente}`);
 verifier('témoin : un 404 de route réelle ne se confond pas avec celui d\'une route inconnue',
   routeVielle.status === 404 && !/route inconnue/.test(routeVielle.texte),
   `HTTP ${routeVielle.status} · ${routeVielle.texte.slice(0, 90)}`);

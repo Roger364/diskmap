@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:742`) and the reason is printed (`tests/sondes/lancer.mjs:1713`). A zero summary has its own door: `tests/sondes/lancer.mjs:735`, reason `tests/sondes/lancer.mjs:1654`.
+(`tests/sondes/lancer.mjs:743`) and the reason is printed (`tests/sondes/lancer.mjs:1720`). A zero summary has its own door: `tests/sondes/lancer.mjs:736`, reason `tests/sondes/lancer.mjs:1661`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -648,6 +648,23 @@ qualified as acceptance (`corps`: the `null` from a dead server and the `null` f
 were the same value). The count of verdicts saw none of it — it measures losses, and these probes
 had none. **A probe that always writes its count is not a probe that proves what it says.**
 
+**Both preconditions arbitrated — and the Z: guard already existed — 30/09/2026.** The option A/B
+debate ended when the code answered first: `main.rs` already returns `404 "volume inconnu"` for any
+`POST /api/scan/<letter>` outside its catalogue, **before** any scan starts. What was missing was the
+evidence, not the guard. So `host` and `entrees` no longer hardcode Z: — a mapped Z: drive would have
+made the guard accept it and **a real scan would have launched** — they now *derive* a letter outside
+the catalogue from `/api/state`, with a new verdict naming the derivation, making the 404 a
+construction property on every machine: no assumption, no note, no relaxation. The recycle bin is a
+legitimate machine state, not an attack, so nothing to refuse server-side: `elevation` now conditions
+only the three bin-dependent verdicts (two destinations, THE LAW) and declares the skip in the
+dialect; the register carries `couts: 3`, the same on every machine. The mutation proof caught two
+defects in the proof itself — `noter()` had never been shipped to `elevation`, and the first skip
+covered the whole modal block, losing eight verdicts for three declared (the floor bit, honestly).
+After restructure: 24/24, `elevation 15/15`, both debts written (`22 - 4 - 3 = 15`). Also recorded:
+`/api/open` on an unknown letter answers `409 "volume pas encore analysé"` — misleading message, a
+404 would be more honest; and the per-probe line prints `vert` before the floor loss forces the code
+to 1 — two verdicts, deliberately distinct.
+
 **The tenth instance, found by the "extra" tier — 30/09/2026.** A one-page dossier — the 451-900 slice of
 the harness, one closed question, one answer — produced the first defect the campaign had missed: the
 `couts` register control tested **presence, not validity**. `=== undefined` let `null`, `NaN`, `''` and
@@ -717,8 +734,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:742`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1665`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:743`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1672`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1183,9 +1200,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1586`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1593`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1713`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1720`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

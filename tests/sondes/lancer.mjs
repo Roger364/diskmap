@@ -490,6 +490,7 @@ const AVEURS_STRUCTURELS = [
   { motif: 'garde de l’application « Host absent → 403 » non exercée', couts: 0, pourquoi: 'dans un run du harnais, les sondes ne reçoivent que l URL du filet, donc la garde 403 de l application est morte par construction : le parseur HTTP de Node répond 400 avant elle. Aucun verdict n est perdu — ce que la note déclare est une ATTRIBUTION (ce vert prouve le filet, pas l application), et son coût est zéro écrit, pas tu' },
   { motif: 'moitié « instance élevée » NON exercée', couts: 4, pourquoi: 'la sonde elevation a deux chemins exclusifs : 17 verdicts communs + 1 sur instance normale, 17 + 4 sur élevée. Le plancher est posé sur le chemin le plus long (22) ; la moitié non jouée se déclare et détend de son coût — 4 sur une instance normale, 1 sur une élevée' },
   { motif: 'moitié « instance normale » NON exercée', couts: 1, pourquoi: 'l autre moitié du même mécanisme : sur une instance élevée, le bouton « actif sans rien taper » n existe pas, puisque le serveur exige EFFACER' },
+  { motif: 'branche « corbeille présente » NON exercée', couts: 3, pourquoi: 'mesuré : elevation lit aCorbeille(VOL) et l imprime en tête, mais trois verdicts de destination et de loi n avaient jamais été conditionnés au fait ; sans corbeille ils assertent sur un état qui ne tient pas — un volume sans corbeille est un état légitime de la machine, pas une attaque : la sonde saute et déclare, l application n a rien à refuser' },
 ];
 
 // ---------- le registre se verifie LUI-MEME, avant les tables ----------
@@ -872,6 +873,9 @@ const LE_TICKETS = 'coalescence pendant un scan en vol non exercée sur ce volum
 const SANS_MARQUE = 'branches du débordement NON ÉPROUVÉE — structurel : une raison parfaitement suffisante';
 const TRONQUEE = 'branches du débordement NON EXERCÉE — structurel :';
 const NON_DECLARE = 'branches du débordement NON EXERCÉE — un trou neuf — structurel : une raison parfaitement suffisante';
+const MOITIE_ELEVEE = 'moitié « instance normale » NON exercée — 1 vérification sautée (bouton actif sans rien taper). structurel : l instance est élevée, le serveur exige alors EFFACER et un bouton actif sans saisie ne peut pas être observé';
+const MOITIE_NORMALE = 'moitié « instance élevée » NON exercée — 4 vérifications sautées (conséquence du bandeau, bouton inactif tant que vide, mot suivi d une espace, mot exact), le champ de saisie n a pas été éprouvé. structurel : l instance est normale, la loi n exige alors aucun mot et le champ de confirmation n existe pas dans la modale';
+const CORBEILLE_ABSENTE = 'branche « corbeille présente » NON exercée — 3 vérifications sautées (destination annoncée, destination sous mot exigé, LA LOI), la corbeille de V est absente. structurel : sans corbeille, le serveur ne peut pas annoncer la destination corbeille, et la loi ne tient sur aucun de ses deux côtés — cet état dépend du volume, pas du code';
 const notes = (...textes) => textes.map((t) => ({ texte: t, ...classerNote(t) }));
 const TABLE_PLANCHER = [
   [6, notes(), 6, 'sans note, le plancher ne bouge pas', { garde: 'plancher intact' }],
@@ -891,6 +895,9 @@ const TABLE_PLANCHER = [
     'null passe la garde && puis vaut zero par || : le faux rouge que le controle de declaration devait empecher, ici rendu impossible',
     { garde: 'couts non nombre' }],
   [6, notes(TROP_LARGE, NON_EXERCEE), 0, 'deux trous cumulent leurs couts, et le plancher est borne a zero'],
+  [22, notes(MOITIE_ELEVEE), 21, 'instance élevée : 17 communs + 1 bandeau + 3 bouton = 21 écrits, la moitié non jouée détend de 1 — le compte du runner du 30/09'],
+  [22, notes(MOITIE_NORMALE), 18, 'instance normale : 18 écrits, la moitié élevée détend de 4 — le compte de la machine locale'],
+  [22, notes(MOITIE_NORMALE, CORBEILLE_ABSENTE), 15, 'instance normale ET corbeille absente : les dettes se cumulent, 22 - 4 - 3 = 15 — le cas que la mutation de preuve a joué'],
   [undefined, notes(TROP_LARGE), undefined, 'une sonde sans plancher en garde reste sans plancher : une relaxation n en cree pas un', { garde: 'plancher sans garde' }],
 ];
 // MEME enregistrement pour l arithmetique. Le danger propre d ici n est pas la

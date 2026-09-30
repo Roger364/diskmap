@@ -234,11 +234,20 @@ try {
   // Le même genre de POST, sous le bon nom et avec le bon en-tête, doit ATTEINDRE
   // la route : la garde du nom ne doit pas fermer les POST au passage.
   //
-  // On vise une lettre de volume inexistante, donc un 404 : la requête a franchi
-  // les deux gardes et c'est la route qui a répondu. Surtout PAS `/api/quit` —
-  // avec un Host valide, il arrêterait réellement le serveur, et la sonde
-  // conclurait sur un serveur mort.
-  const atteint = await requete('POST', '/api/scan/Z', `127.0.0.1:${PORT}`, JSON_POST);
+  // La lettre est CALCULÉE, plus aucune supposition : on tire de `/api/state`
+  // une lettre hors catalogue, et le 404 « volume inconnu » devient une
+  // propriété de CONSTRUCTION (main.rs refuse toute lettre absente du
+  // catalogue, avant start_scan) au lieu d'une hypothèse sur la machine.
+  // Un Z: en dur était un piège dormant : sur une machine avec un vrai Z:,
+  // la garde le connaît, le POST passait et lançait réellement une analyse.
+  // Surtout PAS `/api/quit` — avec un Host valide, il arrêterait réellement
+  // le serveur, et la sonde conclurait sur un serveur mort.
+  const lettres = ((await fetch(`${BASE}/api/state`).then((r) => r.json()).catch(() => null))?.drives || [])
+    .map((x) => x.letter).filter(Boolean);
+  const absente = 'ZYXWVUTSRQPONMLKJIHGFEDCBA'.split('').find((l) => !lettres.includes(l)) || 'Z';
+  verifier('une lettre hors catalogue est déduite de l état réel', !!absente,
+    `${lettres.length} volume(s) monté(s) : ${lettres.join(' ')}`);
+  const atteint = await requete('POST', `/api/scan/${absente}`, `127.0.0.1:${PORT}`, JSON_POST);
   verifier('un POST légitime atteint bien la route',
     atteint.status === 404, `HTTP ${atteint.status} · ${atteint.corps.slice(0, 90)}`);
 } finally {

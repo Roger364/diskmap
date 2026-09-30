@@ -659,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:742`) et le motif est écrit (`tests/sondes/lancer.mjs:1713`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:735`, motif `tests/sondes/lancer.mjs:1654`. Sans ce
+(`tests/sondes/lancer.mjs:743`) et le motif est écrit (`tests/sondes/lancer.mjs:1720`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:736`, motif `tests/sondes/lancer.mjs:1661`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -675,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:742`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1665`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:743`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1672`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -715,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1586`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1593`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1713`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1720`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -822,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1017`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1024`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1188,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:742`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:743`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:735`, motif `tests/sondes/lancer.mjs:1654`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:736`, motif `tests/sondes/lancer.mjs:1661`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1232,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1249`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1256`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -2534,6 +2534,57 @@ disait *écris le coût*, elle ne disait pas *écris un nombre*. La même
 question bornée — une page, un contrôle jeune, une seule réponse, le niveau
 « extra » — a fait en un message ce que trois campagnes n'avaient pas vu
 sur ce contrôle. Le format tient : il mérite les prochains contrôles jeunes.
+
+
+### 7/44 Les deux préconditions arbitraient — et la garde Z: existait déjà · **30/09/2026**
+
+Le pour/contre des deux options (précondition mesurée côté sonde, garde
+applicative côté serveur) a été posé, puis **le code a tranché avant l'avis** :
+la garde que « B » devait créer existe déjà — [main.rs:977] répond
+`404 « volume inconnu »` à tout POST `/api/scan/<lettre>` hors catalogue,
+**avant** tout démarrage d'analyse. Ce qui manquait n'était pas la garde,
+c'était son épreuve.
+
+**Z: — l'hypothèse devient une déduction.** `host` et `entrees` visaient Z:
+en dur : sur une machine avec un vrai Z: mappé, la garde le connaît, le POST
+passe, et **une analyse réelle part** — la promesse d'en-tête (« aucune route
+n'est réellement déclenchée ») devenait mensongère. Les deux sondes tirent
+maintenant une lettre hors catalogue de `/api/state` (qu'elles lisent déjà),
+avec un verdict neuf : *une lettre hors catalogue est déduite de l'état réel*.
+Le 404 devient une propriété de **construction** sur toutes les machines :
+plus d'hypothèse, plus de note, plus de détente — mieux que les deux options
+d'origine.
+
+**La corbeille — l'état légitime se mesure.** Un volume sans corbeille n'est
+pas une attaque : le serveur n'a rien à refuser, c'est la machine qui dit son
+état. `elevation` conditionne maintenant **seulement les trois verdicts dont
+la prémisse est la corbeille** (deux destinations, LA LOI) et déclare le saut
+au dialecte ; le registre porte `couts: 3`, coût identique sur toutes les
+machines. L'accord interface/serveur et les verdicts du bouton restent
+inconditionnels — ils ne dépendent pas de la corbeille.
+
+**La preuve par mutation a attrapé deux défauts de la preuve elle-même.**
+Un : `noter()` n'a jamais été distribué à `elevation` — la sonde mutée est
+morte (`SANS SYNTHESE`) avant d'avoir écrit sa note ; la note passe par la
+forme littérale `note :` que la sonde emploie déjà. Deux : le premier saut
+portait sur le bloc entier de la modale — **huit verdicts perdus pour trois
+déclarés**, le plancher a rougi avec sa ligne RELÂCHE honnête, et la leçon
+est restée : on ne saute que ce qui dépend de la condition, et le coût se
+compte sur ce qui saute réellement. Après restructuration : `exit=0`,
+24/24, `elevation 15/15`, les deux dettes écrites (`22 - 4 - 3 = 15`), la
+branche jamais jouée tourne sans faux rouge ni faux vert.
+
+**La table** fige les trois cas : 21 (runner élevé, moitié normaledétendue),
+18 (local normal), 15 (local normal **et** corbeille absente).
+
+**Consigné sans correction** : `/api/open` sur une lettre inconnue répond
+`409 « volume pas encore analysé »` [main.rs:1017] — le message trompe (le
+volume n'est pas « pas encore analysé », il n'existe pas) ; un 404 aligné sur
+la garde du scan serait plus honnête, au prix d'un choix d'affichage. Et le
+ligne de sonde affiche `vert` **avant** que la perte de plancher ne force le
+code à 1 : le verdict du produit et le verdict du plancher sont deux verdicts
+différents, c'est voulu — mais la lecture rapide peut y voir une
+contradiction ; le bloc PLANCHER sous la ligne dit la vérité.
 
 
 ---

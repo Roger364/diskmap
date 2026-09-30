@@ -230,8 +230,19 @@ try {
   verifier('la modale s’ouvre — donc l’interface a obtenu son aperçu', modaleOuverte,
     erreursJs.slice(0, 2).join(' | ') || 'elle ne s’est pas ouverte');
 
+  // La corbeille, MESURÉE et non supposée : le fait est imprimé en tête, mais
+  // rien n'était conditionné à lui. Sans corbeille, les trois verdicts de
+  // destination et de loi assertent sur un état qui ne tient pas — un vert qui
+  // prouve autre chose. La branche saute et DIT ce qu'elle saute (l'aveu du
+  // dialecte, la marque dans le corps), et le registre déclare son coût.
   if (modaleOuverte) {
     const corps = (await page.textContent('#dbody')).replace(/\s+/g, ' ');
+    // La corbeille, MESURÉE et non supposée : le fait est imprimé en tête, mais
+    // trois verdicts assertaient sur lui sans le conditionner. On ne saute pas
+    // le bloc entier — accord interface/serveur et bouton n dépendent PAS de la
+    // corbeille — seulement les trois verdicts dont la prémisse est la
+    // corbeille. Le coût déclaré au registre est 3, sur toutes les machines.
+    if (!A_CORBEILLE) console.log('note : branche « corbeille présente » NON exercée — 3 vérifications sautées (deux destinations, LA LOI), la corbeille de ' + VOL + ' est absente. structurel : sans corbeille, le serveur ne peut pas annoncer la destination corbeille, et la loi ne tient sur aucun de ses deux côtés — cet état dépend du volume, pas du code');
     // Les champs de confirmation RENDUS, lus une fois. Tout ce qui suit porte
     // sur cet etat-la, et non sur ce qu on suppose qu il devrait etre.
     const motsInterface = await page.$$eval('#dbody .dconfirm',
@@ -246,12 +257,14 @@ try {
     // mesuree DANS le cas ou un mot est exige, et pas seulement dans celui ou
     // il n y en a pas.
     const annonceCorbeille = /corbeille/i.test(corps);
-    verifier('la destination est annoncee — corbeille, mode choisi',
-      annonceCorbeille, `corps=« ${corps.slice(0, 200)} »`);
-    verifier('la destination reste annoncee quand un mot est exige',
-      motsInterface.length === 0 || annonceCorbeille,
-      `${motsInterface.length} mot(s) exige(s) · destination `
-      + `${annonceCorbeille ? 'annoncee' : 'ABSENTE'}`);
+    if (A_CORBEILLE) {
+      verifier('la destination est annoncee — corbeille, mode choisi',
+        annonceCorbeille, `corps=« ${corps.slice(0, 200)} »`);
+      verifier('la destination reste annoncee quand un mot est exige',
+        motsInterface.length === 0 || annonceCorbeille,
+        `${motsInterface.length} mot(s) exige(s) · destination `
+        + `${annonceCorbeille ? 'annoncee' : 'ABSENTE'}`);
+    }
 
     // --- L ACCORD ENTRE L INTERFACE ET LE SERVEUR ---------------------------
     // Le dossier est cherché PAR SON NOM. Descendre depuis la racine eut
@@ -288,11 +301,13 @@ try {
     // l autre. Ni « attendue » ni « refusee » : une seule loi, deux moities,
     // et le journal dit en tete laquelle des deux cette execution a mesuree.
     const attendu = ELEVE ? ['EFFACER'] : [];
-    verifier('LA LOI : corbeille presente, lot sous le palier, mode corbeille'
-      + ' → `EFFACER` exige SI ET SEULEMENT SI l instance est elevee',
-      JSON.stringify(motsInterface) === JSON.stringify(attendu),
-      `mots=${JSON.stringify(motsInterface)}, attendu ${JSON.stringify(attendu)} `
-      + `(corbeille=${A_CORBEILLE}, elevee=${ELEVE})`);
+    if (A_CORBEILLE) {
+      verifier('LA LOI : corbeille presente, lot sous le palier, mode corbeille'
+        + ' → `EFFACER` exige SI ET SEULEMENT SI l instance est elevee',
+        JSON.stringify(motsInterface) === JSON.stringify(attendu),
+        `mots=${JSON.stringify(motsInterface)}, attendu ${JSON.stringify(attendu)} `
+        + `(corbeille=${A_CORBEILLE}, elevee=${ELEVE})`);
+    }
 
     // --- LE BOUTON : actif exactement quand la saisie satisfait --------------
     const actif = async () => page.$eval('#ddo', (b) => !b.disabled).catch(() => null);
