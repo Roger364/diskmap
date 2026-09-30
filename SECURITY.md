@@ -2175,3 +2175,72 @@ elle demande de décider si l'absence de lettre est une précondition (un
 inexistante.*
 
 ---
+
+### 7/38 Balayer `entrees` : trois défauts dans une seule branche · **30/09/2026**
+
+Deuxième sonde du balayage : `entrees`, 10 verdicts, quatre gardes d'entrée du
+routeur. Le modèle adversaire y a trouvé **trois défauts dans la même branche**,
+plus un titre qui ment — et une course qu'il a suspectée puis que l'ordre du
+harnais a disculpée.
+
+**La branche : le volume sans instantané.** `const support = !!(d &&
+d.status === 'ready')` gouverne tout : si le volume n'est pas analysé au moment
+de la requête, deux vérifications sautent, un `verifier(…, false)` les remplace,
+et la sonde écrit 9 verdicts au lieu de 10. Trois défauts, tous dans ce `else` :
+
+**1. La note est hors dialecte — par le préfixe.** La sonde écrit sa déclaration
+par `info()`, qui préfixe de six espaces : la ligne commence par `NE PAS
+MESURABLE`, que le collecteur **ramasse puis retire** — et le texte restant
+porte la marque (`non mesurable`) mais la ligne elle-même n'a pas `note :`. La
+sonde `entrees` ne définit **pas** de `noter()` : elle n'a jamais eu l'outil
+qui rend le dialecte facile. C'est la huitième instance de la famille, et elle
+confirme le diagnostic de §7/36 : tant que le dialecte demande un effort
+*applicable* — copier une convention, définir une fonction — les sondes
+s'écriront hors convention, et le contrôle refusera la vérité.
+
+**2. La contradiction `structurel` / ROUGE.** La note dit « structurel » — la
+machine, pas le code — et la ligne suivante force un `verifier(…, false)` : un
+ROUGE. Le harnais reçoit deux messages contraires d'une même branche : « ce
+trou est déclaré et discutable » **et** « cette sonde a échoué ». L'arbitrage
+n'appartient pas au modèle qui l'a trouvé : soit le manque est structurel (une
+note, le plancher relâché de 1, pas de rouge), soit c'est une panne (le rouge,
+pas de note). Écrire les deux, c'est dire deux choses incompatibles et laisser
+le lecteur choisir.
+
+**3. La justification reformule le symptôme.** « la garde exige un instantané,
+et ce volume n'en a pas » dit *que* la branche saute, pas *pourquoi* — alors
+que la sonde **possède** la cause et l'imprime déjà : `${d.status}`. La
+justification correcte reprend l'état réel du volume au moment de la requête.
+Le modèle a proposé la note corrigée, au dialecte, avec le statut dedans — elle
+est prête à être mise dans le code.
+
+**4. Le titre qui ment.** « le serveur répond toujours après les huit requêtes »
+— or dans le `else`, deux POST sont sautés : il n'y en a que **six**. Un titre
+faux n'est pas un verdict perdu, c'est un énoncé inexact dans une ligne que le
+classifieur peut lire comme une preuve.
+
+**La course disculpée.** Le modèle a suspecté une course : `elevation` termine
+par une ré-analyse non attendue, et si `entrees` tournait juste après, le statut
+du volume pourrait ne pas être `ready`. Vérifié dans l'ordre du harnais :
+`entrees` est la **quatrième** sonde, `elevation` l'avant-dernière — dix sondes
+les séparent. La course n'existe pas dans cet ordre. Ce qui reste ouvert, c'est
+la phrase de confiance du commentaire (« Le harnais analyse toujours son volume
+avant les sondes »), qu'aucun verdict ne mesure — un `verifier` sur
+`/api/state` au démarrage du harnais fermerait le trou, et c'est le même type de
+contrôle que celui qui manque pour `Z:` (§7/37).
+
+**Ce que ce deuxième balayage confirme.** Les sondes muettes ne sont pas
+muettes par accident : `entrees` n'a même pas la fonction `noter()` que les
+autres ont reçue. Le balayage avait été justifié par « le vivier des instances
+passées » ; il produit mieux que ça — il montre que **l'outil du dialecte n'a
+jamais été distribué** aux quatre. La correction n'est pas quatre notes copiées
+à la main : c'est distribuer `noter()` là où il manque, et laisser chaque sonde
+nommer ses branches avec l'outil des autres.
+
+*Ce que je n'ai pas fait : la note corrigée n'est pas dans la sonde, le ROUGE
+contre note n'est pas arbitré, et le titre « huit » n'est pas corrigé — tout
+trois attendent le run de preuve qui accompagnera la fin du balayage
+(`elevation`, `corps`, puis la question D).*
+
+---
+
