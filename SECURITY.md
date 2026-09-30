@@ -2114,3 +2114,64 @@ notes portent maintenant la marque dans le corps du texte, où elle survit.
 15 verdicts (le verdict de support était perdu avec la branche), le plancher
 d'`erreurs` se relâche du seul coût déclaré, et `PLANCHERS RELACHES` liste une
 ligne — chaque détente est une dette écrite, donc discutable.
+
+### 7/37 Balayer les sondes muettes : host, et ce qu'un vert ne dit pas · **30/09/2026**
+
+Le dossier 3 a balayé les quatre sondes qui n'écrivent jamais de note — `host`,
+`entrees`, `elevation`, `corps` — avec `erreurs` en étalon du dialecte. Premier
+retour, sur `host` (33 verdicts, le plus gros plancher jamais balayé) : **aucune
+branche ne saute un verdict**. Le modèle a compté les 33 un par un et le compte
+rejoint le plancher. Mais deux verts y prouvent autre chose que ce qu'ils
+annoncent — et c'est une famille que le registre ne voit pas, parce qu'elle ne
+perd **aucun** verdict.
+
+**1. Le trou d'attribution.** Le verdict « l'absence d'en-tête Host est refusée »
+attend **400 derrière le filet, 403 sinon** — deux preuves différentes pour un
+même vert :
+
+> `viaFilet ? sans.status === 400 : sans.status === 403`
+
+Dans un run du harnais, la branche « application » est **morte par construction** :
+le harnais ne donne aux sondes que l'URL du filet (`urlProbes`, et le code le
+dit : « les sondes passent par »). La garde 403 de l'application
+(`hote_local`, `src/main.rs`) n'est donc **jamais atteinte par cette sonde** —
+le parseur HTTP de Node répond avant elle, dans le filet. Le commentaire de la
+sonde le savait (« seule la main qui refuse change ») mais l'information ne
+sort **pas** dans le dialecte : elle vit dans le titre du verdict, que le
+classifieur ne lit pas. Le vert prouve le filet, pas l'application — et rien ne
+le dit.
+
+La note d'aveu proposée par le modèle, retenue telle quelle après vérification
+du dialecte (marque dans le corps, justification sur la ligne, motif à ajouter
+au registre avec `couts: 0` — **zéro**, puisque le compte ne change pas : ce
+que la note déclare est une *attribution*, pas une perte) :
+
+> `note : garde de l'application « Host absent → 403 » non exercée — le parseur du filet a répondu 400 avant elle, ce vert ne prouve rien sur l'application. structurel : le filet est un serveur Node qui refuse lui-même toute requête HTTP/1.1 sans Host, avant toute route de l'application.`
+
+**2. L'hypothèse non mesurée.** Le verdict final attend un 404 de
+`/api/scan/Z` — la lettre Z est supposée n'exister sur **aucune** machine. La
+sonde lit déjà `/api/state` et n'y regarde jamais les lettres. Si un `Z:` existe
+(partage réseau, clé USB), le 404 ne dit plus « la route a répondu » mais autre
+chose — et la promesse de l'en-tête (« Aucune route n'est réellement
+déclenchée ») peut céder. Le modèle a **refusé d'écrire une note** ici, avec la
+bonne raison : une note déclare un verdict perdu, or aucun verdict n'est perdu —
+ce qui manque est une **précondition mesurée**, pas un aveu. La correction n'est
+pas au registre : c'est un `verifier` de plus qui lit les lettres de
+`/api/state` et échoue proprement si Z existe.
+
+**Ce que ce balayage change.** Les sondes muettes ne sont pas muettes parce
+qu'elles n'ont rien à dire — elles sont muettes parce que **personne ne leur avait
+posé la question**. `host` n'avait ni trou de plancher ni verdict perdu, et
+portait quand même deux défauts de preuve. Le compte de verdicts ne voit que les
+pertes ; il ne voit pas une preuve **remplacée** par une autre. C'est la
+définition d'un contrôle à compléter, et elle ne peut pas l'être par le compte :
+elle exige que la sonde *dise* quelle main a refusé.
+
+*Ce que je n'ai pas fait : la note d'attribution n'est pas encore dans la sonde,
+et son motif pas au registre — c'est une ligne de code et une entrée à zéro,
+à faire avec le run qui la vérifie. L'hypothèse Z n'est pas corrigée non plus :
+elle demande de décider si l'absence de lettre est une précondition (un
+`verifier` de plus) ou une garde (un 400 de l'application sur lettre
+inexistante.*
+
+---
