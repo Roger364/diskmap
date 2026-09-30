@@ -2309,3 +2309,70 @@ preuve de fin de balayage.*
 
 ---
 
+### 7/40 Balayer `corps`, et ce que le balayage des muettes a appris · **30/09/2026**
+
+Dernière sonde muette : `corps`, 4 verdicts, aucun `if`. Le modèle a trouvé le
+défaut le plus court de la campagne et fermé le balayage sur une synthèse qui
+déborde les quatre sondes.
+
+**Le silence lu comme une acceptation.** Le verdict « une taille à la borne est
+acceptée » se décide sur `null` — la valeur que `brut` rend par **trois portes
+différentes** : le délai écoulé (le cas voulu : le serveur attend le corps),
+une connexion fermée sans réponse, une connexion refusée. Le vert signifie
+« le serveur attend » ; il est atteint aussi quand **le serveur est mort**. Le
+tableau du modèle, déduit du code et honnêtement présenté comme non mesuré :
+sur un port sans auditeur, les verdicts 1 et 2 rougissent, le verdict 3 passe
+**vert**, et `vivant` rougit — le run total reste rouge, mais ligne à ligne
+« la borne est acceptée » s'affiche à côté d'un serveur qui ne répond plus.
+La sonde ne distingue pas les trois portes : c'est une décision de son code
+(`conclure(recu || null)` sur les trois événements), pas de la machine — et le
+modèle a refusé la note pour ça, encore une fois avec la bonne raison : écrire
+`structurel :` ici **mentirait**, la fusion des portes est un choix d'auteur.
+
+Il a aussi repéré un message qui dit l'inverse du fait : si une réponse arrive
+sans la forme `HTTP/1.1 NNN`, `code3` vaut `undefined`, le verdict rouge, et la
+mesure affichée est « aucune réponse, donc lecture en cours » — alors qu'une
+réponse est **arrivée**.
+
+**La synthèse, qui dépasse les quatre sondes.** Le modèle a répondu à la
+question D en deux listes que ce journal reprend comme des leçons du balayage :
+
+- **Ce qui dépend de l'application, pas de la machine** : la borne de 4 Mio et
+  l'ordre « 413 avant toute route » ; les libellés et l'ordre des gardes ;
+  le sort d'un `POST /api/scan/Z` sur un Z réel ; la cohérence mots
+  interface/mots serveur. Les notes d'aveu ne les couvrent pas et ne doivent
+  pas le prétendre.
+- **Ce qu'une note rendrait mensonger** : `/filet` injoignable confondu avec
+  « pas de filet » ; le jeton vide passé pour « pas administrateur » ; le
+  silence lu comme acceptation ; `vivant` qui ne distingue pas « jamais tombé »
+  de « tombé puis relancé ». Dans chaque cas, **la note déclarerait un coût
+  faux ou une cause fausse** — le refus d'écrire était la réponse.
+
+Et il a nommé le hors-dossier qui lui a manqué : `config.mjs` (les helpers qui
+portent la vérité terrain), le registre et le classifieur (pour savoir si
+`info()` d'`entrees` est lu — je peux répondre : non, sans `note :` la ligne
+n'est ramassée que par son préfixe `NE PAS MESURABLE`, que le collecteur retire
+avant de classer), et le comportement sur d'autres machines. Un prochain dossier
+devrait inclure `config.mjs` et le registre : les deux questions restées
+ouvertes « [non vérifiable ici] » se refermaient avec eux.
+
+**Le bilan des quatre sondes.** Quatre sondes balayées, **zéro verdict perdu
+selon la machine** — et pourtant : une preuve remplacée (`host`), un dialecte
+jamais distribué (`entrees`), un plancher sur le mauvais chemin (`elevation`),
+un silence qualifié en acceptation (`corps`). Le compte de verdicts, seul
+contrôle que le harnais savait faire sur ces sondes, ne voyait rien de tout
+cela. Il ne pouvait pas : il ne mesure que les pertes, et ces sondes n'en ont
+aucune. La conclusion du balayage est celle-ci : **« la sonde écrit toujours
+son compte » n'est pas « la sonde dit la vérité ».** Les quatre avaient des
+verts impeccables ; trois sur quatre avaient un vert qui prouvait autre chose.
+
+*Ce que je n'ai pas fait : tout est encore à écrire dans le code — les notes
+d'attribution (host), la note de `entrees` et son arbitrage ROUGE/note, le titre
+« huit » devenu faux, le plaquage du plancher `elevation` à 22 avec la
+divergence 19/21 à trancher sur un run de runner, le vert vide du jeton, la
+précondition corbeille, la qualification des trois portes de `corps`, et la
+distribution de `noter()` aux sondes qui ne l'ont pas. C'est le run de preuve
+de fin de balayage, et il mérite mieux qu'une nuit sans sommeil.*
+
+---
+
