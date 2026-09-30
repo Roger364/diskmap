@@ -659,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:684`) et le motif est écrit (`tests/sondes/lancer.mjs:1552`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:677`, motif `tests/sondes/lancer.mjs:1493`. Sans ce
+(`tests/sondes/lancer.mjs:718`) et le motif est écrit (`tests/sondes/lancer.mjs:1681`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:711`, motif `tests/sondes/lancer.mjs:1622`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -675,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:684`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1504`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:718`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1633`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -715,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1425`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1554`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1552`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1681`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -822,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:856`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:985`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1188,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:684`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:718`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:677`, motif `tests/sondes/lancer.mjs:1493`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:711`, motif `tests/sondes/lancer.mjs:1622`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1232,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1088`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1217`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -2431,6 +2431,57 @@ poser avec un choix d'arbitrage (précondition ou garde), pas des notes. La
 divergence 19/21 d'elevation se tranchera sur le prochain run de runner : le
 job `sondes` est sur instance élevée, il écrira 21 si le fichier a raison, 19
 si le commentaire avait raison.*
+
+### 7/42 Le contrôle méta des gardes : chaque chemin se déclare, et il mord sur lui-même · **30/09/2026**
+
+La cause racine nommée trois fois cette semaine (§7/35, §7/38, le bilan des
+muettes en §7/40) : **rien ne vérifie que chaque chemin de décision du harnais
+est traversé par une table.** Le contrôle méta existe maintenant, et il a mordu
+sur lui-même trois fois pendant sa construction — trois détectés dans la même
+heure où il les détecte ailleurs.
+
+**Ce qui a été posé.**
+
+- Chaque chemin de `classerNote` (8) et de `plancherEffectif` (3) est passé
+  par `garde(clé, …)` : la déclaration vit dans le code de la fonction, pas
+  dans une liste tenue à côté — le registre `couts` a déjà payé pour ce défaut
+  (six entrées mortes, §7/36). La clé voyage avec l'objet rendu (`__garde`) :
+  la boucle des tables sait aussitôt quel chemin a produit la sortie, et une
+  entrée de registre **par clé** évite qu'un appel hors boucle laisse une
+  déclaration orpheline que rien ne marquera jamais.
+- Après les tables : une sortie rendue **sans** garde jumelle → arrêt nommé ;
+  une ligne qui annonce mordre sur une autre clé que celle du chemin réel →
+  arrêt nommé ; au verdict final, une déclaration jamais traversée → arrêt
+  nommé — une fusion de deux chemins y laisse l'un des deux orphelin. Le
+  silence du contrôle est dur par construction : **11 déclarations minimales**,
+  l'appariement par `__garde`, et la contradiction table↔déclaration sont
+  trois verrous indépendants ; supprimer `garde()` d'un bloc rend chaque
+  sortie « non déclarée » et mord ligne par ligne.
+- Une ligne de table neuve : `couvert par sonde-erreurs.mjs : e` — le faux
+  historique qu'`includes` laissait passer (§7/36), jamais transformé en ligne
+  de table. La garde « couvert sans nom » a maintenant sa morsure écrite.
+
+**Les épreuves du contrôle, sur copies jetables.** Trois mutilations, toutes
+détectées **avant les sondes**, toutes sorties en 1 avec la faute nommée :
+(A) une déclaration retirée → chemin anonyme nommé ; (B) `garde()` neutralisé
+→ chaque sortie « non déclarée », nommée ligne par ligne ; (C) le chemin
+intact qui reprend la clé du relâché (une fusion) → « la ligne du plancher
+annonce « plancher intact » mais la sortie vient de « plancher relâché » ».
+Le run sain passe et le run continue (`--volume Q:` s'arrête plus loin, sur le
+refus du volume absent — la fenêtre exacte où vit le contrôle).
+
+**La leçon des deux systèmes.** Le contrôle méta de §7/36 dit ce que valent
+les *trous* (un `couts` écrit, même zéro) ; celui-ci dit que les *gardes*
+elles-mêmes ne meurent pas en silence. Les deux se complètent : l'un protège
+le registre des entrées mortes, l'autre protège les trois tables d'auto-épreuve
+des chemins orphelins. Sur un même concept — **la déclaration au point de
+rendu** — deux familles de faux verts ne peuvent plus renaître.
+
+*Ce que cette clôture ne fait pas : la vague 2 (le collecteur et ses
+préfixes, les portes descompte) reste ouverte — mêmes mécanismes, à poser
+quand la vague 1 aura tenu un run de CI. Les préconditions Z: et corbeille
+attendent toujours leur arbitrage de conception (§7/41).*
+
 
 ---
 

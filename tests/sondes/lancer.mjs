@@ -513,6 +513,47 @@ if (MOTIF_SANS_COUTS.length) {
   process.exit(1);
 }
 
+// ---------- le controle META des gardes, apres les tables ----------
+//
+// Trois tables mordent sur trois fonctions. Mais une fonction n est pas une
+// garde : c est le CHEMIN de decision qu elle prend, et un chemin qu aucune
+// table ne traverse est une garde que PERSONNE ne regarde. C est la cause racine
+// nommee trois fois cette semaine (§7/35, §7/38, le bilan des muettes) : les
+// cinq instances de la famille « sonde dit vrai, controle ne sait pas lire »
+// vivaient toutes dans un chemin jamais eprouve.
+//
+// Le controle n est pas une liste tenue a cote du code — le registre `couts`
+// a deja paye pour ce defaut la (six entrees mortes). Chaque chemin se DECLARE
+// dans le code de la fonction elle-meme, au moment ou il rend : une garde non
+// declaree est invisible au controle, une declaree sans table est une orpheline
+// nommee. La dette n est pas supprimee, elle est rendue visible au moment de la
+// naissance.
+const GARDES = [];
+// Une entree PAR CLE (pas par appel) : sinon chaque invocation laisse une
+// declaration orpheline que rien ne marquera jamais, et le controle s accuse
+// lui-meme. La cle voyage avec l objet rendu (`__garde`) : la boucle qui recoit
+// une sortie sait AUSSITOT quel chemin l a produite, sans aucune recherche.
+const garde = (cle, chemin) => {
+  if (!GARDES.some((g) => g.cle === cle)) GARDES.push({ cle, mordue: false });
+  return { ...chemin, __garde: cle };
+};
+let GARDE_FAIL = '';
+// Les noms de verification d une sonde, lus dans son SOURCE et non dans sa
+// sortie : c est le code qui affirme, et un rapport peut mentir. Deplace ici
+// au moment du controle meta : les declarations vivent avec lui, sinon la
+// portée utilise ce qu elle n a pas encore declare.
+const cacheNoms = new Map();
+function nomsDuCatalogue(fichier) {
+  if (cacheNoms.has(fichier)) return cacheNoms.get(fichier);
+  let noms = [];
+  try {
+    const src = fs.readFileSync(path.join(ICI, fichier), 'utf8');
+    noms = [...src.matchAll(/verifier\(\s*(['`])(.+?)\1/g)].map((m) => norm(m[2]));
+  } catch { /* un fichier absent ne couvre rien : c est traite plus bas */ }
+  cacheNoms.set(fichier, noms);
+  return noms;
+}
+
 // Un aveu est reconnu par sa MARQUE, explicite de preference. Les formes
 // historiques restent reconnues, sinon un simple `NE PAS MESURABLE` passerait
 // sous le controle en changant trois lettres — un controle qu on contourne en
@@ -530,42 +571,28 @@ const norm = (t) => String(t).toLowerCase().replace(/[’‘`]/g, "'")
   .replace(/[\u00f9\u00fb\u00fc]/g, 'u').replace(/\u00e7/g, 'c')
   .replace(/\s+/g, ' ').trim();
 
-// Les noms de verification d une sonde, lus dans son SOURCE et non dans sa
-// sortie : c est le code qui affirme, et un rapport peut mentir.
-const cacheNoms = new Map();
-function nomsDeVerification(fichier) {
-  if (cacheNoms.has(fichier)) return cacheNoms.get(fichier);
-  let noms = [];
-  try {
-    const src = fs.readFileSync(path.join(ICI, fichier), 'utf8');
-    noms = [...src.matchAll(/verifier\(\s*(['`])(.+?)\1/g)].map((m) => norm(m[2]));
-  } catch { /* un fichier absent ne couvre rien : c est traite plus bas */ }
-  cacheNoms.set(fichier, noms);
-  return noms;
-}
-
 /**
  * Classe une note : explication, aveu justifie, ou aveu SANS JUSTIFICATION.
  * La mesure est toujours le texte, parce qu un controle qui dit « non » sans
  * dire pourquoi oblige a relire la sortie entiere.
  */
 function classerNote(texte) {
-  if (!MOT_AVEU.test(texte)) return { sorte: 'explication' };
+  if (!MOT_AVEU.test(texte)) return garde('explication', { sorte: 'explication' });
   const couverte = texte.match(FORME_COUVERT);
   if (couverte) {
     const [, fichier, nom] = couverte;
     const connu = SONDES.some((s) => s.fichier === fichier);
     if (!connu) {
-      return { sorte: 'aveu nu', mesure: `${fichier} n’est pas une sonde du catalogue : elle ne peut rien couvrir` };
+      return garde('couvert hors catalogue', { sorte: 'aveu nu', mesure: `${fichier} n’est pas une sonde du catalogue : elle ne peut rien couvrir` });
     }
-    const noms = nomsDeVerification(fichier);
-    // La citation doit porter sur un NOM, pas sur une sous-chaine quelconque :
-    // `includes` faisait passer `couvert par <une sonde>.mjs : e` dès qu'un nom
-    // de verification contenait la lettre `e`. La citation est lue par MOTS
-    // ENTIERS, en sequence : elle doit apparaitre dans un nom sans y etre
-    // obligee de commencer au premier mot — une citation tronquee au debut reste
-    // recevable, une citation en sous-mots (« e ») ne l est plus. Les accents
-    // sont retires des deux cotes : `numero` et `numéro` sont le meme mot.
+    // La citation est lue dans le SOURCE de la sonde citee — les noms y sont
+    // declares par `nomsDuCatalogue`, plus haut — et comparee par MOTS ENTIERS,
+    // en sequence : `includes` faisait passer `couvert par <une sonde>.mjs : e`
+    // dès qu'un nom de verification contenait la lettre `e`. Une citation
+    // tronquee au debut reste recevable, une citation en sous-mots (« e ») ne
+    // l est plus. Les accents sont retires des deux cotes : `numero` et
+    // `numéro` sont le meme mot.
+    const noms = nomsDuCatalogue(fichier);
     const motsCites = norm(nom).split(/\s+/).filter(Boolean);
     const citeQuelqueChose = motsCites.length > 0 &&
       noms.some((n) => {
@@ -578,13 +605,13 @@ function classerNote(texte) {
         return i === motsCites.length;
       });
     if (!citeQuelqueChose) {
-      return {
+      return garde('couvert sans nom', {
         sorte: 'aveu nu',
         mesure: `${fichier} ne vérifie rien qui s’appelle « ${nom.trim()} » : la citation ne `
           + 'devient une assertion nulle part',
-      };
+      });
     }
-    return { sorte: 'aveu couvert', mesure: `couvert par ${fichier} : ${norm(nom)}` };
+    return garde('couvert reconnu', { sorte: 'aveu couvert', mesure: `couvert par ${fichier} : ${norm(nom)}` });
   }
   const structurel = texte.match(FORME_STRUCTUREL);
   if (structurel) {
@@ -595,12 +622,12 @@ function classerNote(texte) {
     // `sonde-corbeille-plafond` écrivait exactement cela, et c est ce contrôle-là
     // qui a produit le faux rouge de la première contre-épreuve.
     if (structurel[1].trim().length < 12) {
-      return {
+      return garde('structurel trop court', {
         sorte: 'aveu nu',
         mesure: 'la justification est vide ou trop courte : « structurel : » suivi d un'
           + 'retour a la ligne perd sa raison, et l aveu est lu nu. Une note tient sur'
           + 'UNE seule ligne.',
-      };
+      });
     }
     // Le motif du registre se cherche dans la NOTE ENTIERE, pas dans la seule
     // raison. Premier essai, il ne cherchait que la raison — et comme l auteur
@@ -610,20 +637,20 @@ function classerNote(texte) {
     // exact, la convention etait absurde : c est elle qu on a changee.
     const declare = AVEURS_STRUCTURELS.find((a) => norm(texte).includes(norm(a.motif)));
     if (!declare) {
-      return {
+      return garde('structurel hors registre', {
         sorte: 'aveu nu',
         mesure: `« ${structurel[1].trim()} » n’est pas dans le registre AVEURS_STRUCTURELS : `
           + 'un trou structurel nouveau doit être écrit une fois, ici',
-      };
+      });
     }
-    return {
+    return garde('aveu structurel', {
       sorte: 'aveu structurel',
       mesure: declare.pourquoi,
       motif: declare.motif,
       couts: declare.couts || 0,
-    };
+    });
   }
-  return { sorte: 'aveu nu', mesure: 'ni « couvert par », ni « structurel » : un aveu sans justification' };
+  return garde('aveu sans forme', { sorte: 'aveu nu', mesure: 'ni « couvert par », ni « structurel » : un aveu sans justification' });
 }
 
 /**
@@ -637,13 +664,20 @@ function classerNote(texte) {
  * pouvait etre vrai et faux dans la meme seconde, selon la machine.
  *
  * Le defaut du calcul est nomme dans la fonction ; il est verifie par la table
- * qui suit, sur des entrees connues, avant que la moindre sonde ne tourne.
+ * qui suit, sur des entrees connues, avant que la moindre sonde ne tourne. Ses
+ * trois chemins de sortie sont declares au controle meta : sans garde, intact,
+ * relache — un chemin rendu sans etre nommé serait un chemin que personne ne
+ * regarde.
  */
 function plancherEffectif(brut, notes) {
   const trous = (notes || []).filter((n) => n.sorte === 'aveu structurel' && n.couts);
   const dispense = trous.reduce((a, n) => a + n.couts, 0);
-  if (brut === undefined) return { plancher: undefined, trous, dispense };
-  return { plancher: Math.max(0, brut - dispense), trous, dispense };
+  if (brut === undefined) return garde('plancher sans garde', { plancher: undefined, trous, dispense });
+  // Une note reconnue DONC non detendue est le faux vert le plus silencieux
+  // d ici : le chemin « intact » doit etre un chemin declare, pas un cas
+  // glissant de la branche de dispense.
+  if (dispense === 0) return garde('plancher intact', { plancher: Math.max(0, brut), trous, dispense });
+  return garde('plancher relâché', { plancher: Math.max(0, brut - dispense), trous, dispense });
 }
 
 // ---------- le compte d une sortie de sonde, en pur ----------
@@ -705,6 +739,7 @@ const TABLE_RECONNAISSANCE = [
     'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : le plafond de corbeille n est pas mesurable',
     'aveu structurel',
     'un aveu structurel declare, sa raison tenant sur la meme ligne',
+    { garde: 'aveu structurel' },
   ],
   [
     'branches du débordement NON ÉPROUVÉE — structurel : une raison parfaitement suffisante',
@@ -715,11 +750,13 @@ const TABLE_RECONNAISSANCE = [
     'branches du débordement NON EXERCÉE — structurel :',
     'aveu nu',
     'une justification repoussee a la ligne suivante perd sa raison',
+    { garde: 'aveu sans forme' },
   ],
   [
     'branches du débordement NON EXERCÉE — un trou que personne n a declare — structurel : une raison suffisamment longue',
     'aveu nu',
     'un trou structurel absent du registre ne passe pas',
+    { garde: 'structurel hors registre' },
   ],
   [
     'rien à signaler sur ce volume',
@@ -730,16 +767,53 @@ const TABLE_RECONNAISSANCE = [
     'branches du débordement NON EXERCÉE — plafond non mesurable — structurel : trop court',
     'aveu nu',
     'une justification de moins de douze caracteres garde sa ligne mais perd sa raison : la garde de longueur a besoin de sa propre ligne, sinon la retirer ne casse rien',
+    { garde: 'structurel trop court' },
   ],
   [
     'branches du débordement NON EXERCÉE — non mesurable — couvert par sonde-inconnue.mjs : un nom de verification',
     'aveu nu',
     'une justification qui cite un fichier hors catalogue ne couvre rien : la branche « couvert par » a besoin de sa propre ligne, sinon on ne sait pas qu elle rend avant le registre',
+    { garde: 'couvert hors catalogue' },
+  ],
+  [
+    'branches du débordement NON EXERCÉE — non mesurable — couvert par sonde-erreurs.mjs : au moins un volume a des illisibles',
+    'aveu couvert',
+    'la meme branche, avec une citation REELLE cette fois : fichier du catalogue, mots entiers d un verifier existant — un chemin qui mord doit aussi avoir son cas vert, sinon on ne distingue pas sa morsure d une panne generale',
+    { garde: 'couvert reconnu' },
+  ],
+  [
+    'branches du débordement NON EXERCÉE — non mesurable — couvert par sonde-erreurs.mjs : e',
+    'aveu nu',
+    'une citation d une seule lettre ne nomme aucune verification : c est le faux « couvert » historique, celui qu includes laissait passer — sa garde n avait jamais eu sa ligne de table',
+    { garde: 'couvert sans nom' },
   ],
 ];
-const tableFaux = TABLE_RECONNAISSANCE
-  .filter(([texte, attendu]) => classerNote(texte).sorte !== attendu)
-  .map(([texte, attendu]) => `${attendu} — mesuré : ${classerNote(texte).sorte} sur « ${texte.slice(0, 70)} »`);
+// Le passage des tables EST l enregistrement des morsures : chaque ligne
+// traverse le chemin qui produit ce qu elle attend, et ce chemin se declare en
+// meme temps qu il est eprouve. Le dernier element d une ligne nomme la garde
+// qu elle pretend mordre ({ garde: « cle » }) : si la sortie vient d un autre
+// chemin, la table et la declaration se contredisent, et le controle refuse de
+// trancher a leur place. Une sortie rendue SANS garde jumelle est un chemin
+// que le controle meta ne peut pas voir — et ce silence-la est precisement le
+// trou qu on cherche. Inversement, une declaration jamais traversee se verra
+// au verdict final : fusionner deux chemins, c est en laisser un orphelin,
+// et l orphelin a un nom.
+const tableFaux = [];
+for (const [texte, attendu, , role] of TABLE_RECONNAISSANCE) {
+  const obtenu = classerNote(texte);
+  if (obtenu.sorte !== attendu) {
+    tableFaux.push(`${attendu} — mesuré : ${obtenu.sorte} sur « ${texte.slice(0, 70)} »`);
+  }
+  const g = GARDES.find((x) => x.cle === obtenu.__garde);
+  if (!g) {
+    GARDE_FAIL += `    - TABLE_RECONNAISSANCE produit une sortie ${JSON.stringify(obtenu)} que la fonction ne declare pas : un chemin rendu sans etre nommé est un chemin que le controle meta ne peut pas voir\n`;
+  } else {
+    g.mordue = true;
+    if (role && role.garde && role.garde !== g.cle) {
+      GARDE_FAIL += `    - la ligne annonce mordre sur « ${role.garde} » mais la sortie vient de « ${g.cle} » : la table et la declaration ne disent pas la meme chose\n`;
+    }
+  }
+}
 if (tableFaux.length) {
   console.error(`  LA TABLE DE RECONNAISSANCE DES AVEUX EST FAUSSE : ${tableFaux.length}`);
   for (const m of tableFaux) console.error(`    - ${m}`);
@@ -749,6 +823,13 @@ if (tableFaux.length) {
   // reparer. Le 30/09, un modele adverse l a trouve en lisant ces lignes.
   console.error('    Le classifieur ne tient plus sa promesse, donc plus aucun aveu' +
     ' du depot n est comptable. Corriger avant de lire un run vert.');
+  process.exit(1);
+}
+if (GARDE_FAIL) {
+  console.error('  GARDES NON DECLAREES OU NON EPROUVEES :');
+  console.error(GARDE_FAIL);
+  console.error('    Toute garde doit avoir sa ligne de table — son cas qui fait mordre, et' +
+    ' son cas qui laisse passer. Une garde sans epreuve est celle que PERSONNE ne regarde.');
   process.exit(1);
 }
 
@@ -769,27 +850,52 @@ const TRONQUEE = 'branches du débordement NON EXERCÉE — structurel :';
 const NON_DECLARE = 'branches du débordement NON EXERCÉE — un trou neuf — structurel : une raison parfaitement suffisante';
 const notes = (...textes) => textes.map((t) => ({ texte: t, ...classerNote(t) }));
 const TABLE_PLANCHER = [
-  [6, notes(), 6, 'sans note, le plancher ne bouge pas'],
-  [6, notes(TROP_LARGE), 4, 'un trou declare de 2 verdicts relache de 2 (mesure : la sonde ecrit 4 verdicts sur le runner, donc la perte est de 2)'],
-  [6, notes(NON_EXERCEE), 2, 'un trou declare de 4 verdicts relache de 4'],
+  [6, notes(), 6, 'sans note, le plancher ne bouge pas', { garde: 'plancher intact' }],
+  [6, notes(TROP_LARGE), 4, 'un trou declare de 2 verdicts relache de 2 (mesure : la sonde ecrit 4 verdicts sur le runner, donc la perte est de 2)', { garde: 'plancher relâché' }],
+  [6, notes(NON_EXERCEE), 2, 'un trou declare de 4 verdicts relache de 4', { garde: 'plancher relâché' }],
   [6, notes(SANS_MARQUE), 6, '« éprouvé » n est pas une marque d aveu : rien ne se relache'],
   [6, notes(TRONQUEE), 6, 'une justification tronquee ne relache rien'],
   [6, notes(NON_DECLARE), 6, 'un trou absent du registre ne relache rien'],
-  [12, notes(LE_CSRF), 9, 'un cas muet sur trois detache 3 verdicts : 12 - 3 = 9, ce qu ecrit reellement la sonde sur le runner'],
-  [12, notes(LE_CSRF, LE_CSRF), 6, 'deux cas muets detachent 6 : le cout s cumule, il ne s ecrit qu une fois'],
-  [9, notes(LE_TICKETS), 8, 'un scan en vol non observe detache le seul verdict conditionnel : 9 - 1 = 8, ce qu ecrit la sonde sur un volume rapide'],
-  [5, notes(LE_PALIER), 1, 'un trou declare de 4 verdicts ramene le plancher de 5 a 1, ce qu ecrit reellement une sonde sans dossier de 20 Go'],
+  [12, notes(LE_CSRF), 9, 'un cas muet sur trois detache 3 verdicts : 12 - 3 = 9, ce qu ecrit reellement la sonde sur le runner', { garde: 'plancher relâché' }],
+  [12, notes(LE_CSRF, LE_CSRF), 6, 'deux cas muets detachent 6 : le cout s cumule, il ne s ecrit qu une fois', { garde: 'plancher relâché' }],
+  [9, notes(LE_TICKETS), 8, 'un scan en vol non observe detache le seul verdict conditionnel : 9 - 1 = 8, ce qu ecrit la sonde sur un volume rapide', { garde: 'plancher relâché' }],
+  [5, notes(LE_PALIER), 1, 'un trou declare de 4 verdicts ramene le plancher de 5 a 1, ce qu ecrit reellement une sonde sans dossier de 20 Go', { garde: 'plancher relâché' }],
   [6, notes(TROP_LARGE, NON_EXERCEE), 0, 'deux trous cumulent leurs couts, et le plancher est borne a zero'],
-  [undefined, notes(TROP_LARGE), undefined, 'une sonde sans plancher en garde reste sans plancher : une relaxation n en cree pas un'],
+  [undefined, notes(TROP_LARGE), undefined, 'une sonde sans plancher en garde reste sans plancher : une relaxation n en cree pas un', { garde: 'plancher sans garde' }],
 ];
-const plancherFaux = TABLE_PLANCHER
-  .filter(([brut, ns, attendu]) => plancherEffectif(brut, ns).plancher !== attendu)
-  .map(([brut, ns, attendu]) => `${attendu} — mesuré : ${plancherEffectif(brut, ns).plancher} sur un plancher de ${brut} et ${ns.length} note(s)`);
+// MEME enregistrement pour l arithmetique. Le danger propre d ici n est pas la
+// panne — elle rend une valeur fausse, et la table la voit — mais la FUSION : un
+// chemin « intact » avale par « relâché » produit les MEMES valeurs sur ces
+// lignes, et l orphelin ne se verrait qu au verdict final, par son absence de
+// morsure.
+const plancherFaux = [];
+for (const [brut, ns, attendu, , role] of TABLE_PLANCHER) {
+  const obtenu = plancherEffectif(brut, ns);
+  if (obtenu.plancher !== attendu) {
+    plancherFaux.push(`attendu ${attendu}, mesuré ${obtenu.plancher} sur un plancher de ${brut} et ${ns.length} note(s)`);
+  }
+  const g = GARDES.find((x) => x.cle === obtenu.__garde);
+  if (!g) {
+    GARDE_FAIL += `    - TABLE_PLANCHER produit une sortie ${JSON.stringify(obtenu)} que la fonction ne declare pas\n`;
+  } else {
+    g.mordue = true;
+    if (role && role.garde && role.garde !== g.cle) {
+      GARDE_FAIL += `    - la ligne du plancher annonce « ${role.garde} » mais la sortie vient de « ${g.cle} »\n`;
+    }
+  }
+}
 if (plancherFaux.length) {
   console.error(`  LA TABLE DES PLANCHERS EST FAUSSE : ${plancherFaux.length}`);
   for (const m of plancherFaux) console.error(`    - ${m}`);
   console.error('    Un plancher faux fait rougir a tort une sonde saine, ou laisse' +
     'passer une sonde qui a perdu des assertions. Corriger avant de lire un vert.');
+  process.exit(1);
+}
+if (GARDE_FAIL) {
+  console.error('  GARDES NON DECLAREES OU NON EPROUVEES (plancher) :');
+  console.error(GARDE_FAIL);
+  console.error('    Toute garde doit avoir sa ligne de table — son cas qui fait mordre, et' +
+    ' son cas qui laisse passer. Une garde sans epreuve est celle que PERSONNE ne regarde.');
   process.exit(1);
 }
 
@@ -826,6 +932,29 @@ if (sortieFaux.length) {
     ' de lire un vert : un resume qu il ne voit pas est un plancher qu il ne garde pas.');
   process.exit(1);
 }
+
+// ---------- le verdict du controle meta des gardes ----------
+//
+// Ici, tout chemin declare a ete traverse : les tables ont tourne, et leurs
+// attentes ont nomme ce qu elles produisaient. Reste l inverse — un chemin
+// declare que RIEN n a traverse. Et le pire des deux mondes : plus aucune
+// declaration du tout, qui ferait taire le controle entier. Les deux se
+// verifient tout seuls :
+const GARDES_MINIMALES = 11;
+if (GARDES.length < GARDES_MINIMALES) {
+  console.error(`  CONTROLE META DES GARDES : ${GARDES.length} chemin(s) declares, il en faut au moins ${GARDES_MINIMALES} — les declarations ont-elles ete retirees ?`);
+  process.exit(1);
+}
+const jamaisMordues = GARDES.filter((g) => !g.mordue);
+if (jamaisMordues.length) {
+  console.error(`  ${jamaisMordues.length} GARDE(S) DECLAREE(S) MAIS JAMAIS TRAVERSEE(S) :`);
+  for (const g of jamaisMordues) console.error(`    - ${g.cle}`);
+  console.error('    Un chemin declare sans table est une garde que personne ne regarde —' +
+    ' ou une fusion : deux chemins qui n en font plus qu un laissent l un des deux' +
+    ' orphelin. La cinquieme instance de cette famille (tickets) a vecu exactement la.');
+  process.exit(1);
+}
+console.log(`  gardes du harnais : ${GARDES.length} chemins declares, tous traverses par les tables avant les sondes`);
 
 
 // ------------------------------------------------------------------- reseau
