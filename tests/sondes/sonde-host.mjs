@@ -177,6 +177,15 @@ verifier(
     : 'l’absence d’en-tête Host est refusée — par l’application',
   viaFilet ? sans.status === 400 : sans.status === 403,
   `HTTP ${sans.status} · ${sans.corps.slice(0, 90)}`);
+if (viaFilet) {
+  // Le vert ci-dessus prouve le parseur du filet, PAS la garde 403 de
+  // l’application : dans un run du harnais, les sondes ne reçoivent que l’URL
+  // du filet, donc la branche « application » est morte par construction. Le
+  // dire au dialecte, avec un coût de ZÉRO — aucun verdict n’est perdu, c’est
+  // l’attribution de la preuve qui change. Un coût zéro déclaré vaut mieux
+  // qu’un silence : il se lit.
+  console.log('note : garde de l’application « Host absent → 403 » non exercée — le parseur du filet a répondu 400 avant elle, ce vert ne prouve rien sur l’application. structurel : le filet est un serveur Node qui refuse lui-même toute requête HTTP/1.1 sans Host, avant toute route de l’application');
+}
 
 // ------------------------------------------------ 4. le rebinding, pour de vrai
 console.log('\n--- 4. le rebinding DNS, joué dans un vrai navigateur ---');

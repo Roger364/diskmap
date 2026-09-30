@@ -55,6 +55,12 @@ function verifier(nom, cond, mesure) {
   console.log(`${ok ? 'ok   ' : 'ROUGE'} ${nom}${ok ? '' : `\n      mesuré : ${mesure}`}`);
 }
 const info = (m) => console.log(`      ${m}`);
+// Le dialecte des aveux, défini ICI comme dans les autres sondes : une seule
+// ligne, la marque, puis la justification. Sans cette fonction, les notes
+// s’écrivaient par `info()` — et le collecteur retirait leur préfixe en
+// emportant la marque avec lui. L’outil du dialecte se distribue, il ne se
+// recopie pas.
+const noter = (m) => console.log(`note : ${m}`);
 
 /**
  * Une POST vers le serveur, corps `{}` et en-têtes de notre propre page.
@@ -133,9 +139,11 @@ if (support) {
     dossierAbsent.status === 404 && !/chemin invalide/.test(dossierAbsent.texte),
     `HTTP ${dossierAbsent.status} · ${dossierAbsent.texte.slice(0, 90)}`);
 } else {
-  info(`NE PAS MESURABLE — non mesurable : « chemin invalide » exige un instantané, et ${VOL} n'en a pas. structurel : la garde exige un instantané, et ce volume n'en a pas au moment de la requête.`);
-  verifier('« chemin invalide » est éprouvé', false,
-    `${VOL} sans instantané : le cas aurait mesuré la garde du volume, pas celle du chemin`);
+  // Le manque est DIT (la note, structurel — la machine, pas le code) et non
+  // PUNI : forcer un ROUGE ici contredisait la note — le harnais recevait
+  // « trou déclaré et discutable » et « sonde en échec » d’une même branche.
+  // La note porte la cause réelle : le statut du volume au moment de la requête.
+  noter(`« chemin invalide » non exercée — 2 vérifications sautées sur ${VOL} (statut : ${d ? d.status : 'absent de l’état'}), la garde du chemin n'a pas été atteinte. structurel : sans instantané prêt, la route répond « volume pas encore analysé » avant de découper le chemin, et cet état dépend du volume au moment de la requête`);
 }
 
 // ---- 4. route inconnue ------------------------------------------------------
@@ -158,7 +166,7 @@ verifier('témoin : un 404 de route réelle ne se confond pas avec celui d\'une 
 // une faute de corps, une garde qui cède, et le processus peut tomber. Un refus
 // mesuré sur un serveur mort est un refus qui ne prouve rien.
 const vivant = await fetch(`${BASE}/api/state`).then((r) => r.ok).catch(() => false);
-verifier('le serveur répond toujours après les huit requêtes', vivant,
+verifier('le serveur répond toujours après les requêtes envoyées', vivant,
   'le processus est mort — une requête suffit');
 
 console.log('');

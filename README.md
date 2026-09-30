@@ -381,7 +381,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:672`) and the reason is printed (`tests/sondes/lancer.mjs:1546`). A zero summary has its own door: `tests/sondes/lancer.mjs:671`, reason `tests/sondes/lancer.mjs:1487`.
+(`tests/sondes/lancer.mjs:684`) and the reason is printed (`tests/sondes/lancer.mjs:1552`). A zero summary has its own door: `tests/sondes/lancer.mjs:677`, reason `tests/sondes/lancer.mjs:1493`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -638,6 +638,16 @@ dialect.
 *What I did not do: `palier` still has a floor of 5, `csrf` a floor of 12, and their branches stay
 without a 20 GB folder. Relaxing the floor makes the run honest; it does not close the hole.*
 
+**Sweeping the silent probes, and what it taught — 30/09/2026.** Four probes had never written a
+single admission — `host`, `entrees`, `elevation`, `corps` — so the adversarial sweep went there.
+Result: **zero verdicts lost on any machine**, and roughly ten proof defects closed in §7/37-7/41.
+A replaced proof (`host`: the parser answers before the app's guard, by construction), a dialect
+never shipped (`entrees` had no `noter()` at all), a floor set on the wrong of two exclusive paths
+(`elevation`: floor 18 was the *short* path; the runner, always elevated, writes 21), and a silence
+qualified as acceptance (`corps`: the `null` from a dead server and the `null` from a waiting server
+were the same value). The count of verdicts saw none of it — it measures losses, and these probes
+had none. **A probe that always writes its count is not a probe that proves what it says.**
+
 **Closing the six opened the seventh — 30/09/2026.** The two holes left open after the adversarial
 pass are now shut, and shutting them surfaced one more defect where nobody was looking.
 
@@ -681,8 +691,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:678`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1498`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:684`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1504`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1147,9 +1157,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1419`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1425`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1546`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1552`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

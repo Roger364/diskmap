@@ -374,13 +374,16 @@ if (!retenues.length) {
 // qu un plancher pris sur un run chanceux devient rouge le jour ou la machine
 // change. Deux sondes varient d un run a l autre et le tableau le dit :
 // `tickets` vaut 9 ou 10 selon qu un scan a ete surpris en vol, `elevation`
-// vaut 18 ici et 19 sur le runner, qui est TOUJOURS eleve et ajoute donc son
-// propre verdict de bandeau. Le plancher ne parle que des VERTES : une sonde
+// vaut 18 sur une instance normale et 21 sur le runner, qui est TOUJOURS eleve
+// et ajoute donc son verdict de bandeau ET les trois verdicts du bouton sous
+// saisie. Le plancher est pose sur le chemin LE PLUS LONG (22 verdicts
+// possibles) : la moitie non jouee se declare par note, et la detente se fait
+// d un cout de 4 (normale) ou 1 (elevee). Le plancher ne parle que des VERTES : une sonde
 // rouge ecrit moins de verifications — elle saute un bloc entier quand un
 // geste echoue — et son rouge suffit.
 const COMPTES_PLANCHER = {
   aNommer: 27, arret: 9, 'arret-idle': 3, 'arret-running': 4, corps: 4,
-  csrf: 12, elevation: 18, entrees: 10, filet: 16,
+  csrf: 12, elevation: 22, entrees: 10, filet: 16,
   generation: 6, host: 33, identifiant: 15, lot: 9, mot: 6, palier: 5,
   plafond: 6, recherche: 25, rechercheGrande: 7, reelle: 38,
   reversibilite: 8, suppression: 34, tickets: 9, ui: 39,
@@ -484,6 +487,9 @@ const AVEURS_STRUCTURELS = [
 
   { motif: 'branches du débordement non exercée — plafond non mesurable', couts: 4, pourquoi: 'mesuré : `corbeille_plafond` vaut null, et la section 1 saute alors son troisieme verdict ; les trois verdicts de la branche de débordement sont donc hors d atteinte' },
  { motif: 'branches du débordement non exercée — plafond au-delà de la borne d écriture de 256 mio', couts: 2, pourquoi: 'mesuré le 30/09, run 36606537220 : le plafond du volume jetable de la CI dépasse 256 Mio, alors qu il vaut 51 Mio sur les volumes locaux ; la sonde y écrit 4 verdicts sur 6, donc la perte est de 2, pas de 3 — un cout plus haut pardonnerait un verdict perdu sans aveu' },
+  { motif: 'garde de l’application « Host absent → 403 » non exercée', couts: 0, pourquoi: 'dans un run du harnais, les sondes ne reçoivent que l URL du filet, donc la garde 403 de l application est morte par construction : le parseur HTTP de Node répond 400 avant elle. Aucun verdict n est perdu — ce que la note déclare est une ATTRIBUTION (ce vert prouve le filet, pas l application), et son coût est zéro écrit, pas tu' },
+  { motif: 'moitié « instance élevée » NON exercée', couts: 4, pourquoi: 'la sonde elevation a deux chemins exclusifs : 17 verdicts communs + 1 sur instance normale, 17 + 4 sur élevée. Le plancher est posé sur le chemin le plus long (22) ; la moitié non jouée se déclare et détend de son coût — 4 sur une instance normale, 1 sur une élevée' },
+  { motif: 'moitié « instance normale » NON exercée', couts: 1, pourquoi: 'l autre moitié du même mécanisme : sur une instance élevée, le bouton « actif sans rien taper » n existe pas, puisque le serveur exige EFFACER' },
 ];
 
 // ---------- le registre se verifie LUI-MEME, avant les tables ----------

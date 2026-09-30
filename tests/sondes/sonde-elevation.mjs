@@ -72,6 +72,15 @@ const etat = await (await fetch(`${BASE}/api/state`)).json();
 const ELEVE = await estEleve(BASE);
 console.log(`--- ${VOL}: instance ${ELEVE ? 'ÉLEVÉE' : 'normale'}, corbeille `
   + `${A_CORBEILLE ? 'présente' : 'ABSENTE'} ---`);
+// La moitié NON jouée se déclare au dialecte. Cette sonde a deux chemins
+// exclusifs : la moitié absente n’est pas perdue, elle n’EXISTE pas — et c’est
+// exactement pour ça qu’elle doit être écrite, parce qu’un plancher posé sur
+// l’un des deux chemins ferait de l’autre un silence.
+if (!ELEVE) {
+  console.log('note : moitié « instance élevée » NON exercée — 4 vérifications sautées (conséquence du bandeau, bouton inactif tant que vide, mot suivi d’une espace, mot exact), le champ de saisie n’a pas été éprouvé. structurel : l’instance est normale, la loi n’exige alors aucun mot et le champ de confirmation n’existe pas dans la modale');
+} else {
+  console.log('note : moitié « instance normale » NON exercée — 1 vérification sautée (bouton actif sans rien taper). structurel : l’instance est élevée, le serveur exige alors EFFACER et un bouton actif sans saisie ne peut pas être observé');
+}
 verifier('le serveur DIT si l’instance est élevée, et le dit en booléen',
   typeof etat.eleve === 'boolean', `eleve=${JSON.stringify(etat.eleve)}`);
 verifier('l’instance est celle que le serveur annonce',
@@ -157,9 +166,14 @@ try {
   // exécutions avec une seule vérification.
   const chip = (await page.textContent('#eleve .chip').catch(() => '')) || '';
   const bandeau = (await page.textContent('#eleve .warn').catch(() => '')) || '';
+  // Le côté normal exige un MOT POSITIF : « utilisateur ». Sans lui, un élément
+  // ABSENT (.catch(() => '') change un jeton introuvable en chaîne vide) donne
+  // false === false, donc un vert VIDE — la bonne réponse d’un élément qui
+  // n’existe pas. L’étalon (`erreurs`) pose son test ainsi : chaque côté de la
+  // loi affirme ce qu’il voit, pas l’absence de ce qu’il ne voit pas.
   verifier('le jeton d’interface reflète l’instance réelle',
-    /administrateur/i.test(chip) === ELEVE,
-    `chip=« ${chip.trim()} », élevée=${ELEVE}`);
+    ELEVE ? /administrateur/i.test(chip) : /utilisateur/i.test(chip),
+    `chip=« ${chip.trim() || 'ABSENT'} », élevée=${ELEVE}`);
   verifier('le bandeau est présent SI ET SEULEMENT SI l’instance est élevée',
     (bandeau.trim() !== '') === ELEVE,
     `bandeau=« ${bandeau.trim().slice(0, 90) || 'absent'} », élevée=${ELEVE}`);

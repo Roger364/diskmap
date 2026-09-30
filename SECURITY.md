@@ -659,7 +659,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:672`) et le motif est écrit (`tests/sondes/lancer.mjs:1546`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:671`, motif `tests/sondes/lancer.mjs:1487`. Sans ce
+(`tests/sondes/lancer.mjs:684`) et le motif est écrit (`tests/sondes/lancer.mjs:1552`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:677`, motif `tests/sondes/lancer.mjs:1493`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -675,8 +675,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:678`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1498`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:684`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1504`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -715,9 +715,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1419`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1425`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1546`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1552`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -822,7 +822,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:850`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:856`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1188,9 +1188,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:672`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:684`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:671`, motif `tests/sondes/lancer.mjs:1487`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:677`, motif `tests/sondes/lancer.mjs:1493`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1232,7 +1232,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1082`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1088`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1151`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1575,7 +1575,7 @@ quelque part elle devient une **assertion** — distinction que rien n'exigeait.
 
 Trois instruments, tous mesurés.
 
-**Le plancher des comptes** (`tests/sondes/lancer.mjs:381`). Vingt-quatre
+**Le plancher des comptes** (`tests/sondes/lancer.mjs:384`). Vingt-quatre
 valeurs, prises comme le **plus petit** compte observé sur les logs du 29 et du
 30/09, jamais le plus grand : un plancher pris sur un run chanceux devient rouge
 le jour où la machine change. Deux sondes varient et le tableau le dit —
@@ -1597,7 +1597,7 @@ verification(s), son plancher est 400 » et le run sort en 1 ; un plancher
 sortent en 1, et les deux fichiers ont été restaurés puis comparés par
 empreinte.*
 
-**Le registre des aveux** (`tests/sondes/lancer.mjs:448`). Un aveu doit se
+**Le registre des aveux** (`tests/sondes/lancer.mjs:451`). Un aveu doit se
 justifier, et la justification se **vérifie** :
 
 - `couvert par <fichier> : <nom de vérification>` — une autre sonde affirme la
@@ -1791,7 +1791,7 @@ du dépôt dit déjà que le défaut n'est pas le trou, c'est l'excuse.
 **Ce qui change, et pourquoi ce n'est pas un plancher plus permissif.**
 
 Le champ `couts` entre au registre `AVEURS_STRUCTURELS`
-(`tests/sondes/lancer.mjs:485`) : un trou structurel ne se contente plus de se
+(`tests/sondes/lancer.mjs:488`) : un trou structurel ne se contente plus de se
 nommer, il **déclare** ce qu'il coûte en verdicts. Le plancher se relâche
 d'autant — et d'autant seulement, parce qu'un aveu nu ne détend rien.
 
@@ -2373,6 +2373,64 @@ divergence 19/21 à trancher sur un run de runner, le vert vide du jeton, la
 précondition corbeille, la qualification des trois portes de `corps`, et la
 distribution de `noter()` aux sondes qui ne l'ont pas. C'est le run de preuve
 de fin de balayage, et il mérite mieux qu'une nuit sans sommeil.*
+
+---
+
+### 7/41 Fermer le balayage : les muettes parlent, et le registre avale une apostrophe · **30/09/2026**
+
+Les quatre sondes muettes parlent maintenant. La fermeture a été faite en une
+passe — et elle a failli échouer sur une apostrophe.
+
+**Ce qui est écrit.**
+
+- `host` : la note d'**attribution** — le vert « Host refusé » prouve le
+  parseur du filet, jamais la garde 403 de l'application, morte par construction
+  dans un run du harnais. Coût **zéro, écrit** : une attribution ne détend
+  rien, elle nomme qui parle.
+- `entrees` : `noter()` distribué, la note au dialecte avec la **cause réelle**
+  (`statut : ${d.status}` dans la mesure), et le ROUGE contradictoire retiré —
+  la branche dit maintenant une seule chose : « trou déclaré, discutable ».
+  Le titre « après les huit requêtes » est devenu « après les requêtes
+  envoyées » : le `else` n'en envoie que six.
+- `elevation` : **le plancher est replaqué sur le chemin le plus long (22)** —
+  la moitié non jouée se déclare par note et détend de son coût (4 sur normale,
+  1 sur élevée). Le vert vide du jeton est fermé : le côté normal exige
+  `/utilisateur/`, un élément absent ne vaut plus « pas administrateur ». La
+  divergence de compte 19/21 du commentaire est corrigée au passage : le run
+  du runner dira si le décompte du fichier (21 sur élevé) est le bon.
+- `corps` : **les trois portes du `null` sont nommées** — `delai` (le serveur
+  attend : la preuve), `error` (aucun auditeur), `close` (fermée sans réponse).
+  Le verdict « taille à la borne acceptée » exige maintenant que le silence
+  sorte par la porte `delai` : un serveur mort n'est plus une acceptation.
+- `entrees`, `elevation`, `corps`, `host` : `noter()` distribué là où il
+  manquait. **L'outil du dialecte se distribue, il ne se recopie pas.**
+
+**Le piège que le run de preuve a attrapé.** Premier run après les notes :
+`host` en aveu nu — « pas dans le registre ». La note et le motif étaient
+**identiques à l'œil**, et `includes` ne matchait pas : la note portait
+`l'application` (apostrophe typographique), le motif que je venais d'écrire
+`l application` (droite). Le `norm` du registre convertit les apostrophes
+courbes en droites — pas l'inverse, et un motif écrit à la main avec une
+apostrophe droite ne matchera jamais une note qui en a une courbe. C'est la
+neuvième instance de la famille, et la plus triviale : **un caractère invisible
+entre une vérité et son contrôle**. Corrigé au registre, run rejoué : 24/24,
+`aveux : 4 — 0 SANS JUSTIFICATION`, `PLANCHERS RELACHES : 2` (elevation
+`22 - 4 = 18`, erreurs `30 - 1 = 29`).
+
+**Ce que le balayage a coûté et rapporté.** Quatre sondes, quatre réponses du
+modèle adverse, **zéro verdict perdu selon la machine** — et dix défauts de
+preuve fermés. Le compte de verdicts, seul contrôle que le harnais savait faire
+sur ces sondes, ne voyait rien de tout cela : il mesure les pertes, et ces
+sondes n'en avaient pas. La conclusion est consignée en §7/40 et elle vaut pour
+le dépôt entier : **le compte dit que la sonde a écrit ; il ne dit pas ce qu'elle
+a prouvé.**
+
+*Ce que je n'ai pas fait : la précondition corbeille d'`elevation` (lue, jamais
+exigée) et la mesure du Z: restent ouvertes — ce sont des `verifier` de plus à
+poser avec un choix d'arbitrage (précondition ou garde), pas des notes. La
+divergence 19/21 d'elevation se tranchera sur le prochain run de runner : le
+job `sondes` est sur instance élevée, il écrira 21 si le fichier a raison, 19
+si le commentaire avait raison.*
 
 ---
 
