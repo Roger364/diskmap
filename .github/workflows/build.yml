@@ -69,7 +69,26 @@ jobs:
       - name: Sondes non destructives
         env:
           DISKMAP_SONDE_MACHINE_EPHEMERE: runner-github-ephemere
-        run: node tests/sondes/lancer.mjs --volume D --attendre 900 --sans generation,reelle,lot,ui,csrf,erreurs
+        shell: pwsh
+        run: |
+          # Un runner GitHub partagé est affamé par moments : l'analyse de C: (toute
+          # l'image de l'agent) peut dépasser les 900 s, et le harnais sort alors 2 —
+          # « délai dépassé », sa manière de dire que la MACHINE a manqué de temps,
+          # pas que le dépôt a failli. Le 30/09, deux runs d'un dépôt vert ont rougi
+          # pour cela, avant toute sonde. La reprise est UNE, explicite, et ne rejoue
+          # que cette étape : une vraie régression (sortie 1) ou un runner durablement
+          # trop lent (2 au second tour) échouent toujours. Le harnais reste le juge :
+          # la CI ne décide pas qu'il a tort, elle retente sur une machine moins chargée.
+          $sondes = { node tests/sondes/lancer.mjs --volume D --attendre 900 --sans generation,reelle,lot,ui,csrf,erreurs }
+          & $sondes
+          if ($LASTEXITCODE -eq 2) {
+            Write-Host "délai d'analyse : reprise unique de l'étape — le runner a manqué de temps, ce n'est pas un défaut du dépôt"
+            & $sondes
+            if ($LASTEXITCODE -eq 2) {
+              Write-Host "::error::deux délais d'analyse de suite : le runner est trop lent, pas le dépôt — rejouer avec gh run rerun --failed"
+            }
+          }
+          exit $LASTEXITCODE
 
       - name: Publier le binaire
         uses: actions/upload-artifact@v7
@@ -139,7 +158,21 @@ jobs:
           DISKMAP_SONDE_VOLUME: D
           DISKMAP_SONDE_RACINE: 'D:\_diskmap_sondes'
           DISKMAP_SONDE_MACHINE_EPHEMERE: runner-github-ephemere
-        run: node tests/sondes/lancer.mjs --volume D --attendre 900
+        shell: pwsh
+        run: |
+          # Même reprise unique que l'étape ci-dessus (job windows) : le délai
+          # d'analyse d'un runner affamé n'est pas un défaut du dépôt. Un seul
+          # recommencement : une sortie 1, ou un 2 persistant, reste un échec.
+          $sondes = { node tests/sondes/lancer.mjs --volume D --attendre 900 }
+          & $sondes
+          if ($LASTEXITCODE -eq 2) {
+            Write-Host "délai d'analyse : reprise unique de l'étape — le runner a manqué de temps, ce n'est pas un défaut du dépôt"
+            & $sondes
+            if ($LASTEXITCODE -eq 2) {
+              Write-Host "::error::deux délais d'analyse de suite : le runner est trop lent, pas le dépôt — rejouer avec gh run rerun --failed"
+            }
+          }
+          exit $LASTEXITCODE
 
   # Le binaire telechargeable ne doit jamais avoir ete eprouve par quelqu'un
   # d'autre que celui qui le publie. Il est donc pris TEL QUEL dans l'artifact du
