@@ -15,7 +15,12 @@
 //     défaut qu'un décalage de lignes ne révèle pas, et celui qui compte ;
 //  3. toute référence NOUVELLE, sans symbole déclaré ici, est signalée. Une
 //     référence non vérifiée ne passe pas en douce : elle se déclare, et le
-//     contrôle échoue tant qu'elle n'a pas été lue.
+//     contrôle échoue tant qu'elle n'a pas été lue ;
+//  4. la référence porte son DOSSIER. Un nom nu — `main.rs:977`, sans `src/` —
+//     ne dit pas de quel fichier il parle, et le résoudre demanderait une table
+//     de devinettes. Il est refusé. Mesuré le 11/10/2026 : huit références
+//     écrites en nom nu échappaient au contrôle, cinq étaient fausses, et deux
+//     ne désignaient rien du tout.
 //
 // RECALER, quand un deplacement de lignes a broke des references :
 //   python tests/sondes/recalage-references.py
@@ -148,6 +153,14 @@ const ATTENDU = {
     'src/win32.rs:495': 'pub fn corbeille_reversible',
     'src/main.rs:1412': 'corbeille_inerte: Option<bool>,',
     'src/main.rs:2196': 'fn mots_exiges',
+    // Les deux references qui etaient ecrites en NOM NU, donc invisibles depuis
+    // toujours. `:1017` pointait un COMMENTAIRE : la garde qui produit ce 409 est
+    // en 1088 — c'est la ligne que la phrase annonce, et le controle des
+    // references existe precisement pour refuser un commentaire voisin.
+    'src/main.rs:977': 'return Err(("404 Not Found", "volume inconnu"',
+    'src/main.rs:1088': '("409 Conflict", "volume pas encore analysé"',
+    'ui/index.html:1189': 'if (!force && e.status === 409) {',
+    'ui/index.html:775': 'if (e.status === 404) {',
   },
   'README.md': {
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
@@ -175,6 +188,15 @@ const ATTENDU = {
     'src/main.rs:643': 'fn demande_couverte',
     'src/main.rs:643': 'en_attente.push(letter);',
     'src/main.rs:643': 'fn start_scan',
+    // Les quatre references du README qui etaient ecrites en NOM NU. Deux
+    // pointaient un commentaire : le plancher se declare en 384, le registre des
+    // aveux en 451 — pas en 381 et 432, ou il n'y a que la prose qui les
+    // annonce. Une troisieme ne designait RIEN (`:9999`), et la quatrieme non
+    // plus : `noter()` est en 53.
+    'tests/sondes/lancer.mjs:384': 'const COMPTES_PLANCHER = {',
+    'tests/sondes/lancer.mjs:451': 'const AVEURS_STRUCTURELS = [',
+    'tests/sondes/lancer.mjs:718': 'const dispense = trous.reduce',
+    'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
   },
 };
 
@@ -192,14 +214,30 @@ for (const doc of DOCS) {
   // `src/scan.rs:386,455` cite DEUX references : chaque nombre compte. En
   // n en retenant qu un, la seconde entree du tableau paraissait orpheline, et
   // le controle signalait un document qui ne cite plus rien.
-  // Le nom de fichier accepte les CHIFFRES. La classe etait `[A-Za-z_.-]+`, et
-  // `src/win32.rs` n'y entrait pas : le fichier qui porte tout le registre
-  // Windows etait donc INVISIBLE au controle. Mesure du 11/10/2026 : toutes les
-  // references vers `src/win32.rs` de SECURITY.md echappaient a la verification,
-  // dont une (`:471`) qui ne designait plus `GetVolumeInformationW` depuis
-  // longtemps. Un controle qui ne voit pas un fichier ne garde rien.
+  // Le nom de fichier accepte les CHIFFRES, et le chemin n'est plus impose.
+  //
+  // Deux trous, tous les deux mesures le 11/10/2026, de la meme famille : le
+  // controle ne voyait que les references ecrites `src/…`, `ui/…` ou
+  // `tests/sondes/…`, et seulement pour trois extensions.
+  //
+  //   - la classe etait `[A-Za-z_.-]+`, ou les CHIFFRES n'entrent pas :
+  //     `src/win32.rs` — le fichier qui porte tout le registre Windows — etait
+  //     invisible, et l'une de ses references (`:471`) ne designait plus
+  //     `GetVolumeInformationW` depuis longtemps ;
+  //   - le prefixe de dossier etait EXIGE : huit references ecrites en nom nu
+  //     echappaient au controle, et cinq d'entre elles etaient fausses. Deux
+  //     designaient un commentaire voisin au lieu de la declaration
+  //     (`lancer.mjs:381` pour un plancher declare en 384, `:432` pour un
+  //     registre declare en 451) ; deux ne designaient RIEN — `lancer.mjs:9999`
+  //     dans un fichier de 1929 lignes, `sonde-corbeille-plafond.mjs:9999` dans
+  //     un fichier de 192.
+  //
+  // La liste des extensions couvre tout ce qui porte du code ou de la
+  // configuration dans ce depot. `.md` en est exclu : une reference d'un
+  // document a un autre n'est pas une reference au code, et elle demanderait sa
+  // propre regle plutot que d'etre glissee dans celle-ci.
   const refs = [...new Set(
-    [...texte.matchAll(/((?:src|tests\/sondes|ui)\/[A-Za-z0-9_.-]+\.(?:rs|mjs|html)):((?:\d+)(?:[,-]\d+)*)/g)]
+    [...texte.matchAll(/([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:rs|mjs|html|py|ps1|bat|toml|json|yml)):((?:\d+)(?:[,-]\d+)*)/g)]
       .flatMap((m) => m[2].split(/[,-]/).map((n) => ({ fichier: m[1], ligne: Number(n) })))
       .filter((r) => Number.isFinite(r.ligne))
   )];
@@ -209,6 +247,16 @@ for (const doc of DOCS) {
   for (const r of refs) {
     const ref = `${r.fichier}:${r.ligne}`;
     vues.add(ref);
+    // Un nom nu est refuse AVANT toute autre chose, et sans essayer de le
+    // resoudre : rien dans la phrase ne dit si `main.rs` est `src/main.rs` ou un
+    // homonyme ailleurs. Une table de correspondance aurait repare ces huit-la en
+    // en laissant passer la neuvieme — c'est la regle qui doit etre sure, pas la
+    // liste.
+    if (!r.fichier.includes('/')) {
+      verifier(`${doc} ${ref} s'écrit avec son dossier`, false,
+        `nom nu : rien ne dit de quel fichier il parle — écrire le chemin complet`);
+      continue;
+    }
     const chemin = path.join(DEPOT, r.fichier);
     if (!fs.existsSync(chemin)) {
       verifier(`${doc} ${ref} désigne un fichier présent`, false, `${r.fichier} n'existe pas`);

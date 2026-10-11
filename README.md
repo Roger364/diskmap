@@ -433,7 +433,7 @@ re-reads the log.
 
 So two instruments, both with a floor and both counter-proved on the real harness:
 
-- **A floor per probe** (`lancer.mjs:381`). Twenty-four values, each the *smallest* count
+- **A floor per probe** (`tests/sondes/lancer.mjs:384`). Twenty-four values, each the *smallest* count
   observed across the 29 and 30/09 runs, never the largest: a floor taken on a lucky run turns
   red the day the machine changes. Two probes vary and the table says so — `tickets` is 9 or 10
   depending on whether a scan was caught in flight, `elevation` is 18 here and 19 on the runner,
@@ -442,7 +442,7 @@ So two instruments, both with a floor and both counter-proved on the real harnes
   come with it, one of them free: a floor higher than what the probe wrote, a floor whose probe
   **no longer exists** (a rename, leaving a guard that can never fire again), and a printed count
   of how many green probes have *no* floor — a choice, and an invisible choice is not one.
-- **An admission register** (`lancer.mjs:432`). An admission must justify itself, and the
+- **An admission register** (`tests/sondes/lancer.mjs:451`). An admission must justify itself, and the
   justification is verified. `couvert par <file> : <verification name>` means another probe
   *asserts* the same thing: the file must be in the catalogue and its source must contain a
   `verifier(` carrying that name — which is the answer to a third hole, *cited is not exercised*:
@@ -537,17 +537,18 @@ itself as the opposite.
 `const` to `let`; it **deleted the declaration**. `code` became undeclared, and a module raises a
 `ReferenceError` on the first read. The diff said so in one line; no automatic control saw it.
 
-**What changed.** `AVEURS_STRUCTURELS` gained a `couts` field (`lancer.mjs:9999`): a structural hole
+**What changed.** `AVEURS_STRUCTURELS` gained a `couts` field: a structural hole
 no longer merely names itself, it **declares what it costs in verdicts**, and the floor relaxes by
-exactly that — and by nothing else, because an unjustified admission relaxes nothing at all. The
-number is not guessed; it is read from one place and recounted every run (`PLANCHERS RELACHES`). A
+exactly that (`tests/sondes/lancer.mjs:718`) — and by nothing else, because an unjustified
+admission relaxes nothing at all. The number is not guessed; it is read from one place and
+recounted every run (`PLANCHERS RELACHES`). A
 probe cannot buy its floor: it can only declare, once, in writing, the hole it just named. And if
 the hole is ever closed, the note disappears, the floor goes back up, and the probe has to write its
 verdicts again — which is the direction this mechanism can close in.
 
 **Three guards nobody was looking at, which now look at themselves.**
 
-- **The probe checks its own admission.** `noter()` (`sonde-corbeille-plafond.mjs:9999`) refuses to
+- **The probe checks its own admission.** `noter()` (`tests/sondes/sonde-corbeille-plafond.mjs:53`) refuses to
   write an admission lacking the mark (`non exercée`) and the justification (`structurel : …`) the
   collector can read. The defect was on that side too: the admission said « NON ÉPROUVÉE » while
   `MOT_AVEU` only knows `non exercée` — so it was filed as an *explanation* and **swallowed**. An

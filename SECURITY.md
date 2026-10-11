@@ -2585,7 +2585,7 @@ sur ce contrôle. Le format tient : il mérite les prochains contrôles jeunes.
 
 Le pour/contre des deux options (précondition mesurée côté sonde, garde
 applicative côté serveur) a été posé, puis **le code a tranché avant l'avis** :
-la garde que « B » devait créer existe déjà — [main.rs:977] répond
+la garde que « B » devait créer existe déjà — [src/main.rs:977] répond
 `404 « volume inconnu »` à tout POST `/api/scan/<lettre>` hors catalogue,
 **avant** tout démarrage d'analyse. Ce qui manquait n'était pas la garde,
 c'était son épreuve.
@@ -2623,7 +2623,7 @@ branche jamais jouée tourne sans faux rouge ni faux vert.
 18 (local normal), 15 (local normal **et** corbeille absente).
 
 **Consigné sans correction** : `/api/open` sur une lettre inconnue répond
-`409 « volume pas encore analysé »` [main.rs:1017] — le message trompe (le
+`409 « volume pas encore analysé »` [src/main.rs:1088] — le message trompe (le
 volume n'est pas « pas encore analysé », il n'existe pas) ; un 404 aligné sur
 la garde du scan serait plus honnête, au prix d'un choix d'affichage. Et le
 ligne de sonde affiche `vert` **avant** que la perte de plancher ne force le
@@ -2651,8 +2651,8 @@ se compte : **7 − 6 = 1** — il restait exactement un `409 Conflict`, celui
 du helper, et les autres 409 du fichier (arrêt en cours, jeton expiré,
 arrêt refusé) portent d'autres sémantiques, non touchées.
 
-**L'UI était déjà prête.** Sa branche 409 (`index.html:1189`) dit « analyse
-en cours, on peut insister » ; sa branche 404 (`index.html:775`) remonte au
+**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1189`) dit « analyse
+en cours, on peut insister » ; sa branche 404 (`ui/index.html:775`) remonte au
 dossier parent. Les flux 404 de navigation ne peuvent pas rencontrer une
 lettre hors catalogue (le catalogue ne liste que des volumes montés), donc
 le changement ne crée aucun faux « dossier disparu ».
