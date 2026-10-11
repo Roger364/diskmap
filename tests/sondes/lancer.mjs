@@ -386,8 +386,21 @@ const COMPTES_PLANCHER = {
   csrf: 12, elevation: 22, entrees: 12, filet: 16,
   generation: 6, host: 33, identifiant: 15, lot: 9, mot: 6, palier: 5,
   plafond: 6, recherche: 25, rechercheGrande: 7, reelle: 38,
-  reversibilite: 8, suppression: 34, tickets: 9, ui: 39,
+  reversibilite: 10, suppression: 34, tickets: 9, ui: 39,
 };
+// `reversibilite` vaut 10, et non 8. Deux raisons, toutes deux mesurées :
+//   - le scénario 1 écrit 9 verdicts INCONDITIONNELS, pas 8. Les huit d'origine,
+//     plus « l'aperçu expose corbeille_inerte » ajouté par b5111f7 — le plancher
+//     n'avait pas suivi l'ajout, et un plancher en retard d'un cran laisse
+//     perdre un verdict sans que rien ne le dise. Vérifié dans l'historique :
+//     8 verdicts et un plancher de 8 avant b5111f7, 9 verdicts après ;
+//   - le scénario 2 déclare maintenant son saut par une note, et l'auto-contrôle
+//     du dialecte compte pour un dixième verdict. C'est ce cran qui rend le
+//     silence IMPOSSIBLE À REMETTRE : supprimer la déclaration ramènerait la
+//     sonde à 9, et le plancher la rougirait au lieu de la laisser muette.
+// La valeur est un MINIMUM STRUCTUREL, pas un chiffre relevé sur un run : un
+// vert ne peut pas écrire moins (le scénario 1 est inconditionnel, et sortir
+// plus tôt rend la sonde ROUGE, où le plancher ne s'applique pas).
 // Un plancher sans sonde est une garde qui ne garde rien : renommer une sonde
 // laisse son plancher derriere, il ne rend plus jamais, et personne ne le
 // remarque. C est le controle gratuit le plus utile du lot.
@@ -491,6 +504,18 @@ const AVEURS_STRUCTURELS = [
   { motif: 'moitié « instance élevée » NON exercée', couts: 4, pourquoi: 'la sonde elevation a deux chemins exclusifs : 17 verdicts communs + 1 sur instance normale, 17 + 4 sur élevée. Le plancher est posé sur le chemin le plus long (22) ; la moitié non jouée se déclare et détend de son coût — 4 sur une instance normale, 1 sur une élevée' },
   { motif: 'moitié « instance normale » NON exercée', couts: 1, pourquoi: 'l autre moitié du même mécanisme : sur une instance élevée, le bouton « actif sans rien taper » n existe pas, puisque le serveur exige EFFACER' },
   { motif: 'branche « corbeille présente » NON exercée', couts: 3, pourquoi: 'mesuré : elevation lit aCorbeille(VOL) et l imprime en tête, mais trois verdicts de destination et de loi n avaient jamais été conditionnés au fait ; sans corbeille ils assertent sur un état qui ne tient pas — un volume sans corbeille est un état légitime de la machine, pas une attaque : la sonde saute et déclare, l application n a rien à refuser' },
+  // Le scénario 2 de `reversibilite` (volume à corbeille INERTE, NukeOnDelete=1)
+  // n a JAMAIS tourné en CI : la variable qui le désigne n est posée dans aucun
+  // workflow. Le cout est ZÉRO, et ce n est pas un oubli — c est le point.
+  // Le plancher de cette sonde est posé sur le scénario 1 et sur la déclaration
+  // du saut, jamais sur les 4 verdicts du scénario 2 : déclarer 4 relâcherait un
+  // plancher qui garde le scénario 1, et le faux vert serait signé par l entrée
+  // censée le prévenir. L entrée existe pour rendre le SILENCE audible : avant
+  // elle, la sonde sautait le bloc sans imprimer une ligne, et un run vert ne
+  // disait rien du tout. La ligne de TABLE_PLANCHER qui porte cette note eprouve
+  // l arithmetique : elle rougit si quelqu un remplace un jour ce zero par un
+  // quatre — la contre-epreuve a ete faite, et elle mord.
+  { motif: 'le scénario NukeOnDelete non exercé', couts: 0, pourquoi: 'le scénario 2 de `reversibilite` n a jamais tourné en CI : DISKMAP_SONDE_NUKE_VOLUME n est posée dans aucun workflow, donc le bloc sautait — et se taisait. Le cout est ZÉRO et non quatre : le plancher de cette sonde est posé sur le scénario 1 et sur la déclaration du saut, jamais sur les 4 verdicts du scénario 2, donc ces verdicts n ont jamais été comptés et declarer 4 relâcherait le plancher d une sonde saine. La sonde declare desormais le saut au lieu de le taire — meme famille que l entree « Host absent → 403 », ou le cout est nul parce que la note declare une ATTRIBUTION et non une perte' },
 ];
 
 // ---------- le registre se verifie LUI-MEME, avant les tables ----------
@@ -941,6 +966,7 @@ const NON_DECLARE = 'branches du débordement NON EXERCÉE — un trou neuf — 
 const MOITIE_ELEVEE = 'moitié « instance normale » NON exercée — 1 vérification sautée (bouton actif sans rien taper). structurel : l instance est élevée, le serveur exige alors EFFACER et un bouton actif sans saisie ne peut pas être observé';
 const MOITIE_NORMALE = 'moitié « instance élevée » NON exercée — 4 vérifications sautées (conséquence du bandeau, bouton inactif tant que vide, mot suivi d une espace, mot exact), le champ de saisie n a pas été éprouvé. structurel : l instance est normale, la loi n exige alors aucun mot et le champ de confirmation n existe pas dans la modale';
 const CORBEILLE_ABSENTE = 'branche « corbeille présente » NON exercée — 3 vérifications sautées (destination annoncée, destination sous mot exigé, LA LOI), la corbeille de V est absente. structurel : sans corbeille, le serveur ne peut pas annoncer la destination corbeille, et la loi ne tient sur aucun de ses deux côtés — cet état dépend du volume, pas du code';
+const NUKE_NON_EXERCEE = 'le scénario NukeOnDelete non exercé — 4 vérifications sautées, aucun volume désigné — DISKMAP_SONDE_NUKE_VOLUME absente des workflows. structurel : précondition de MACHINE — le plancher porte sur le scénario 1 et sur cette déclaration, jamais sur ces 4 verdicts, donc rien n est détendu';
 const notes = (...textes) => textes.map((t) => ({ texte: t, ...classerNote(t) }));
 const TABLE_PLANCHER = [
   [6, notes(), 6, 'sans note, le plancher ne bouge pas', { garde: 'plancher intact' }],
@@ -952,6 +978,7 @@ const TABLE_PLANCHER = [
   [12, notes(LE_CSRF), 9, 'un cas muet sur trois detache 3 verdicts : 12 - 3 = 9, ce qu ecrit reellement la sonde sur le runner', { garde: 'plancher relâché' }],
   [12, notes(LE_CSRF, LE_CSRF), 6, 'deux cas muets detachent 6 : le cout s cumule, il ne s ecrit qu une fois', { garde: 'plancher relâché' }],
   [9, notes(LE_TICKETS), 8, 'un scan en vol non observe detache le seul verdict conditionnel : 9 - 1 = 8, ce qu ecrit la sonde sur un volume rapide', { garde: 'plancher relâché' }],
+  [10, notes(NUKE_NON_EXERCEE), 10, 'un trou declare avec un cout ZERO ne detend RIEN : le plancher de 10 est pose sur le scenario 1 et sur la declaration du saut, les 4 verdicts du scenario NukeOnDelete n ont jamais ete comptes — ecrire 4 ici ramenerait 10 a 6 et relacherait le plancher d une sonde saine, c est ce que cette ligne empeche', { garde: 'plancher intact' }],
   [5, notes(LE_PALIER), 1, 'un trou declare de 4 verdicts ramene le plancher de 5 a 1, ce qu ecrit reellement une sonde sans dossier de 20 Go', { garde: 'plancher relâché' }],
   [6, [{ texte: 'cout chaine', sorte: 'aveu structurel', couts: '1' }], -1,
     'un cout non nombre est une PANNE : le verrou echoue vers -1, jamais vers zero — deux chaines se concatenaient en 011 et ecrasaient le plancher',

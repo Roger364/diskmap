@@ -413,7 +413,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:762`) and the reason is printed (`tests/sondes/lancer.mjs:1834`). A zero summary has its own door: `tests/sondes/lancer.mjs:755`, reason `tests/sondes/lancer.mjs:1775`.
+(`tests/sondes/lancer.mjs:787`) and the reason is printed (`tests/sondes/lancer.mjs:1861`). A zero summary has its own door: `tests/sondes/lancer.mjs:780`, reason `tests/sondes/lancer.mjs:1802`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -444,7 +444,7 @@ So two instruments, both with a floor and both counter-proved on the real harnes
   come with it, one of them free: a floor higher than what the probe wrote, a floor whose probe
   **no longer exists** (a rename, leaving a guard that can never fire again), and a printed count
   of how many green probes have *no* floor — a choice, and an invisible choice is not one.
-- **An admission register** (`tests/sondes/lancer.mjs:451`). An admission must justify itself, and the
+- **An admission register** (`tests/sondes/lancer.mjs:464`). An admission must justify itself, and the
   justification is verified. `couvert par <file> : <verification name>` means another probe
   *asserts* the same thing: the file must be in the catalogue and its source must contain a
   `verifier(` carrying that name — which is the answer to a third hole, *cited is not exercised*:
@@ -541,7 +541,7 @@ itself as the opposite.
 
 **What changed.** `AVEURS_STRUCTURELS` gained a `couts` field: a structural hole
 no longer merely names itself, it **declares what it costs in verdicts**, and the floor relaxes by
-exactly that (`tests/sondes/lancer.mjs:718`) — and by nothing else, because an unjustified
+exactly that (`tests/sondes/lancer.mjs:743`) — and by nothing else, because an unjustified
 admission relaxes nothing at all. The number is not guessed; it is read from one place and
 recounted every run (`PLANCHERS RELACHES`). A
 probe cannot buy its floor: it can only declare, once, in writing, the hole it just named. And if
@@ -806,8 +806,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:762`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1786`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:787`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1813`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1272,9 +1272,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1707`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1734`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1834`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1861`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,

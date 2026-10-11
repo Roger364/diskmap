@@ -193,6 +193,30 @@ verifier('la ligne nomme le lot et le chemin prévu',
 // rapporte au lieu de le supposer. Sans volume désigné (variable d'environnement
 // `DISKMAP_SONDE_NUKE_VOLUME`), le scénario est sauté : ce n'est pas un défaut
 // du code, c'est une précondition de machine — comme `sans-corbeille`.
+//
+// Un saut MUET, en revanche, était un défaut. Avant, le bloc ne s'exécutait pas
+// et n'imprimait RIEN : un run vert ne disait nulle part qu'un scénario sur deux
+// n'avait pas tourné, et le plancher de la sonde (posé sur le scénario 1 et sur
+// cette déclaration, jamais sur les quatre verdicts du scénario 2) ne réclamait
+// jamais les quatre verdicts manquants. Le harnais ne lit que
+// les lignes `note :`, donc c'est par là que le saut se déclare — avec la marque
+// et la justification qu'il sait lire, et le motif inscrit au registre
+// `AVEURS_STRUCTURELS` de `lancer.mjs` (`couts: 0`, voir la raison là-bas).
+const MOT_AVEU = /ne prouve rien|non exerc[ée]e?|ne pas mesurable|non mesurable/i;
+const MARQUE_JUSTIF = /structurel\s*:\s*.{12,}|couvert par\s+\S+\.mjs\s*:/;
+function noter(etat) {
+  const plat = ('le scénario NukeOnDelete non exercé — 4 vérifications sautées, ' + etat
+    + '. structurel : précondition de MACHINE — le plancher porte sur le scénario 1'
+    + ' et sur cette déclaration, jamais sur ces 4 verdicts, donc rien n est détendu')
+    .replace(/\s+/g, ' ').trim();
+  const marque = MOT_AVEU.test(plat);
+  const justifie = MARQUE_JUSTIF.test(plat);
+  verifier("l'aveu du scénario NukeOnDelete est écrit dans le dialecte que le harnais sait lire",
+    marque && justifie,
+    `marque=${marque} justification=${justifie} sur « ${plat.slice(0, 110)} »`);
+  console.log(`      note : ${plat}`);
+}
+
 if (NUKE && fs.existsSync(corbeille(NUKE))) {
   console.log(`\n--- ${NUKE} : corbeille présente, NukeOnDelete=1 attendu ---`);
   const DOSSIER2 = dossier(NUKE, NOM + '-nuke');
@@ -203,7 +227,7 @@ if (NUKE && fs.existsSync(corbeille(NUKE))) {
   const pub2 = await attendreFichier(BASE, NUKE, DOSSIER2, 'cible.txt');
   const sel2 = pub2?.ligne.sel ?? null;
   if (sel2 == null) {
-    console.log('      cible non indexée sur ' + NUKE + ' : scénario sauté');
+    noter(`« ${NOM}-nuke » n'a pas été indexé sur ${NUKE}`);
   } else {
     const gen2 = pub2.arbre.gen ?? null;
     const dry2 = JSON.parse((await post('/api/delete', {
@@ -230,6 +254,10 @@ if (NUKE && fs.existsSync(corbeille(NUKE))) {
     for (const f of dans2) { try { fs.unlinkSync(f); } catch { /* déjà parti */ } }
     try { fs.rmdirSync(DOSSIER2); } catch { /* non vide */ }
   }
+} else {
+  noter(NUKE
+    ? `${NUKE} n'a pas de ${corbeille(NUKE)} : sa corbeille est absente, pas inerte`
+    : 'aucun volume désigné — DISKMAP_SONDE_NUKE_VOLUME absente des workflows');
 }
 
 // ------------------------------------------------------------- nettoyage
