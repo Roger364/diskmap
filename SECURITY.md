@@ -1750,7 +1750,7 @@ quelle sonde verra quelle garde — et cette décision se prend à l'aveugle qua
 écrit une preuve sans l'avoir mesurée.
 
 **L'instrument.** Un mode `decouverte` dans `epreuve.mjs`
-(`tests/sondes/epreuve.mjs:334`) : on neutralise la garde, on lance **plusieurs
+(`tests/sondes/epreuve.mjs:344`) : on neutralise la garde, on lance **plusieurs
 sondes candidates**, et on note lesquelles rougissent **et ce qu'elles disent**.
 Les lignes rouges affichées sont la matière première de la `mesure` stricte,
 écrite ensuite à partir d'un fait observé. La discipline de restauration est

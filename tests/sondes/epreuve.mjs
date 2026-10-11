@@ -121,6 +121,11 @@ const EPREUVES = [
     avant: '            if gen_vue != snap.gen {',
     apres: '            if false && gen_vue != snap.gen { // NEUTRALISE POUR L EPREUVE',
     sonde: 'sonde-generation.mjs',
+    // `V` est le volume JETABLE (`tests/sondes/creer-volume-test.ps1`), et ce
+    // n'est pas un détail de confort : cette épreuve neutralise la garde et
+    // laisse donc un sélecteur périmé désigner un fichier supprimable. La faire
+    // tourner sur le volume de travail reviendrait à supprimer sur un disque qui
+    // contient des données réelles — l'incident du 26/09, exactement.
     args: ['V'],
     // La garde de génération EST la cause racine de l'incident du 26/09 : c'est
     // elle qui empêche qu'un sélecteur périmé désigne un autre fichier.
@@ -141,7 +146,12 @@ const EPREUVES = [
       + "L'épreuve exige le STATUT — 409 quand la garde tient, 200 quand elle a "
       + 'cédé — et non le chemin visé : celui-ci dépend du contenu de la corbeille '
       + "et change d'un run à l'autre. Exiger une mesure instable ferait "
-      + "échouer l'épreuve pour une raison étrangère à la garde.",
+      + "échouer l'épreuve pour une raison étrangère à la garde. "
+      + 'PRÉCONDITION DE MACHINE : le volume jetable doit être monté sur V: '
+      + "(`tests/sondes/creer-volume-test.ps1`, qui demande l'administration). "
+      + "Sans lui, la sonde meurt sur `ENOENT: mkdir 'V:\\_diskmap_sondes\\perime'` "
+      + "et l'outil conclut « ne mord pas » — un verdict FAUX, qui accuse la garde "
+      + "d'un défaut de la machine. Mesuré le 11/10/2026.",
   },
   {
     nom: 'x-diskmap',
