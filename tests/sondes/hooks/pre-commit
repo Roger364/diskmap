@@ -23,7 +23,19 @@
 # repose, parce que `.git/hooks/` ne survit ni à un clone ni à une restauration.
 
 racine=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -n "$racine" ]; then cd "$racine" 2>/dev/null || true; fi
+if [ -z "$racine" ]; then
+  # Hors d'un dépôt, il n'y a rien à contrôler — et surtout rien qui dise SUR QUOI
+  # porterait le contrôle. On le dit et on sort, plutôt que de mesurer au hasard :
+  # mesuré le 11/10/2026, lancé depuis `G:/` ce script annonçait « le code Rust
+  # n'est pas formaté » à propos d'un dossier qui n'a pas de `Cargo.toml`. Un faux
+  # rouge est le plus sûr moyen de faire désactiver un hook.
+  echo "pre-commit : racine du dépôt introuvable — contrôles sautés."
+  exit 0
+fi
+cd "$racine" 2>/dev/null || {
+  echo "pre-commit : impossible d'entrer dans $racine — contrôles sautés."
+  exit 0
+}
 
 echecs=0
 
