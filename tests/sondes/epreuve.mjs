@@ -25,7 +25,8 @@
 //   node tests/sondes/epreuve.mjs              toutes les épreuves du catalogue
 //   node tests/sondes/epreuve.mjs scan-running une seule
 
-import { spawn, execFileSync } from 'child_process';
+import { spawn, execFile } from 'child_process';
+import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import net from 'net';
@@ -36,6 +37,29 @@ import { fileURLToPath } from 'url';
 // moment où une sonde ne trouve plus son fichier — jamais avant.
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const DEPOT = path.resolve(ICI, '..', '..');
+
+/**
+ * Lancer une commande, en ASYNCHRONE — et ce n'est pas un détail de style.
+ *
+ * Mesuré le 11/10/2026 : `spawnSync` échoue en `EBUSY` DÈS QU'IL DOIT CRÉER UN
+ * TUBE pour capturer la sortie, et réussit avec `stdio: 'inherit'` ou quand la
+ * sortie va dans un FICHIER. `execFileSync` capture par des tubes : il échoue
+ * donc toujours, quelle que soit la commande (mesuré sur `git`, `cargo`, `node`,
+ * `cmd`), depuis Bash comme depuis PowerShell. Conséquence : ce script refusait
+ * de démarrer sur son tout premier appel, le contrôle d'arbre propre — et
+ * AUCUNE entrée du catalogue n'était rejouable.
+ *
+ * `spawn` asynchrone, lui, fonctionne. `execFile` est bâti dessus, donc on passe
+ * par lui : même résultat, même contrat d'erreur (`stdout`, `stderr` et le code
+ * de sortie sur l'erreur), sans tube synchrone. Le script était déjà asynchrone
+ * — il `spawn` le binaire et les sondes, et son catalogue s'écrit `await` — donc
+ * ce n'est pas une contrainte ajoutée, c'est la même discipline appliquée aux
+ * trois commandes qui y échappaient.
+ *
+ * À NE PAS reconvertir en `execFileSync` : ça marcherait sur une machine saine et
+ * rendrait le catalogue irréplayable ici, en silence.
+ */
+const executer = promisify(execFile);
 
 /**
  * Le catalogue. Chaque entrée dit QUOI neutraliser, QUELLE sonde doit le sentir,
@@ -194,10 +218,11 @@ function refuser(t) {
   process.exit(2);
 }
 
-function refuserSiSale() {
+async function refuserSiSale() {
   let sortie = '';
   try {
-    sortie = execFileSync('git', ['status', '--porcelain'], { cwd: DEPOT, encoding: 'utf8' });
+    sortie = (await executer('git', ['status', '--porcelain'],
+      { cwd: DEPOT, encoding: 'utf8' })).stdout;
   } catch (e) {
     refuser(`git n'a pas répondu : ${e.message}`);
   }
@@ -221,9 +246,10 @@ function portLibre() {
   });
 }
 
-function compiler() {
+async function compiler() {
   try {
-    execFileSync('cargo', ['build', '--release'], { cwd: DEPOT, stdio: 'pipe' });
+    await executer('cargo', ['build', '--release'],
+      { cwd: DEPOT, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   } catch (e) {
     // La sortie de cargo est ici décisive : une garde neutralisée peut ne plus
     // compiler, et ce n'est PAS la même chose qu'une sonde qui ne mord pas.
@@ -319,11 +345,11 @@ async function sousGardeNeutralisee(ep, binaire, mesurerFn) {
   }
   try {
     fs.writeFileSync(chemin, original.split(ep.avant).join(ep.apres));
-    compiler();
+    await compiler();
     return await mesurerFn();
   } finally {
     fs.writeFileSync(chemin, original);
-    compiler();
+    await compiler();
   }
 }
 
@@ -397,13 +423,13 @@ async function eprouver(ep, binaire) {
     // ce fichier, et les deux gardes sont alors declarées non mordantes alors
     // qu elles mordent. Un test qui mesure l objet d avant la modification ne
     // mesure rien — il constate qu on n a rien fait.
-    compiler();
+    await compiler();
     neutralisee = await mesurer(ep, binaire);
   } finally {
     // Toujours, même sur une exception : le dépôt ne doit jamais sortir d'ici
     // avec une garde morte.
     fs.writeFileSync(chemin, original);
-    compiler();
+    await compiler();
   }
 
   const compte = neutralisee.tout.match(/(\d+)\/(\d+)\s+v[ée]rifications/);
@@ -440,7 +466,7 @@ async function eprouver(ep, binaire) {
 
 // ------------------------------------------------------------------- marche
 
-refuserSiSale();
+await refuserSiSale();
 const demandees = process.argv.slice(2);
 const retenues = EPREUVES
   .filter((e) => !demandees.length || demandees.includes(e.nom));
@@ -455,7 +481,7 @@ if (!fs.existsSync(binaire)) {
 }
 
 console.log(`  ${retenues.length} épreuve(s) · binaire ${binaire}`);
-compiler();
+await compiler();
 
 for (const ep of retenues) {
   try {
@@ -505,7 +531,8 @@ console.log(echecs
 // Un dépôt propre après l'épreuve est une EXIGENCE, pas un bonus : on le vérifie.
 let residuel = '';
 try {
-  residuel = execFileSync('git', ['status', '--porcelain'], { cwd: DEPOT, encoding: 'utf8' }).trim();
+  residuel = (await executer('git', ['status', '--porcelain'],
+    { cwd: DEPOT, encoding: 'utf8' })).stdout.trim();
 } catch { /* git a déjà parlé */ }
 if (residuel) {
   console.error(`\n  RÉSIDU   le dépôt n'est pas revenu propre :\n${residuel}`);

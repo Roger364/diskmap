@@ -128,7 +128,7 @@ const ATTENDU = {
     // Section 7/31 : le mode decouverte de l outil d epreuves. Le symbole est
     // la fonction qui porte la discipline de restauration — ecrite une fois,
     // donc impossible a ecrire deux fois differemment.
-    'tests/sondes/epreuve.mjs:308': 'async function sousGardeNeutralisee',
+    'tests/sondes/epreuve.mjs:334': 'async function sousGardeNeutralisee',
     'tests/sondes/lancer.mjs:501': 'corbeille_plafond` vaut null',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
     'tests/sondes/lancer.mjs:501': 'corbeille_plafond` vaut null',
