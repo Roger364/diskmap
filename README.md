@@ -257,10 +257,28 @@ point.
 ## Tests
 
 ```bat
+cd tests\sondes && npm ci                 once: what the browser probes need
+npx playwright install chromium           once: the browser they drive
 node tests\sondes\lancer.mjs --liste      the probe table, runs nothing
 node tests\sondes\lancer.mjs --volume V   everything, on a disposable volume
+node tests\sondes\epreuve.mjs             the bite proofs: neutralise, expect red, restore
 cd tests\sondes && npm test               the disposable-volume rule, on its own
 ```
+
+The first two lines are not optional, and until 11/10/2026 they were written
+nowhere outside the CI workflow. Without them every probe that drives a page
+refuses (`Playwright est introuvable`), and `epreuve.mjs` cannot run a single
+entry — the bite-proof queue is closed without saying so. `npm ci` and not
+`npm install`: it is the lockfile the CI resolves, so a local run and a CI run
+mean the same thing.
+
+`epreuve.mjs` is the odd one out of the five: it **rewrites a source file**
+(neutralise one guard, then restores it), so it refuses to start on a dirty tree
+— a restoration would overwrite work that is not its own. It also needs a
+**disposable volume mounted on `V:`** for the entry that neutralises the
+snapshot-generation guard: that entry lets a stale selector point at a deletable
+file, which is the 26/09 incident if it runs anywhere else. Each entry states its
+own machine preconditions, and the tool prints them before it measures.
 
 The probes that create and delete test files may only run on a **disposable
 volume**. Not a disposable folder: on 26/09/2026 a probe ran on a working data
