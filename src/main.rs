@@ -1851,12 +1851,7 @@ fn execute(
     // qui existe mais ne garde rien n'y change rien.
     let reversible = win32::corbeille_reversible(letter);
     let confirm = req.confirm.clone().unwrap_or_default();
-    let attendus = mots_exiges(
-        taille_du_lot(&peek.items),
-        to_trash,
-        reversible,
-        app.eleve,
-    );
+    let attendus = mots_exiges(taille_du_lot(&peek.items), to_trash, reversible, app.eleve);
     if !confirmation_suffit(&confirm, &attendus) {
         // Le motif nomme la saisie attendue, mot pour mot : un refus qui ne dit
         // pas quoi taper laisse l'utilisateur deviner, et il devine mal — ou il
@@ -2236,7 +2231,13 @@ fn confirmation_suffit(conf: &str, mots: &[&str]) -> bool {
 /// Le motif n'est pas décoratif : c'est lui qui distingue une règle qu'on
 /// comprend d'une règle qu'on subit. « 74 Go partent » se lit ; « tapez un mot »
 /// se contourne au bout de la deuxième fois.
-fn mots_avec_raison(taille: u64, to_trash: bool, corbeille: bool, nuke: Option<bool>, eleve: bool) -> Vec<MotExige> {
+fn mots_avec_raison(
+    taille: u64,
+    to_trash: bool,
+    corbeille: bool,
+    nuke: Option<bool>,
+    eleve: bool,
+) -> Vec<MotExige> {
     let mut out = Vec::new();
     if taille >= PALIER_SUPPRIMER_TOUT {
         out.push(MotExige {

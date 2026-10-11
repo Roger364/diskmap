@@ -88,7 +88,7 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1635`) ; `execute` ne résout plus rien et ne supprime que les chemins
+(`src/main.rs:1641`) ; `execute` ne résout plus rien et ne supprime que les chemins
 figés par l'aperçu (`struct Montre`, `src/main.rs:110`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
@@ -228,7 +228,7 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1505`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1511`) — voir R5 |
 
 ---
 
@@ -270,7 +270,7 @@ l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1505`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1511`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -415,7 +415,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2718`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2736`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -440,11 +440,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1771` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1776`) n'était
-appelé que dans `execute` (`src/main.rs:1820`). Des aperçus répétés sans confirmation
+`src/main.rs:1782` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1787`) n'était
+appelé que dans `execute` (`src/main.rs:1832`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1776`).
+endroit (`src/main.rs:1787`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -513,7 +513,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2108`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2118`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -616,7 +616,7 @@ sur la dernière réponse, et son rouge ne tombait que par hasard de charge — 
 complet, jamais sur un volume rapide. Elle enregistre donc chaque peinture
 (`tests/sondes/sonde-ui-suppression.mjs:537`) et attend que l'écran se taise
 (`tests/sondes/sonde-ui-suppression.mjs:560`) avant de lire quoi que ce soit. Le verdict qui en
-découle (`tests/sondes/sonde-ui-suppression.mjs:780`) est le seul qui voie les peintures
+découle (`tests/sondes/sonde-ui-suppression.mjs:813`) est le seul qui voie les peintures
 intermédiaires ; tous les autres lisent un instant, et cet instant peut précéder la dernière
 réponse.
 
@@ -937,9 +937,9 @@ qui n'existait pas — et un écran « corrigé » qui resterait faux.
 > l'utilisateur a été perdu en route.
 
 **Le correctif.** Un repère unique : l'écran note, à chaque peinture, le `finished_ms` du volume
-qu'il montre (`ui/index.html:427`). La veille compare (`ui/index.html:1868`) : tant que le
+qu'il montre (`ui/index.html:427`). La veille compare (`ui/index.html:1889`) : tant que le
 repère vaut celui de l'état, elle ne fait rien ; dès qu'il diffère, elle recharge
-(`ui/index.html:1873`). Le rechargement passe par `rechargerTri()` et non `load()` : la
+(`ui/index.html:1894`). Le rechargement passe par `rechargerTri()` et non `load()` : la
 **sélection** se garde — c'est une cible de suppression, et un rechargement de fond n'a pas le
 droit de la déplacer — et une recherche en cours reste une recherche.
 
@@ -1086,7 +1086,7 @@ drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais
   consulte jamais `!scanning` pour conclure ;
 - l'interface note le ticket rendu (`ui/index.html:681`) et `poll()` s'arrête sur sa publication
   (`ui/index.html:699`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
-  l'exécution (`ui/index.html:1566`) ;
+  l'exécution (`ui/index.html:1575`) ;
 - `generation` demande son analyse et attend son ticket (`tests/sondes/sonde-generation.mjs:71`)
   — l'attente par le fait, plus bas, reste sa preuve d'existence ;
 - la sonde `tickets` (`tests/sondes/sonde-tickets.mjs:62`) éprouve le contrat du point de vue
@@ -1201,7 +1201,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   (`tests/sondes/sonde-ui-suppression.mjs:101`) : deux fichiers de **même taille**, créés dans
   l'ordre **inverse** de l'ordre alphabétique, donc un serveur sans départage les afficherait
   `zztaille-z` avant `zztaille-a`. Le verdict
-  (`tests/sondes/sonde-ui-suppression.mjs:718`) exige alors qu'à taille égale les noms soient
+  (`tests/sondes/sonde-ui-suppression.mjs:751`) exige alors qu'à taille égale les noms soient
   croissants — invariant **indépendant du serveur** : comparer l'écran à l'interface ne
   prouverait que leur accord, y compris s'ils ont tort ensemble.
 - **Une demande d'analyse n'est acceptée que si elle sera honorée.** `POST /api/scan`
@@ -1217,7 +1217,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   étrangère laissait donc l'écran afficher un instantané que le serveur ne servait plus, sans un
   mot — et un geste de l'utilisateur survenu **pendant** l'analyse était perdu sans bruit,
   mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
-  chaque peinture (`ui/index.html:427`), comparé par la veille (`ui/index.html:1868`) — R14.
+  chaque peinture (`ui/index.html:427`), comparé par la veille (`ui/index.html:1889`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
   (`src/main.rs:212`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment

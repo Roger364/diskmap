@@ -911,8 +911,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:427`). The watch compares (`ui/index.html:1868`) and reloads
-(`ui/index.html:1873`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:427`). The watch compares (`ui/index.html:1889`) and reloads
+(`ui/index.html:1894`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -986,8 +986,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:427`). The watch compares (`ui/index.html:1868`) and reloads
-(`ui/index.html:1873`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:427`). The watch compares (`ui/index.html:1889`) and reloads
+(`ui/index.html:1894`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1120,7 +1120,7 @@ between two scans. Now:
   consults `!scanning` to conclude;
 - the UI records the returned ticket (`ui/index.html:681`) and `poll()` stops on its publication
   (`ui/index.html:699`); the rescan after a deletion waits on the `scan_ticket` returned by the
-  execution (`ui/index.html:1566`);
+  execution (`ui/index.html:1575`);
 - `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
   — the fact-based wait below remains its proof of existence;
 - the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the
@@ -1269,7 +1269,7 @@ was wrong. The support simply did not exist yet, so it could be made.
 Two files of the **same size**, written in the **reverse** of alphabetical order
 (`tests/sondes/sonde-ui-suppression.mjs:101`). A server without a tiebreak renders them
 `zztaille-z` before `zztaille-a`, because that is the order they were created in. The verdict
-(`tests/sondes/sonde-ui-suppression.mjs:718`) requires names to ascend within every group of
+(`tests/sondes/sonde-ui-suppression.mjs:751`) requires names to ascend within every group of
 identical displayed sizes, and goes red.
 
 The check is deliberately **independent of the server**. Asking "does the screen show what the
