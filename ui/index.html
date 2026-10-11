@@ -1425,30 +1425,39 @@ function renderDeleteBody() {
   if (mode === 'recycle') {
     // « Les éléments iront dans la corbeille : tu peux les restaurer » était
     // une CROYANCE, et une seule : « dans la corbeille » veut dire « dans la
-    // corbeille MAINTENANT ». Le serveur mesure le plafond et l'occupation ; ici
-    // on les montre, et le verdict.
+    // corbeille MAINTENANT ». Le serveur mesure le plafond et l'occupation, et
+    // lit `NukeOnDelete` : ici on montre le verdict, pas une promesse.
     const etat = etatCorbeille(pendingDry);
-    h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
-         `Les éléments iront dans la corbeille${etat.suffixeVol}. ` +
-         `${etat.phrase}</p>`;
-    if (pendingDry.corbeille_deborde === true) {
-      // Ce que la mesure dit, et pas ce qu'on voudrait qu'elle dise : sur V:,
-      // 72 Mo pour un plafond de 51 Mo, RIEN n'a été détruit — les 12
-      // fichiers étaient tous dans la corbeille, à 1,66 fois le plafond. Le
-      // plafond n'est pas appliqué à la suppression ; la purge arrive plus tard,
-      // au rythme de Windows, et sans prévenir. Dire « Windows va détruire » à
-      // cet instant serait donc faux, et un avertissement faux
-      // apprend moins qu'un avertissement absent. Ce qu'on peut dire, et qui suffit :
-      // ce qui est dedans n'y est pas garanti.
-      h += `<div class="warn" style="margin-top:10px">Ce lot <b>dépassera</b> le plafond de la ` +
-           `corbeille${etat.suffixeVol} : ${etat.occupe} dedans, ` +
-           `${hsize(pendingDry.total_size)} de plus pour ${etat.plafond} au total. ` +
-           `Rien ne sera détruit tout de suite — mesuré le 27/09/2026, la corbeille ` +
-           `dépassait alors son plafond de 66 % et les fichiers y étaient tous. ` +
-           `Mais Windows purge ses entrées les plus anciennes <b>quand il lui plaît</b>, ` +
-           `sans prévenir : ce qui est dedans n’y est plus garanti. Vider la ` +
-           `corbeille avant, ou passer en suppression définitive si tu ne veux ` +
-           `rien laisser à Windows.</div>`;
+    if (pendingDry.corbeille_inerte === true) {
+      // La corbeille existe mais Windows la contourne : « corbeille » détruit.
+      h += `<div class="warn" style="margin-top:10px"><b>Ce volume détruit sans corbeille.</b> ` +
+           `Bien qu'une corbeille existe, Windows est configuré (`NukeOnDelete=1`) pour ` +
+           `supprimer définitivement : le mode « corbeille » détruira les fichiers comme le ` +
+           `mode « définitif », sans aucune récupération. Le mot exigé est celui de la ` +
+           `suppression définitive.</div>`;
+    } else {
+      h += `<p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">` +
+           `Les éléments iront dans la corbeille${etat.suffixeVol}. ` +
+           `${etat.phrase}</p>`;
+      if (pendingDry.corbeille_deborde === true) {
+        // Ce que la mesure dit, et pas ce qu'on voudrait qu'elle dise : sur V:,
+        // 72 Mo pour un plafond de 51 Mo, RIEN n'a été détruit — les 12
+        // fichiers étaient tous dans la corbeille, à 1,66 fois le plafond. Le
+        // plafond n'est pas appliqué à la suppression ; la purge arrive plus tard,
+        // au rythme de Windows, et sans prévenir. Dire « Windows va détruire » à
+        // cet instant serait donc faux, et un avertissement faux
+        // apprend moins qu'un avertissement absent. Ce qu'on peut dire, et qui suffit :
+        // ce qui est dedans n'y est pas garanti.
+        h += `<div class="warn" style="margin-top:10px">Ce lot <b>dépassera</b> le plafond de la ` +
+             `corbeille${etat.suffixeVol} : ${etat.occupe} dedans, ` +
+             `${hsize(pendingDry.total_size)} de plus pour ${etat.plafond} au total. ` +
+             `Rien ne sera détruit tout de suite — mesuré le 27/09/2026, la corbeille ` +
+             `dépassait alors son plafond de 66 % et les fichiers y étaient tous. ` +
+             `Mais Windows purge ses entrées les plus anciennes <b>quand il lui plaît</b>, ` +
+             `sans prévenir : ce qui est dedans n’y est plus garanti. Vider la ` +
+             `corbeille avant, ou passer en suppression définitive si tu ne veux ` +
+             `rien laisser à Windows.</div>`;
+      }
     }
   }
   $('#dbody').innerHTML = h;

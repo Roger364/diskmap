@@ -451,6 +451,51 @@ fn lire_dword(sous_cle: &str, valeur: &str) -> Option<u32> {
     (code == 0).then_some(out)
 }
 
+/// `NukeOnDelete` du volume : Windows détruit-il sans passer par la corbeille ?
+///
+/// La clé vit dans la MÊME sous-clé que `MaxCapacity` —
+/// `HKCU\…\BitBucket\Volume\{GUID}` — et vaut `1` quand l'utilisateur a coché
+/// « ne pas déplacer les fichiers dans la corbeille » pour CE volume. Une
+/// corbeille peut alors exister (`$RECYCLE.BIN` présent) et ne servir à rien :
+/// `FOF_ALLOWUNDO` y envoie le fichier, puis Windows le purge aussitôt, sans
+/// rien dire — exactement le silence que `corbeille_disponible` laissait passer.
+///
+/// `Some(true)` : mesuré, destruction sans récupération. `Some(false)` : clé
+/// absente ou à zéro — comportement par défaut, la corbeille tient. `None` :
+/// volume inconnu ou lecture impossible — on ne déduit PAS l'irréversibilité
+/// d'une lecture qui échoue ; c'est le même principe que `MaxCapacity` : une
+/// valeur non mesurée n'est pas une valeur nulle.
+///
+/// Lu dans `HKEY_CURRENT_USER`, comme `MaxCapacity` : pas d'élévation requise.
+pub fn corbeille_nuke(lettre: char) -> Option<bool> {
+    guid_volume(lettre).and_then(|g| {
+        lire_dword(
+            &format!(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\BitBucket\\Volume\\{g}"
+            ),
+            "NukeOnDelete",
+        )
+        // Même piège que `MaxCapacity` : un zéro n'est pas « nuke », c'est
+        // l'absence déguisée. `lire_dword` rend `Some(0)` ; on le lit comme
+        // « corbeille active », pas comme « détruit ».
+        .map(|v| v != 0)
+    })
+}
+
+/// Le volume accepte-t-il VRAIMENT une suppression réversible ?
+///
+/// `corbeille_disponible` ne dit que si le dossier existe. Un volume peut
+/// l'avoir ET détruire — `NukeOnDelete=1`. C'est la question qui compte pour
+/// l'avertissement : une corbeille qui ne garde rien n'est pas une corbeille,
+/// et le mode « corbeille » y détruit comme le définitif.
+///
+/// `None` en lecture (clé absente) est le comportement par défaut de Windows :
+/// la corbeille fonctionne. On ne bascule donc pas sur « irréversible » d'une
+/// lecture impossible — seulement sur un `1` mesuré.
+pub fn corbeille_reversible(lettre: char) -> bool {
+    corbeille_disponible(lettre) && corbeille_nuke(lettre) != Some(true)
+}
+
 /// Ce que la corbeille du volume peut garder, et ce qu'elle garde déjà.
 pub struct EtatCorbeille {
     /// Plafond configuré, en octets. `None` = clé absente ou volume inconnu.

@@ -1404,6 +1404,12 @@ struct DeletePreview {
     /// Le volume a-t-il une corbeille ? Faux ⇒ une suppression « corbeille »
     /// détruirait les fichiers. On le dit AVANT, pas seulement après.
     corbeille: bool,
+    /// La corbeille existe-t-elle mais NE SERT PAS ? `NukeOnDelete=1` dans le
+    /// registre du volume : Windows y détruit sans la remplir. `Some(true)` =
+    /// mesuré, irréversible ; `Some(false)` = clé absente ; `None` = non lu.
+    /// Quand c'est `Some(true)`, le mode « corbeille » détruit comme le
+    /// définitif — l'application le dit AVANT, et exige le mot qui va avec.
+    corbeille_inerte: Option<bool>,
     /// Plafond de la corbeille du volume, en octets. `None` : non mesuré.
     corbeille_plafond: Option<u64>,
     /// Octets déjà occupés dans cette corbeille, mesurés sur les fiches `$I`.
@@ -1757,10 +1763,15 @@ fn dry(
     // fausse. Il est calculé du MODE DEMANDÉ, comme le fera l'exécution — la
     // corbeille réelle ne s'applique que si l'exécution a lieu, et là c'est trop
     // tard pour exiger un mot.
+    // L'état réel de la corbeille, figé avec l'aperçu : `corbeille` ne dit que
+    // si le dossier existe ; `reversible` dit si une suppression y SERA
+    // récupérable — un volume peut avoir une corbeille et détruire (`NukeOnDelete`).
     let corbeille = win32::corbeille_disponible(letter);
+    let reversible = win32::corbeille_reversible(letter);
+    let nuke = win32::corbeille_nuke(letter);
     let (mots_recycle, mots_permanent) = (
-        mots_avec_raison(total, true, corbeille, app.eleve),
-        mots_avec_raison(total, false, corbeille, app.eleve),
+        mots_avec_raison(total, true, reversible, nuke, app.eleve),
+        mots_avec_raison(total, false, false, None, app.eleve),
     );
 
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
@@ -1793,7 +1804,8 @@ fn dry(
             total_size: total,
             deletable,
             blocked,
-            corbeille: win32::corbeille_disponible(letter),
+            corbeille,
+            corbeille_inerte: nuke,
             corbeille_plafond: etat.plafond,
             corbeille_occupe: etat.occupe,
             corbeille_complet: etat.complet,
@@ -1834,12 +1846,15 @@ fn execute(
     // Une instance ÉLEVÉE s'y ajoute : les ACL ne s'appliquent plus, et le mot
     // demandé est alors celui de la suppression DÉFINITIVE — sans remplacer
     // les autres règles, qui s'ajoutent.
-    let recycle_available = win32::corbeille_disponible(letter);
+    // « recycle » n'est qu'une intention : sans corbeille réelle, Windows
+    // détruit. `corbeille_reversible` compte `NukeOnDelete` — une corbeille
+    // qui existe mais ne garde rien n'y change rien.
+    let reversible = win32::corbeille_reversible(letter);
     let confirm = req.confirm.clone().unwrap_or_default();
     let attendus = mots_exiges(
         taille_du_lot(&peek.items),
         to_trash,
-        recycle_available,
+        reversible,
         app.eleve,
     );
     if !confirmation_suffit(&confirm, &attendus) {
@@ -2221,7 +2236,7 @@ fn confirmation_suffit(conf: &str, mots: &[&str]) -> bool {
 /// Le motif n'est pas décoratif : c'est lui qui distingue une règle qu'on
 /// comprend d'une règle qu'on subit. « 74 Go partent » se lit ; « tapez un mot »
 /// se contourne au bout de la deuxième fois.
-fn mots_avec_raison(taille: u64, to_trash: bool, corbeille: bool, eleve: bool) -> Vec<MotExige> {
+fn mots_avec_raison(taille: u64, to_trash: bool, corbeille: bool, nuke: Option<bool>, eleve: bool) -> Vec<MotExige> {
     let mut out = Vec::new();
     if taille >= PALIER_SUPPRIMER_TOUT {
         out.push(MotExige {
@@ -2237,10 +2252,12 @@ fn mots_avec_raison(taille: u64, to_trash: bool, corbeille: bool, eleve: bool) -
     if confirmation_required(to_trash, corbeille) {
         out.push(MotExige {
             mot: "EFFACER".into(),
-            raison: if to_trash {
-                "ce volume n'a pas de corbeille".into()
-            } else {
+            raison: if !to_trash {
                 "suppression définitive".into()
+            } else if nuke == Some(true) {
+                "ce volume détruit sans corbeille (NukeOnDelete=1)".into()
+            } else {
+                "ce volume n'a pas de corbeille".into()
             },
         });
     } else if eleve_change_le_geste(eleve) {

@@ -30,6 +30,10 @@ import { dossier, corbeille, journal, estEleve, aTaper, attendreFichier,
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
 const VOL = (process.argv[3] || VOLUME_SANS_CORBEILLE).toUpperCase();
+// Volume qui a une corbeille MAIS `NukeOnDelete=1` : la corbeille existe et
+// Windows la contourne. La sonde ne pose pas la clé — elle lit l'état réel du
+// volume désigné. Sans variable d'environnement, le scénario est sauté.
+const NUKE = (process.env.DISKMAP_SONDE_NUKE_VOLUME || '').toUpperCase();
 const NOM = 'reversibilite';
 const DOSSIER = dossier(VOL, NOM);
 const FICHIER = DOSSIER + '/cible.txt';
@@ -124,6 +128,10 @@ const dry = JSON.parse((await post('/api/delete', {
   drive: VOL, items: [sel], mode: 'dry', gen,
 })).texte);
 verifier('l’aperçu se propose de l’effacer', dry.deletable === 1, JSON.stringify(dry.items));
+// Le contrat d'API : l'aperçu expose le fait `NukeOnDelete`, même à `null`
+// (volume sans corbeille, ou non lu). C'est lui que lit la modale.
+verifier("l'aperçu expose corbeille_inerte", 'corbeille_inerte' in dry,
+  JSON.stringify(Object.keys(dry).filter(k => k.startsWith('corbeille'))));
 const r = await post('/api/delete', {
   drive: VOL, mode: 'recycle', token: dry.token, confirm: MOT,
 });
@@ -176,6 +184,53 @@ verifier('le journal enregistre l’issue réelle, pas le mode demandé',
 verifier('la ligne nomme le lot et le chemin prévu',
   /lot=\S+/.test(nouvelles[0] || '') && /prevu=\S/.test(nouvelles[0] || ''),
   JSON.stringify(nouvelles));
+
+// ------------------------------------------------------------- scénario 2
+// Corbeille PRÉSENTE mais configurée pour détruire (`NukeOnDelete=1`) : la
+// corbeille existe, mais Windows la contourne et supprime définitivement. La
+// sonde ne pose PAS la clé — elle ne sait pas mieux que le disque ce qui est
+// vrai —, elle lit l'état RÉEL du volume désigné et vérifie que le serveur le
+// rapporte au lieu de le supposer. Sans volume désigné (variable d'environnement
+// `DISKMAP_SONDE_NUKE_VOLUME`), le scénario est sauté : ce n'est pas un défaut
+// du code, c'est une précondition de machine — comme `sans-corbeille`.
+if (NUKE && fs.existsSync(corbeille(NUKE))) {
+  console.log(`\n--- ${NUKE} : corbeille présente, NukeOnDelete=1 attendu ---`);
+  const DOSSIER2 = dossier(NUKE, NOM + '-nuke');
+  const FIC2 = DOSSIER2 + '/cible.txt';
+  fs.mkdirSync(DOSSIER2, { recursive: true });
+  fs.writeFileSync(FIC2, CONTENU);
+  await post(`/api/scan/${NUKE}`, {});
+  const pub2 = await attendreFichier(BASE, NUKE, DOSSIER2, 'cible.txt');
+  const sel2 = pub2?.ligne.sel ?? null;
+  if (sel2 == null) {
+    console.log('      cible non indexée sur ' + NUKE + ' : scénario sauté');
+  } else {
+    const gen2 = pub2.arbre.gen ?? null;
+    const dry2 = JSON.parse((await post('/api/delete', {
+      drive: NUKE, items: [sel2], mode: 'dry', gen: gen2,
+    })).texte);
+    verifier("l'aperçu expose corbeille_inerte", 'corbeille_inerte' in dry2,
+      JSON.stringify(Object.keys(dry2).filter(k => k.startsWith('corbeille'))));
+    verifier('le serveur lit NukeOnDelete=1', dry2.corbeille_inerte === true,
+      JSON.stringify(dry2.corbeille_inerte));
+    // En mode corbeille sur un tel volume, le serveur exige le mot de la
+    // suppression définitive — la corbeille présente ne change rien.
+    const motNu = aTaper({ permanent: false, corbeille: false, eleve: false });
+    const r2 = await post('/api/delete', {
+      drive: NUKE, mode: 'recycle', token: dry2.token, confirm: motNu,
+    });
+    const d2 = JSON.parse(r2.texte);
+    console.log(`      réponse : HTTP ${r2.status} · done=${d2.done} · irreversible=${d2.irreversible}`);
+    const dans2 = chercherSceau(corbeille(NUKE));
+    const ailleurs2 = chercherSceau(DOSSIER2).filter(p => !p.includes('RECYCLE'));
+    const enCorbeille2 = dans2.length > 0 || ailleurs2.length > 0;
+    verifier('le mode corbeille DÉTRUIT (NukeOnDelete)', !enCorbeille2 && !fs.existsSync(FIC2),
+      `dansCorbeille=${dans2.length} ailleurs=${ailleurs2.length} disque=${fs.existsSync(FIC2)}`);
+    verifier("l'issue est corbeille-refusee", d2.irreversible === 1, JSON.stringify(d2.results));
+    for (const f of dans2) { try { fs.unlinkSync(f); } catch { /* déjà parti */ } }
+    try { fs.rmdirSync(DOSSIER2); } catch { /* non vide */ }
+  }
+}
 
 // ------------------------------------------------------------- nettoyage
 //
