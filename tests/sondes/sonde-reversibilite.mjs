@@ -70,6 +70,21 @@ const post = (chemin, corps) => fetch(BASE + chemin, {
   method: 'POST', headers: H, body: JSON.stringify(corps),
 }).then(async r => ({ status: r.status, texte: await r.text() }));
 
+// Le corps d'un refus est du TEXTE BRUT, pas du JSON : `execute` refuse une
+// confirmation absente par `format!("confirmation attendue : « {} »", …)`
+// (`src/main.rs:1861`). C'est un choix du produit — le motif nomme la saisie
+// attendue, mot pour mot — et six sondes du dossier en tiennent compte
+// (`sonde-elevation.mjs:125`, `sonde-dossiers-a-nommer.mjs:71`,
+// `sonde-recherche-large.mjs:48`). Celle-ci était la seule à parser sans filet
+// sur le chemin d'exécution : sur un refus elle mourait d'un `SyntaxError`,
+// sortait sans décompte, et le harnais lisait « SANS SYNTHESE » là où il y avait
+// une cause nommée. Un `error` porté par l'objet rend ce refus lisible par le
+// verdict qui suit, au lieu de le transformer en panne.
+function lireCorps(r) {
+  try { return JSON.parse(r.texte); }
+  catch { return { error: r.texte.trim() || `HTTP ${r.status}` }; }
+}
+
 // L'état du disque, établi SANS l'application : on cherche le sceau par son
 // contenu. Un décompte ne dirait pas que c'est bien CE fichier.
 function chercherSceau(racine, profondeur = 0) {
@@ -124,22 +139,29 @@ if (sel == null) process.exit(1);
 // -------------------------------------------------- l'aperçu, puis la corbeille
 console.log('\n--- suppression demandée en mode « corbeille » ---');
 const lignesAvant = fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean).length;
-const dry = JSON.parse((await post('/api/delete', {
+const repDry = await post('/api/delete', {
   drive: VOL, items: [sel], mode: 'dry', gen,
-})).texte);
-verifier('l’aperçu se propose de l’effacer', dry.deletable === 1, JSON.stringify(dry.items));
+});
+const dry = lireCorps(repDry);
+verifier('l’aperçu se propose de l’effacer', dry.deletable === 1,
+  dry.error ? `HTTP ${repDry.status} — ${dry.error}` : JSON.stringify(dry.items));
 // Le contrat d'API : l'aperçu expose le fait `NukeOnDelete`, même à `null`
 // (volume sans corbeille, ou non lu). C'est lui que lit la modale.
 verifier("l'aperçu expose corbeille_inerte", 'corbeille_inerte' in dry,
-  JSON.stringify(Object.keys(dry).filter(k => k.startsWith('corbeille'))));
+  dry.error ? `HTTP ${repDry.status} — ${dry.error}`
+    : JSON.stringify(Object.keys(dry).filter(k => k.startsWith('corbeille'))));
 const r = await post('/api/delete', {
   drive: VOL, mode: 'recycle', token: dry.token, confirm: MOT,
 });
-const d = JSON.parse(r.texte);
+const d = lireCorps(r);
 console.log(`      réponse : HTTP ${r.status} · done=${d.done} · failed=${d.failed} ` +
-  `· to_trash=${d.to_trash} · irreversible=${d.irreversible}`);
+  `· to_trash=${d.to_trash} · irreversible=${d.irreversible}`
+  + (d.error ? ` · ${d.error}` : ''));
 
-verifier('l’application annonce une réussite', d.done === 1, JSON.stringify(d.results));
+// Le verdict nomme la cause quand il y en a une : « refusé » sans dire par quoi
+// obligerait à relancer à la main pour l'apprendre.
+verifier('l’application annonce une réussite', d.done === 1,
+  d.error ? `HTTP ${r.status} — ${d.error}` : JSON.stringify(d.results));
 verifier('le fichier a disparu du disque', !fs.existsSync(FICHIER), 'toujours présent');
 
 // --------------------------------------------------- où est-il allé, en vrai ?
@@ -230,11 +252,13 @@ if (NUKE && fs.existsSync(corbeille(NUKE))) {
     noter(`« ${NOM}-nuke » n'a pas été indexé sur ${NUKE}`);
   } else {
     const gen2 = pub2.arbre.gen ?? null;
-    const dry2 = JSON.parse((await post('/api/delete', {
+    const repDry2 = await post('/api/delete', {
       drive: NUKE, items: [sel2], mode: 'dry', gen: gen2,
-    })).texte);
+    });
+    const dry2 = lireCorps(repDry2);
     verifier("l'aperçu expose corbeille_inerte", 'corbeille_inerte' in dry2,
-      JSON.stringify(Object.keys(dry2).filter(k => k.startsWith('corbeille'))));
+      dry2.error ? `HTTP ${repDry2.status} — ${dry2.error}`
+        : JSON.stringify(Object.keys(dry2).filter(k => k.startsWith('corbeille'))));
     verifier('le serveur lit NukeOnDelete=1', dry2.corbeille_inerte === true,
       JSON.stringify(dry2.corbeille_inerte));
     // En mode corbeille sur un tel volume, le serveur exige le mot de la
@@ -243,8 +267,9 @@ if (NUKE && fs.existsSync(corbeille(NUKE))) {
     const r2 = await post('/api/delete', {
       drive: NUKE, mode: 'recycle', token: dry2.token, confirm: motNu,
     });
-    const d2 = JSON.parse(r2.texte);
-    console.log(`      réponse : HTTP ${r2.status} · done=${d2.done} · irreversible=${d2.irreversible}`);
+    const d2 = lireCorps(r2);
+    console.log(`      réponse : HTTP ${r2.status} · done=${d2.done} · irreversible=${d2.irreversible}`
+      + (d2.error ? ` · ${d2.error}` : ''));
     const dans2 = chercherSceau(corbeille(NUKE));
     const ailleurs2 = chercherSceau(DOSSIER2).filter(p => !p.includes('RECYCLE'));
     const enCorbeille2 = dans2.length > 0 || ailleurs2.length > 0;

@@ -278,6 +278,31 @@ ajouté la vérification `l'aperçu expose corbeille_inerte` sans le suivre. C'e
 cran qui rend le silence impossible à remettre — supprimer la déclaration ramène la
 sonde à neuf verdicts, et le plancher la rougit au lieu de la laisser muette.
 
+**La garde a une preuve de morsure, depuis le 11/10/2026.** `epreuve.mjs` neutralise
+`corbeille_reversible` (`src/win32.rs:495`) en `false`, et `sonde-reversibilite.mjs`
+sort **5/10, code 1** — le premier verdict rouge nommant la cause : *HTTP 400 —
+confirmation attendue : « EFFACER »*. Restaurée, la sonde revient à **10/10**. La
+garde est donc éprouvée dans le sens qui compte : `corbeille_reversible` répond à la
+question dont dépend le mot exigé, et la répondre à l'envers change le mot.
+
+Deux choses valent d'être dites sur cette preuve, parce qu'elles en limitent la
+portée :
+
+- **Elle n'existe que sur une instance NON ÉLEVÉE.** Sur une instance élevée,
+  `mots_exiges` ajoute `EFFACER` pour cause d'élévation (`tests/sondes/config.mjs:349`),
+  le mot exigé est déjà le bon, et cette garde n'a plus de témoin par ce chemin.
+  `epreuve.mjs` est un outil de poste et jamais du CI, où le runner est toujours
+  élevé — la précondition est donc sans conséquence, mais elle est écrite ici pour
+  que « ne mord pas » sur une machine élevée ne se lise pas comme un défaut du code.
+- **Elle a demandé de réparer la sonde.** Le `JSON.parse` du corps de `/api/delete`
+  n'avait pas de filet, alors que le refus d'une confirmation est du **texte brut**
+  (`src/main.rs:1861`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
+  sans décompte, et le harnais lisait « SANS SYNTHESE » là où il y avait une cause
+  nommée — la sonde mesurait sa propre fragilité au lieu du produit. Les quatre
+  corps de ce fichier passent désormais par `lireCorps`
+  (`tests/sondes/sonde-reversibilite.mjs:83`), comme six autres sondes du dossier le
+  faisaient déjà.
+
 ## 4. Modèle de menace
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
@@ -1725,7 +1750,7 @@ quelle sonde verra quelle garde — et cette décision se prend à l'aveugle qua
 écrit une preuve sans l'avoir mesurée.
 
 **L'instrument.** Un mode `decouverte` dans `epreuve.mjs`
-(`tests/sondes/epreuve.mjs:272`) : on neutralise la garde, on lance **plusieurs
+(`tests/sondes/epreuve.mjs:308`) : on neutralise la garde, on lance **plusieurs
 sondes candidates**, et on note lesquelles rougissent **et ce qu'elles disent**.
 Les lignes rouges affichées sont la matière première de la `mesure` stricte,
 écrite ensuite à partir d'un fait observé. La discipline de restauration est

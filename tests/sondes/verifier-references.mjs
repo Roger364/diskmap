@@ -128,7 +128,7 @@ const ATTENDU = {
     // Section 7/31 : le mode decouverte de l outil d epreuves. Le symbole est
     // la fonction qui porte la discipline de restauration — ecrite une fois,
     // donc impossible a ecrire deux fois differemment.
-    'tests/sondes/epreuve.mjs:272': 'async function sousGardeNeutralisee',
+    'tests/sondes/epreuve.mjs:308': 'async function sousGardeNeutralisee',
     'tests/sondes/lancer.mjs:501': 'corbeille_plafond` vaut null',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
     'tests/sondes/lancer.mjs:501': 'corbeille_plafond` vaut null',
@@ -153,6 +153,18 @@ const ATTENDU = {
     'src/win32.rs:495': 'pub fn corbeille_reversible',
     'src/main.rs:1412': 'corbeille_inerte: Option<bool>,',
     'src/main.rs:2196': 'fn mots_exiges',
+    // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
+    // motif de refus que la sonde lisait mal : elle designe le `format!` qui
+    // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
+    // qui compte, et une reference qui designerait la ligne voisine garderait un
+    // texte, pas la cause.
+    'src/main.rs:1861': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
+    // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
+    // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
+    'tests/sondes/config.mjs:349': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
+    // Le filet ajoute a la sonde : sans lui, un refus en texte brut la tuait par
+    // `SyntaxError`, et la mesure de 3.8 n existait pas.
+    'tests/sondes/sonde-reversibilite.mjs:83': 'function lireCorps(r)',
     // Les deux references qui etaient ecrites en NOM NU, donc invisibles depuis
     // toujours. `:1017` pointait un COMMENTAIRE : la garde qui produit ce 409 est
     // en 1088 — c'est la ligne que la phrase annonce, et le controle des

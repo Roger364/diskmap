@@ -142,6 +142,42 @@ const EPREUVES = [
       + 'pas la morser : elle mesure le navigateur. Une requête directe, elle, ne '
       + 'passe par aucun des deux.',
   },
+  {
+    nom: 'corbeille-reversible',
+    quoi: 'la corbeille REVERSIBLE — la question qui decide du mot exige',
+    fichier: 'src/win32.rs',
+    avant: '    corbeille_disponible(lettre) && corbeille_nuke(lettre) != Some(true)',
+    apres: '    let _ = lettre; false // NEUTRALISE POUR L EPREUVE',
+    sonde: 'sonde-reversibilite.mjs',
+    // Le volume est nomme, comme `V` pour `generation` : l'epreuve exige un
+    // volume dont la corbeille soit PRESENTE et REVERSIBLE, sans quoi le vert
+    // d'apres restauration ne revient pas. G: est celui de ce poste.
+    args: ['G'],
+    preuve: '3.8',
+    // Mesure du 11/10/2026, lue dans la sortie du run neutralise : la sonde sort
+    // 5/10, code 1, et le PREMIER verdict rouge nomme la cause — le serveur
+    // exige « EFFACER » la ou il n'exigeait rien, parce que la question de
+    // reversibilite a ete repondue `false`. Les quatre autres rouges decoulent de
+    // celui-la (rien n'a ete supprime, donc le journal est vide et l'invariant
+    // « l'annonce correspond a l'etat du disque » tombe). On exige le premier,
+    // celui qui porte la cause, et pas « un rouge » : c'est la lecon de
+    // `generation`.
+    mesure: /ROUGE[^\n]*annonce une réussite[\s\S]{0,120}?confirmation attendue[^\n]{0,20}EFFACER/,
+    pourquoi:
+      "C'est la garde de 3.8 : `corbeille_disponible` dit si le dossier existe, "
+      + "`corbeille_reversible` dit s'il GARDE — et un volume dont `NukeOnDelete` "
+      + "vaut 1 a un `$RECYCLE.BIN` present qui detruit quand meme. Neutralisee a "
+      + "`false`, elle rend le serveur PLUS STRICT : il exige le mot de la "
+      + "suppression definitive, et la sonde — qui sur un volume normal n'en envoie "
+      + "aucun — se fait refuser en 400. C'est exactement l'accord client/serveur "
+      + "que la garde tient, et sa rupture est le temoin. "
+      + "PRECONDITION DE MACHINE : la morsure n'existe que sur une instance NON "
+      + "ELEVEE. Sur une instance elevee, `mots_exiges` ajoute « EFFACER » pour "
+      + "cause d'elevation (mesure sur `config.mjs:349`), le mot exige est deja le "
+      + "bon, et cette garde n'a plus de temoin par ce chemin — l'epreuve dirait "
+      + "alors « ne mord pas » a tort. `epreuve.mjs` est un outil de poste, jamais "
+      + "du CI, ou le runner est toujours eleve.",
+  },
 ];
 
 // ------------------------------------------------------------------ outillage

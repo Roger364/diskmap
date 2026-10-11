@@ -13,3 +13,11 @@ tests/sondes/filet-suppressions.log
 
 # Dépendances des sondes navigateur (installées par `npm ci`, cf. package-lock)
 tests/sondes/node_modules/
+
+# Données locales du projet (mémoire de travail, épreuves en cours). Non
+# versionnées — et IGNORÉES, pas seulement non suivies : un dossier non suivi
+# mais non ignoré apparaît dans `git status --porcelain`, donc tout contrôle
+# d'arbre propre le prend pour du travail en cours. `epreuve.mjs` refuse de
+# démarrer sur un arbre sale : sans cette ligne, il refusait à cause de ce
+# dossier, et son refus accusait un travail qui n'existait pas.
+.workbuddy-ai/
