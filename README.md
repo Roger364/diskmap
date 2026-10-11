@@ -280,12 +280,15 @@ three-line shim into `.git/hooks/pre-commit` that delegates to
 hook it does not recognise: a local hook may carry an intention nobody here knows
 about, and replacing it would be a silent loss.
 
-The hook runs exactly two things, because they are the two that let a red commit
-through on 11/10/2026: `cargo fmt -- --check` (commits were pushed unformatted
-and CI fell on formatting alone) and `node tests/sondes/verifier-references.mjs`
-(a `file:line` reference in the documentation shifts at the first commit that
-adds lines, and nothing catches that by eye). Both were proven by counter-proof:
-the hook refuses on an unformatted Rust line and on a shifted reference, and says
+The hook runs exactly three things, because they are the three that let a red
+commit through on 11/10/2026: `node tests/sondes/verifier-page.mjs` (a backtick
+left open inside a template literal in `ui/index.html` killed the whole page
+script, and seven probes went red reporting `select is not defined`),
+`cargo fmt -- --check` (commits were pushed unformatted and CI fell on formatting
+alone) and `node tests/sondes/verifier-references.mjs` (a `file:line` reference in
+the documentation shifts at the first commit that adds lines, and nothing catches
+that by eye). Each was proven by counter-proof: the hook refuses on a page that
+does not parse, on an unformatted Rust line and on a shifted reference, and says
 nothing otherwise.
 
 `clippy`, `cargo test`, `npm test` and the probes are deliberately **not** there.

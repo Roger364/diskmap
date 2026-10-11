@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node verifier-volume-jetable.mjs && node verifier-preuves.mjs && node verifier-libelles.mjs",
+    "test": "node verifier-page.mjs && node verifier-volume-jetable.mjs && node verifier-preuves.mjs && node verifier-libelles.mjs",
     "hooks:install": "node installer-hooks.mjs"
   },
   "devDependencies": {

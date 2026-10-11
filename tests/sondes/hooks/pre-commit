@@ -1,9 +1,13 @@
 #!/bin/sh
 # Contrôles locaux avant commit — le sous-ensemble RAPIDE de la CI.
 #
-# Ces deux-là, et pas les autres, parce que ce sont les deux qui ont réellement
-# laissé passer un commit rouge le 11/10/2026 :
+# Ces trois-là, et pas les autres, parce que ce sont les trois qui ont réellement
+# laissé passer un commit rouge :
 #
+#   - `verifier-page.mjs` : le 11/10/2026, un backtick ouvert dans un littéral de
+#     gabarit de `ui/index.html` a tué TOUT le script de la page. Sept sondes sont
+#     tombées et la CI l'a dit par « select is not defined » — une seconde de
+#     contrôle aurait nommé la ligne ;
 #   - `cargo fmt -- --check` : des commits poussés non formatés, la CI tombée sur
 #     le format seul ;
 #   - `verifier-references.mjs` : une référence `fichier:ligne` de la doc se
@@ -50,8 +54,15 @@ else
 fi
 
 if command -v node >/dev/null 2>&1; then
-  # La sortie complète fait 238 lignes « ok » : on ne la montre qu'en échec, et
-  # seulement les lignes utiles. Un contrôle qui passe n'a rien à dire.
+  # La sortie complète des vérificateurs fait des centaines de lignes « ok » : on
+  # ne la montre qu'en échec, et seulement les lignes utiles. Un contrôle qui
+  # passe n'a rien à dire.
+  if ! sortie=$(node tests/sondes/verifier-page.mjs 2>&1); then
+    printf '%s\n' "$sortie" | grep -E 'ROUGE|ÉCHECS|^      - ' || printf '%s\n' "$sortie"
+    echo ""
+    echo "pre-commit : le script de ui/index.html ne parse pas — l'interface serait morte."
+    echecs=$((echecs + 1))
+  fi
   if ! sortie=$(node tests/sondes/verifier-references.mjs 2>&1); then
     printf '%s\n' "$sortie" | grep -E 'ROUGE|ÉCHECS|^      - ' || printf '%s\n' "$sortie"
     echo ""
@@ -60,7 +71,7 @@ if command -v node >/dev/null 2>&1; then
     echecs=$((echecs + 1))
   fi
 else
-  echo "pre-commit : node absent — contrôle des références sauté."
+  echo "pre-commit : node absent — contrôles de la page et des références sautés."
 fi
 
 if [ "$echecs" -ne 0 ]; then
