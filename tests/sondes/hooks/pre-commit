@@ -1,0 +1,61 @@
+#!/bin/sh
+# Contrôles locaux avant commit — le sous-ensemble RAPIDE de la CI.
+#
+# Ces deux-là, et pas les autres, parce que ce sont les deux qui ont réellement
+# laissé passer un commit rouge le 11/10/2026 :
+#
+#   - `cargo fmt -- --check` : des commits poussés non formatés, la CI tombée sur
+#     le format seul ;
+#   - `verifier-references.mjs` : une référence `fichier:ligne` de la doc se
+#     décale au premier commit qui ajoute des lignes. Rien ne le voit à l'œil, et
+#     la CI le voit à chaque fois.
+#
+# Ce qui n'est PAS ici, volontairement : `clippy`, `cargo test`, `npm test` et
+# les sondes. Ils sont lents, et un hook lent se contourne — ce qui revient à ne
+# pas en avoir. Ils restent dans la CI, qui est le filet qui compte.
+#
+# Silencieux quand tout va bien : le compte rendu d'un contrôle qui passe est son
+# silence. Si `cargo` ou `node` est absent, il le DIT et laisse passer — un poste
+# sans chaîne Rust doit pouvoir commiter de la documentation.
+#
+# Ce fichier est VERSIONNÉ. `.git/hooks/pre-commit` n'est qu'un shim qui pointe
+# ici ; c'est `npm run hooks:install` (tests/sondes/installer-hooks.mjs) qui le
+# repose, parce que `.git/hooks/` ne survit ni à un clone ni à une restauration.
+
+racine=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$racine" ]; then cd "$racine" 2>/dev/null || true; fi
+
+echecs=0
+
+if command -v cargo >/dev/null 2>&1; then
+  if ! cargo fmt -- --check; then
+    echo ""
+    echo "pre-commit : le code Rust n'est pas formaté — lancer : cargo fmt"
+    echecs=$((echecs + 1))
+  fi
+else
+  echo "pre-commit : cargo absent — contrôle du format sauté."
+fi
+
+if command -v node >/dev/null 2>&1; then
+  # La sortie complète fait 238 lignes « ok » : on ne la montre qu'en échec, et
+  # seulement les lignes utiles. Un contrôle qui passe n'a rien à dire.
+  if ! sortie=$(node tests/sondes/verifier-references.mjs 2>&1); then
+    printf '%s\n' "$sortie" | grep -E 'ROUGE|ÉCHECS|^      - ' || printf '%s\n' "$sortie"
+    echo ""
+    echo "pre-commit : une référence fichier:ligne de la doc ne désigne plus son code."
+    echo "             décalage probable — python tests/sondes/recalage-references.py"
+    echecs=$((echecs + 1))
+  fi
+else
+  echo "pre-commit : node absent — contrôle des références sauté."
+fi
+
+if [ "$echecs" -ne 0 ]; then
+  echo ""
+  echo "pre-commit : $echecs contrôle(s) en échec — commit refusé."
+  echo "             (git commit --no-verify passe outre : c'est une décision, pas un raccourci)"
+  exit 1
+fi
+
+exit 0

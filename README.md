@@ -267,6 +267,33 @@ Recycle Bin, scattered across the whole disk. The paths it aimed at were
 resolved against a rescanned index, so they designated other files than its own
 — see `SECURITY.md` and §3.7 of that report.
 
+### The two checks that run before a commit
+
+```bat
+cd tests\sondes && npm run hooks:install
+```
+
+`.git/hooks/` is not versioned, so a clone — or a restore from a bundle — arrives
+with no hook at all, and nothing says so. `npm run hooks:install` writes a
+three-line shim into `.git/hooks/pre-commit` that delegates to
+`tests/sondes/hooks/pre-commit`, which *is* versioned. It refuses to overwrite a
+hook it does not recognise: a local hook may carry an intention nobody here knows
+about, and replacing it would be a silent loss.
+
+The hook runs exactly two things, because they are the two that let a red commit
+through on 11/10/2026: `cargo fmt -- --check` (commits were pushed unformatted
+and CI fell on formatting alone) and `node tests/sondes/verifier-references.mjs`
+(a `file:line` reference in the documentation shifts at the first commit that
+adds lines, and nothing catches that by eye). Both were proven by counter-proof:
+the hook refuses on an unformatted Rust line and on a shifted reference, and says
+nothing otherwise.
+
+`clippy`, `cargo test`, `npm test` and the probes are deliberately **not** there.
+They are slow, and a slow hook gets bypassed, which amounts to not having one.
+They stay in CI, which is the net that counts. If `cargo` or `node` is missing,
+the hook says so and lets the commit through — a machine without a Rust toolchain
+must still be able to commit documentation.
+
 ### The CI runner is always elevated, and it cost seven probes
 
 Nothing in the repository asks for elevation, and the workflow does not
