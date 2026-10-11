@@ -258,15 +258,39 @@ a baissé, ce qui est un fait, pas un diagnostic. Elle est notée ici comme
 
 ## 8. Ce qui reste ouvert
 
-- **`#sort` et `#order` sont inertes tant qu'une recherche est active.** Le handler
-  teste `if (!$('#q').value.trim())` avant de recharger. C'est un choix, pas un
-  accident — mais le contrôle reste visible et semble donc agir. Un sélecteur
-  inerte est un mensonge de l'interface.
 - **Le sélecteur de tri ne sépare pas deux entrées de même taille.** La sonde ne
   peut pas mesurer un changement de tri sur un dossier dont deux entrées font la
   même taille : elle compare le contenu, et le contenu ne change pas. La
   correction de `renderRows` a résolu le défaut, pas cette limite de mesure.
 - **L'assertion libuv de §7.** Non diagnostiquée. Recidive déclarée.
+
+### Ce qui a été fermé depuis — 11/10/2026
+
+Le premier des trois points, noté ici plutôt que retiré : un point qu'on efface
+sans dire quand ni pourquoi revient, et rien dans ce récit ne dirait qu'il avait
+été vu.
+
+- **`#sort` et `#order` inertes tant qu'une recherche est active** — `f4c3eb3`.
+  Le handler d'en-tête testait `if (!$('#q').value.trim())` avant de recharger :
+  pendant une recherche, il ne faisait rien. Ce garde ne venait pas de nulle part
+  — il datait d'un serveur qui **ignorait** `sort` et `order` sur `/api/search`.
+  Or le serveur les honore depuis le 27/09/2026 : le garde avait survécu à sa
+  raison, et le clic d'en-tête était redevenu inerte sans que personne ne
+  repasse par là. C'est la forme la plus coûteuse d'un défaut — une protection
+  qui devient le défaut.
+
+  Le même clic en cachait un second, du même genre : il ne reportait pas le
+  réglage dans les menus de la barre d'outils. Le tableau se triait par nom
+  décroissant pendant que le menu affichait « Taille ». Un sélecteur qui montre
+  autre chose que ce qui est appliqué est exactement le mensonge que cette
+  section dénonce, et il se lisait à chaque clic.
+
+  Le clic pose donc le tri et l'ordre dans l'état, met les deux menus à jour, et
+  recharge par le chemin de **ce qui est affiché** — `search()` si une recherche
+  est active, `load(true)` sinon. La contre-épreuve est dans
+  `sonde-ui-suppression.mjs` : elle clique un en-tête **pendant une recherche
+  active** et vérifie que la liste change d'ordre, là où la vérification par le
+  menu déroulant ne mesurait que le cas sans recherche.
 
 ## 9. Ce que la journée donne comme règles
 
@@ -296,6 +320,7 @@ a baissé, ce qui est un fait, pas un diagnostic. Elle est notée ici comme
 | Normalisation de la racine | `tests/sondes/config.mjs`, `racine()` — `87accee` |
 | Loi énoncée sur l'instance | `tests/sondes/sonde-elevation.mjs` — `d2726f0`, `37df9b9` |
 | Re-rendu de la liste | `ui/index.html`, `sonde-ui-suppression.mjs` — `a91be86` |
+| Tri pendant une recherche | `ui/index.html`, `sonde-ui-suppression.mjs` — `f4c3eb3` |
 | Guetteur de fenêtres | `tests/sondes/fenetres.mjs`, `fenetres.ps1` — `53bd3ce` |
 | Rupture / restauration | `0b94ebe` / `b8611d7` |
 | Runs | `36329398102` (élévation), `36332300684` (rupture), `36333151071` (restauration) |

@@ -1296,7 +1296,7 @@ was wrong. The support simply did not exist yet, so it could be made.
 Two files of the **same size**, written in the **reverse** of alphabetical order
 (`tests/sondes/sonde-ui-suppression.mjs:101`). A server without a tiebreak renders them
 `zztaille-z` before `zztaille-a`, because that is the order they were created in. The verdict
-(`tests/sondes/sonde-ui-suppression.mjs:751`) requires names to ascend within every group of
+(`tests/sondes/sonde-ui-suppression.mjs:757`) requires names to ascend within every group of
 identical displayed sizes, and goes red.
 
 The check is deliberately **independent of the server**. Asking "does the screen show what the

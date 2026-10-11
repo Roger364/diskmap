@@ -661,7 +661,7 @@ sur la dernière réponse, et son rouge ne tombait que par hasard de charge — 
 complet, jamais sur un volume rapide. Elle enregistre donc chaque peinture
 (`tests/sondes/sonde-ui-suppression.mjs:537`) et attend que l'écran se taise
 (`tests/sondes/sonde-ui-suppression.mjs:560`) avant de lire quoi que ce soit. Le verdict qui en
-découle (`tests/sondes/sonde-ui-suppression.mjs:813`) est le seul qui voie les peintures
+découle (`tests/sondes/sonde-ui-suppression.mjs:819`) est le seul qui voie les peintures
 intermédiaires ; tous les autres lisent un instant, et cet instant peut précéder la dernière
 réponse.
 
@@ -1246,7 +1246,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   (`tests/sondes/sonde-ui-suppression.mjs:101`) : deux fichiers de **même taille**, créés dans
   l'ordre **inverse** de l'ordre alphabétique, donc un serveur sans départage les afficherait
   `zztaille-z` avant `zztaille-a`. Le verdict
-  (`tests/sondes/sonde-ui-suppression.mjs:751`) exige alors qu'à taille égale les noms soient
+  (`tests/sondes/sonde-ui-suppression.mjs:757`) exige alors qu'à taille égale les noms soient
   croissants — invariant **indépendant du serveur** : comparer l'écran à l'interface ne
   prouverait que leur accord, y compris s'ils ont tort ensemble.
 - **Une demande d'analyse n'est acceptée que si elle sera honorée.** `POST /api/scan`

@@ -681,10 +681,16 @@ if (fichierTrouve) {
 }
 
 if (fichierTrouve) {
-  // Le tri n'agit que hors recherche : le handler teste
-  // `if (!$('#q').value.trim())` avant de recharger. On revient donc à la vue
-  // dossier, et on le fait ICI, à la fin, pour ne pas déranger les sections
-  // qui précèdent et qui naviguent.
+  // On quitte la recherche et on revient à la vue dossier, ICI et à la fin, pour
+  // ne pas déranger les sections qui précèdent et qui naviguent.
+  //
+  // Ce bloc a longtemps porté une autre raison : « le tri n'agit que hors
+  // recherche », parce que le handler d'en-tête testait
+  // `if (!$('#q').value.trim())` avant de recharger. C'était vrai jusqu'au
+  // 27/09/2026 — le serveur ignorait alors `sort` et `order` sur `/api/search` —
+  // puis c'est devenu faux sans que ce commentaire suive. `f4c3eb3` a retiré le
+  // garde. Un commentaire qui décrit un défaut corrigé est un mensonge de plus,
+  // et il se lisait ici à chaque exécution.
   await page.selectOption('#sort', 'size');
   await page.selectOption('#order', 'desc');
   await page.fill('#q', '');

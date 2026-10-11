@@ -49,7 +49,7 @@ const ATTENDU = {
     'src/main.rs:212': 'fn decider_le_navigateur',
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'tests/sondes/sonde-ui-suppression.mjs:101': "zztaille-z.txt', 'x'.repeat(2000)",
-    'tests/sondes/sonde-ui-suppression.mjs:751': 'taille égale, l’écran range',
+    'tests/sondes/sonde-ui-suppression.mjs:757': 'taille égale, l’écran range',
     'src/main.rs:340': 'decider_le_navigateur(&args, std::io::stdin().is_terminal())',
     'src/main.rs:643': 'fn demande_couverte',
     'src/main.rs:643': 'en_attente.push(letter);',
@@ -100,7 +100,7 @@ const ATTENDU = {
     'ui/index.html:1575': 'cur.ticket = typeof res.scan_ticket',
     'tests/sondes/sonde-ui-suppression.mjs:537': 'const armerPeints',
     'tests/sondes/sonde-ui-suppression.mjs:560': 'const attendreEcranStable',
-    'tests/sondes/sonde-ui-suppression.mjs:813': 'jamais été contredit',
+    'tests/sondes/sonde-ui-suppression.mjs:819': 'jamais été contredit',
     // Section 7/28 : les quatre gardes d entrée que personne ne regardait, et
     // l embuscade du controle qui les cherche. Les quatre lignes de `src/main.rs`
     // sont les GARDES elles-memes — le libelle doit s y trouver, pas un
@@ -152,7 +152,7 @@ const ATTENDU = {
   'README.md': {
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'tests/sondes/sonde-ui-suppression.mjs:101': "zztaille-z.txt', 'x'.repeat(2000)",
-    'tests/sondes/sonde-ui-suppression.mjs:751': 'taille égale, l’écran range',
+    'tests/sondes/sonde-ui-suppression.mjs:757': 'taille égale, l’écran range',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
     'tests/sondes/config.mjs:428': 'export async function attendreTicket',
