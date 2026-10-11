@@ -1431,7 +1431,7 @@ function renderDeleteBody() {
     if (pendingDry.corbeille_inerte === true) {
       // La corbeille existe mais Windows la contourne : « corbeille » détruit.
       h += `<div class="warn" style="margin-top:10px"><b>Ce volume détruit sans corbeille.</b> ` +
-           `Bien qu'une corbeille existe, Windows est configuré (`NukeOnDelete=1`) pour ` +
+           `Bien qu'une corbeille existe, Windows est configuré (<b>NukeOnDelete=1</b>) pour ` +
            `supprimer définitivement : le mode « corbeille » détruira les fichiers comme le ` +
            `mode « définitif », sans aucune récupération. Le mot exigé est celui de la ` +
            `suppression définitive.</div>`;
