@@ -128,6 +128,19 @@ const ATTENDU = {
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
     'tests/sondes/lancer.mjs:488': 'corbeille_plafond` vaut null',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
+    // Les references vers `src/win32.rs`, longtemps INVISIBLES au controle : le
+    // nom de fichier portait un chiffre et la classe de caracteres ne les
+    // admettait pas. Elles sont declarees ici apres relecture une a une. Les
+    // trois premieres sont les DECLARATIONS des fonctions citees — une
+    // reference qui designerait un commentaire voisin garderait un texte, pas
+    // une regle.
+    'src/win32.rs:216': 'pub fn alea_u64',
+    'src/win32.rs:242': 'pub fn delete_path',
+    'src/win32.rs:292': 'pub fn is_reparse_point',
+    // `:471` designait encore `GetVolumeInformationW` dans la prose, et depuis
+    // longtemps plus rien de tel dans le fichier. Recalee sur la FONCTION qui
+    // rend `label` et `fs` : c est elle que la phrase annonce.
+    'src/win32.rs:769': 'fn volume_info',
   },
   'README.md': {
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
@@ -172,8 +185,14 @@ for (const doc of DOCS) {
   // `src/scan.rs:386,455` cite DEUX references : chaque nombre compte. En
   // n en retenant qu un, la seconde entree du tableau paraissait orpheline, et
   // le controle signalait un document qui ne cite plus rien.
+  // Le nom de fichier accepte les CHIFFRES. La classe etait `[A-Za-z_.-]+`, et
+  // `src/win32.rs` n'y entrait pas : le fichier qui porte tout le registre
+  // Windows etait donc INVISIBLE au controle. Mesure du 11/10/2026 : toutes les
+  // references vers `src/win32.rs` de SECURITY.md echappaient a la verification,
+  // dont une (`:471`) qui ne designait plus `GetVolumeInformationW` depuis
+  // longtemps. Un controle qui ne voit pas un fichier ne garde rien.
   const refs = [...new Set(
-    [...texte.matchAll(/((?:src|tests\/sondes|ui)\/[A-Za-z_.-]+\.(?:rs|mjs|html)):((?:\d+)(?:[,-]\d+)*)/g)]
+    [...texte.matchAll(/((?:src|tests\/sondes|ui)\/[A-Za-z0-9_.-]+\.(?:rs|mjs|html)):((?:\d+)(?:[,-]\d+)*)/g)]
       .flatMap((m) => m[2].split(/[,-]/).map((n) => ({ fichier: m[1], ligne: Number(n) })))
       .filter((r) => Number.isFinite(r.ligne))
   )];

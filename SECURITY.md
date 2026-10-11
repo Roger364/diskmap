@@ -243,7 +243,7 @@ toute sonde destructive : après, un filet défaillant aurait déjà fait son œ
 ${d.fs ? `<span class="fs">${d.fs}</span>` : ''}
 ```
 
-`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:471`) : le nom de
+`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:769`) : le nom de
 volume est une **donnée externe**, contrôlable par quiconque formate une clé USB, monte une
 image disque ou renomme un partage. Elle est interpolée dans un `innerHTML` **sans
 `escapeHtml`**, alors que tous les autres noms venus du disque (tableau, carte, recherche,
