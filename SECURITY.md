@@ -219,6 +219,51 @@ La sonde `sonde-filet.mjs` rejoue la mécanique de l'incident sur un fichier à 
 vérifie que le filet refuse, et que le fichier est toujours là. Elle s'exécute **avant**
 toute sonde destructive : après, un filet défaillant aurait déjà fait son œuvre.
 
+---
+
+### 3.8 Une corbeille présente qui ne garde rien — `b5111f7` (corrigé le 11/10/2026)
+
+§3.5 retirait le premier silence — le volume sans `$RECYCLE.BIN`. §3.6 retirait le
+deuxième — la corbeille qui purge plus tard. Il en restait un troisième, le plus
+court : une corbeille **présente**, mesurée présente, et qui détruit quand même.
+
+Windows porte ce réglage par volume, dans la **même sous-clé** que le plafond —
+`HKCU\…\BitBucket\Volume\{GUID}\NukeOnDelete` — et il vaut `1` quand l'utilisateur
+a coché « ne pas déplacer les fichiers dans la corbeille » pour ce volume. Le
+dossier `$RECYCLE.BIN` existe alors toujours. `corbeille_disponible` répondait donc
+`true`, le mode « corbeille » s'annonçait réversible, et `FOF_ALLOWUNDO` — « mettre
+à la corbeille **si possible** » — faisait détruire le fichier sur place.
+
+`corbeille_disponible` ne posait pas la bonne question : elle dit si le dossier
+existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:495`) est la question
+qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:470`) en est la
+mesure. La clé se lit dans `HKEY_CURRENT_USER`, comme `MaxCapacity` : aucune
+élévation requise.
+
+Trois choix valent d'être écrits, parce qu'ils décident du geste :
+
+- **`None` ne vaut pas `Some(true)`.** Une clé absente ou illisible est le
+  comportement par défaut de Windows : la corbeille tient. Seul un `1` **mesuré**
+  fait basculer le verdict vers l'irréversible. C'est le principe déjà tenu pour
+  `MaxCapacity` et pour `NeedToPurge` : une valeur non mesurée n'est pas une valeur
+  nulle, et un avertissement qui se déclenche sans mesure ne veut plus rien dire.
+- **Le mode « corbeille » n'obtient plus une confirmation moins chère.** `execute`
+  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2196`) : un
+  volume à corbeille inerte exige le même mot que la suppression définitive. La
+  confirmation suit le geste réel, pas le mode affiché.
+- **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1412`) est exposé au même
+  titre que `corbeille`, et le motif du mot nomme la cause — « ce volume détruit
+  sans corbeille (NukeOnDelete=1) » — au lieu de laisser lire « iront dans la
+  corbeille ».
+
+`sonde-reversibilite.mjs` vérifie que l'aperçu expose le champ, puis rejoue le
+scénario entier — aperçu à `corbeille_inerte === true`, suppression en mode
+`recycle`, comptage `irreversible === 1` — **quand** `DISKMAP_SONDE_NUKE_VOLUME`
+désigne un volume dont la clé est réellement posée. La sonde ne pose jamais la clé
+elle-même : elle lit l'état du disque au lieu de le supposer. La variable n'est
+posée nulle part dans le CI, si bien que là-bas le scénario est **déclaré sauté**,
+jamais vert — une précondition de machine, comme `sans-corbeille`.
+
 ## 4. Modèle de menace
 
 | Acteur | Ce qu'il peut faire aujourd'hui |

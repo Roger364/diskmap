@@ -141,6 +141,13 @@ const ATTENDU = {
     // longtemps plus rien de tel dans le fichier. Recalee sur la FONCTION qui
     // rend `label` et `fs` : c est elle que la phrase annonce.
     'src/win32.rs:769': 'fn volume_info',
+    // Section 3.8 : le contrat `corbeille_inerte` expose par l apercu, et la
+    // fonction qui recoit la reversibilite MESUREE — c est elle qui fait exiger
+    // le mot de la suppression definitive malgre le mode « corbeille ».
+    'src/win32.rs:470': 'pub fn corbeille_nuke',
+    'src/win32.rs:495': 'pub fn corbeille_reversible',
+    'src/main.rs:1412': 'corbeille_inerte: Option<bool>,',
+    'src/main.rs:2196': 'fn mots_exiges',
   },
   'README.md': {
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
