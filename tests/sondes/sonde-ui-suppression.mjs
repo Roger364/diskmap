@@ -645,6 +645,39 @@ if (fichierTrouve) {
     `demandé ${JSON.stringify(ordreApres)} · `
     + `affiché ${JSON.stringify(apresRecherche)} · `
     + `la liste a-t-elle bouge ? ${rechargée ? 'oui' : 'NON MESURABLE'}`);
+
+  // --- et le CLIC SUR L'EN-TÊTE, pas seulement le menu ? --------------------
+  //
+  // Les deux gestes commandent le MÊME réglage. Le 27/09, le menu déroulant
+  // rechargait mais le clic d'en-tête, lui, restait INERTE pendant une
+  // recherche : la flèche bougeait, la liste non. C'est le mensonge que §8
+  // nomme — un contrôle visible qui n'agit pas — et le menu seul ne le mesure
+  // pas, puisqu'il emprunte l'autre chemin.
+  //
+  // On part de `name`/`asc` (posé juste au-dessus) : recliquer « Nom » bascule
+  // en DESCROISSANT, un ordre que la liste ne peut pas déjà porter — contraire
+  // au tri par taille, que l'arrondi aux clusters peut rendre indiscernable.
+  await page.click('thead th[data-k="name"] .ttl');
+  let bascule = false;
+  try {
+    await page.waitForFunction(
+      () => {
+        const premier = document.querySelector('#rows tr .nm');
+        return !!premier && premier.textContent === 'zztri-3.txt';
+      }, null, { timeout: 60000 });
+    bascule = true;
+  } catch { /* rendu plus bas, avec la mesure */ }
+  await attendreEcranStable();
+  const apresClic = await nomsLignes();
+  const etatClic = await etatTri();
+  const ordreClic = [...apresClic].sort(comparerNoms).reverse();
+  verifier('le CLIC sur l’en-tête trie aussi, pendant une recherche',
+    bascule && etatClic.ordre === 'desc'
+      && JSON.stringify(apresClic) === JSON.stringify(ordreClic),
+    `tri=${etatClic.tri}/${etatClic.ordre} · `
+    + `affiché ${JSON.stringify(apresClic)} · `
+    + `attendu ${JSON.stringify(ordreClic)} · `
+    + `la liste a-t-elle bougé ? ${bascule ? 'oui' : 'NON MESURABLE'}`);
 }
 
 if (fichierTrouve) {

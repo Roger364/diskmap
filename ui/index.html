@@ -1585,8 +1585,20 @@ document.querySelectorAll('thead th[data-k]').forEach(th => {
     if (cur.sort === k) cur.order = cur.order === 'desc' ? 'asc' : 'desc';
     else { cur.sort = k; cur.order = (k === 'name') ? 'asc' : 'desc'; }
     syncHeaders();
-    if ($('#q').value.trim()) return;
-    load(true);
+    // La barre d'outils suit le geste. Sans ces deux lignes, un clic d'en-tête
+    // laissait les menus montrer l'ANCIEN réglage : le tableau trié par nom
+    // décroissant pendant que le menu disait « Taille ». Un sélecteur qui
+    // affiche autre chose que ce qui est appliqué est le mensonge que §8
+    // dénonce — et il se lisait ici à chaque clic.
+    $('#sort').value = cur.sort;
+    $('#order').value = cur.order;
+    // Recharge par le chemin de CE QUI EST AFFICHÉ — la vue dossier, ou la
+    // recherche en cours. Le garde d'avant (« ne rien faire pendant une
+    // recherche ») datait d'un serveur qui IGNORAIT `sort`/`order` sur
+    // `/api/search`. Il les honore depuis le 27/09/2026 : le clic d'en-tête
+    // était donc redevenu INERTE — la flèche bougeait, la liste non, et rien
+    // ne distinguait « le réglage ne sert à rien » de « le serveur l'ignore ».
+    rechargerTri();
   };
 });
 function syncHeaders() {
