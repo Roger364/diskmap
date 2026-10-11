@@ -205,6 +205,15 @@ jobs:
       # Le titre porte le SHA court : une release qui dit « voici le binaire »
       # sans dire de quel commit il sort ne resout pas le probleme qu'elle
       # pretend resoudre.
+      #
+      # L'empreinte est publiee pour la meme raison, un cran plus loin. Tout ce
+      # qui precede AFFIRME que le binaire est celui du commit : pris tel quel
+      # dans l'artifact du job qui l'a eprouve, jamais recompile ici. Une
+      # affirmation se verifie. `Get-FileHash` la rend verifiable — et il est
+      # calcule sur le fichier MEME qui part dans la release, pas sur une copie,
+      # donc il ne peut pas decrire autre chose que ce qui est telechargeable.
+      # C'est, sans certificat de signature, le seul controle qu'un lecteur
+      # puisse refaire de son cote : telecharger, hacher, comparer.
       - name: Publier la release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -215,6 +224,10 @@ jobs:
           "Commit : $env:SHA" | Out-File -FilePath notes.md -Encoding utf8 -Append
           "" | Out-File -FilePath notes.md -Encoding utf8 -Append
           "Binaire compile et eprouve par la CI de ce commit (fmt, clippy, test, sondes)." |
+            Out-File -FilePath notes.md -Encoding utf8 -Append
+          $empreinte = (Get-FileHash .\diskmap.exe -Algorithm SHA256).Hash
+          "SHA-256 de diskmap.exe : $empreinte" | Out-File -FilePath notes.md -Encoding utf8 -Append
+          "Verifier : Get-FileHash .\diskmap.exe -Algorithm SHA256" |
             Out-File -FilePath notes.md -Encoding utf8 -Append
           gh release create $env:TAG .\diskmap.exe --title "$env:TAG ($($env:SHA.Substring(0,7)))" --notes-file notes.md
 

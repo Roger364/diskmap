@@ -21,7 +21,9 @@ next section describes, on Windows, and it has been measured on one machine.
   tagged release with the Windows binary attached, so you can download a tested
   build from the Releases page without installing anything. The binary is taken
   from the job's artifact rather than rebuilt: what you download is the one that
-  passed `fmt`, `clippy`, `test` and the probes.
+  passed `fmt`, `clippy`, `test` and the probes. The release notes carry its
+  SHA-256, computed on the file that is actually uploaded, so that claim is one
+  you can check instead of taking on faith — `Get-FileHash .\diskmap.exe -Algorithm SHA256`.
 
 ## What it does
 
