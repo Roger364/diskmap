@@ -293,6 +293,41 @@ Recycle Bin, scattered across the whole disk. The paths it aimed at were
 resolved against a rescanned index, so they designated other files than its own
 — see `SECURITY.md` and §3.7 of that report.
 
+### Running F-DEL-1 (junction inside a deleted folder) on a disposable volume
+
+`sonde-jonction-imbriquee.mjs` checks that deleting a folder which holds a junction
+to a folder *outside* the lot removes the junction as a link and leaves its target
+intact. It deletes, so it runs only on a disposable volume, and it could not run in
+the sandbox where it was written. Here is the exact procedure:
+
+1. **Create the volume** from an *elevated* PowerShell (mounting a VHDX needs
+   administrator rights):
+   ```powershell
+   .\tests\sondes\creer-volume-test.ps1                 # creates and mounts V:
+   ```
+   The VHDX lives in `%TEMP%\diskmap-sonde.vhdx`. When you are done:
+   `.\tests\sondes\creer-volume-test.ps1 -Detacher`.
+2. **Start the server** on that volume, without a browser window:
+   ```bat
+   diskmap.exe --port 8990 --no-browser
+   ```
+3. **Run the probe** from `tests\sondes`, with the volume named explicitly:
+   ```bat
+   set DISKMAP_SONDE_VOLUME=V
+   set DISKMAP_SONDE_RACINE=V:\_diskmap_sondes
+   node sonde-jonction-imbriquee.mjs http://127.0.0.1:8990/ V
+   ```
+   Or run it with the rest of the table: `node tests\sondes\lancer.mjs --volume V`.
+
+Without a disposable volume (and without `DISKMAP_SONDE_MACHINE_EPHEMERE` declared),
+the probe **abstains and creates nothing**. That is the expected behaviour on `C:` or
+`G:`, and it is what makes it safe to run the table on a developer's machine.
+
+Read the verdicts, not the exit code alone. A green run means the junction was removed
+as a link **and** the sentinel in the target folder is still there **and** the lot is
+verified absent. If the lot is still present, the probe is red, whatever the sentinel
+says: an intact sentinel proves nothing when the deletion never happened.
+
 ### The two checks that run before a commit
 
 ```bat
