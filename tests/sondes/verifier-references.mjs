@@ -210,6 +210,64 @@ const ATTENDU = {
   },
 };
 
+// Garde anti-doublon. Dans un objet littéral, JavaScript n'avertit pas quand
+// une clé est écrite deux fois : la dernière valeur écrase la première en
+// silence. C'est ainsi que huit groupes de clés dupliquées ont masqué quatre
+// affirmations fausses (main.rs:643, lancer.mjs:795 et :1869). Le tableau est
+// donc relu comme TEXTE, ligne à ligne, et le contrôle refuse de tourner tant
+// qu'une même référence, ou un même document, est déclaré deux fois.
+function analyserTableau() {
+  // Le fichier qu'on lit est celui qui s'exécute : pas de nom en dur.
+  const lignes = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split(/\r?\n/);
+  const debut = lignes.indexOf('const ATTENDU = {');
+  const fin = lignes.indexOf('};', debut);
+  if (debut < 0 || fin < 0) return { erreur: 'tableau ATTENDU introuvable', doublons: [] };
+  const lues = {};
+  const entetes = [];
+  let doc = null;
+  lignes.slice(debut + 1, fin).forEach((ligne, i) => {
+    const entete = ligne.match(/^ {2}'([^']+)': \{\s*$/);
+    if (entete) {
+      doc = entete[1];
+      entetes.push(doc);
+      lues[doc] = [];
+      return;
+    }
+    const entree = ligne.match(/^\s+'([^']+)':/);
+    if (entree && doc) lues[doc].push({ ref: entree[1], ligne: debut + 2 + i });
+  });
+  // Un document déclaré deux fois écraserait le premier bloc en silence.
+  if (entetes.length !== Object.keys(ATTENDU).length) {
+    return { erreur: 'un document figure deux fois dans ATTENDU, ou n est pas lisible', doublons: [] };
+  }
+  const doublons = [];
+  for (const d of Object.keys(ATTENDU)) {
+    const entrees = lues[d] || [];
+    // L'analyse doit voir exactement les clés que JavaScript retient ; sinon
+    // elle ne peut pas affirmer qu'il n'y a pas de doublon.
+    if (new Set(entrees.map((e) => e.ref)).size !== Object.keys(ATTENDU[d]).length) {
+      return { erreur: `analyse incohérente pour « ${d} » : tableau non relu entièrement`, doublons: [] };
+    }
+    const vues = new Map();
+    for (const e of entrees) {
+      if (vues.has(e.ref)) doublons.push(`${d} · ${e.ref} déclaré lignes ${vues.get(e.ref)} et ${e.ligne}`);
+      else vues.set(e.ref, e.ligne);
+    }
+  }
+  return { erreur: null, doublons };
+}
+
+const TABLEAU = analyserTableau();
+if (TABLEAU.erreur) {
+  console.error(`ARRÊT : ${TABLEAU.erreur}`);
+  process.exit(1);
+}
+if (TABLEAU.doublons.length) {
+  console.error('ARRÊT : clé(s) dupliquée(s) dans ATTENDU — JavaScript en garderait une seule :');
+  for (const d of TABLEAU.doublons) console.error(`  - ${d}`);
+  process.exit(2);
+}
+
 const verifs = [], echecs = [];
 function verifier(nom, cond, mesure) {
   const ok = !!cond; verifs.push(ok);
