@@ -48,9 +48,9 @@ const DOCS = ['SECURITY.md', 'README.md'];
 const ATTENDU = {
   'SECURITY.md': {
     'src/main.rs:110': 'struct Montre',
-    'src/main.rs:902': 'fn hote_local',
-    'src/main.rs:980': 'X-Diskmap absent',
-    'src/main.rs:1189': 'fn dossier_de',
+    'src/main.rs:906': 'fn hote_local',
+    'src/main.rs:984': 'X-Diskmap absent',
+    'src/main.rs:1193': 'fn dossier_de',
     'src/main.rs:212': 'fn decider_le_navigateur',
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'tests/sondes/sonde-ui-suppression.mjs:101': "zztaille-z.txt', 'x'.repeat(2000)",
@@ -61,15 +61,15 @@ const ATTENDU = {
     'src/main.rs:643': 'fn start_scan',
     'src/main.rs:345': 'Navigateur  : non ouvert',
     'tests/sondes/lancer.mjs:1182': "'--port', String(port), '--no-browser'",
-    'src/main.rs:1535': 'fn blocked_reason',
-    'src/main.rs:1665': 'gen_vue != snap.gen',
-    'src/main.rs:1806': 'app.pending.lock()',
-    'src/main.rs:1807': 'retiré ICI aussi',
-    'src/main.rs:1811': 'p.retain',
-    'src/main.rs:1856': 'app.pending.lock()',
-    'src/main.rs:2142': 'let rescan = scan_ticket.is_some()',
+    'src/main.rs:1539': 'fn blocked_reason',
+    'src/main.rs:1669': 'gen_vue != snap.gen',
+    'src/main.rs:1810': 'app.pending.lock()',
+    'src/main.rs:1811': 'retiré ICI aussi',
+    'src/main.rs:1815': 'p.retain',
+    'src/main.rs:1860': 'app.pending.lock()',
+    'src/main.rs:2146': 'let rescan = scan_ticket.is_some()',
     'src/main.rs:125': 'scanning: Mutex<Option<char>>',
-    'src/main.rs:2791': 'fn journal',
+    'src/main.rs:2862': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',
     'src/scan.rs:503': 'pub fn dir_path',
@@ -110,10 +110,10 @@ const ATTENDU = {
     // l embuscade du controle qui les cherche. Les quatre lignes de `src/main.rs`
     // sont les GARDES elles-memes — le libelle doit s y trouver, pas un
     // commentaire voisin : c est ce que la reference doit designer.
-    'src/main.rs:996': 'lettre manquante',
-    'src/main.rs:1036': 'id invalide',
-    'src/main.rs:1052': 'chemin invalide',
-    'src/main.rs:1093': 'route inconnue',
+    'src/main.rs:1000': 'lettre manquante',
+    'src/main.rs:1040': 'id invalide',
+    'src/main.rs:1056': 'chemin invalide',
+    'src/main.rs:1097': 'route inconnue',
     'tests/sondes/verifier-libelles.mjs:217': "const leurre = 'zzcontrolejamaisvu'",
     // Section 7/29 : l ecoute du reseau que les quatre sondes a navigateur
     // n avaient pas. Le symbole designe l export qu elles importent — sans
@@ -151,14 +151,14 @@ const ATTENDU = {
     // le mot de la suppression definitive malgre le mode « corbeille ».
     'src/win32.rs:478': 'pub fn corbeille_nuke',
     'src/win32.rs:503': 'pub fn corbeille_reversible',
-    'src/main.rs:1436': 'corbeille_inerte: Option<bool>,',
-    'src/main.rs:2220': 'fn mots_exiges',
+    'src/main.rs:1440': 'corbeille_inerte: Option<bool>,',
+    'src/main.rs:2224': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
     // motif de refus que la sonde lisait mal : elle designe le `format!` qui
     // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
     // qui compte, et une reference qui designerait la ligne voisine garderait un
     // texte, pas la cause.
-    'src/main.rs:1885': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
+    'src/main.rs:1889': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
     // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
     // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
     'tests/sondes/config.mjs:352': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
@@ -169,8 +169,8 @@ const ATTENDU = {
     // toujours. `:1017` pointait un COMMENTAIRE : la garde qui produit ce 409 est
     // en 1088 — c'est la ligne que la phrase annonce, et le controle des
     // references existe precisement pour refuser un commentaire voisin.
-    'src/main.rs:1001': 'return Err(("404 Not Found", "volume inconnu"',
-    'src/main.rs:1112': '("409 Conflict", "volume pas encore analysé"',
+    'src/main.rs:1005': 'return Err(("404 Not Found", "volume inconnu"',
+    'src/main.rs:1116': '("409 Conflict", "volume pas encore analysé"',
     'ui/index.html:1189': 'if (!force && e.status === 409) {',
     'ui/index.html:775': 'if (e.status === 404) {',
   },

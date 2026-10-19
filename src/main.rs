@@ -768,11 +768,6 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     stream.flush()
 }
 
-/// Lit une ligne HTTP sans accorder à un pair local une allocation sans borne.
-///
-/// `BufRead::read_line` agrandit sa chaîne jusqu'au prochain saut de ligne. Une
-/// connexion lente pouvait donc retenir un thread et faire grossir sa mémoire
-/// indéfiniment avant même que les routes ou l'en-tête Host ne soient vérifiés.
 /// Lit la valeur d'un en-tête `Content-Length`.
 ///
 /// Une valeur vide, signée ou non numérique est une erreur du client : on la
@@ -786,38 +781,47 @@ fn parse_content_length(valeur: &str) -> Result<usize, ()> {
     v.parse::<usize>().map_err(|_| ())
 }
 
-fn read_header_line(
-    reader: &mut BufReader<TcpStream>,
+/// Lit une ligne HTTP sans accorder à un pair local une allocation sans borne.
+///
+/// `BufRead::read_line` agrandit sa chaîne jusqu'au prochain saut de ligne. Une
+/// connexion lente pouvait donc retenir un thread et faire grossir sa mémoire
+/// indéfiniment avant même que les routes ou l'en-tête Host ne soient vérifiés.
+///
+/// Les octets bruts s'accumulent dans `raw` et ne sont décodés qu'une fois la
+/// ligne complète : un caractère multi-octets coupé entre deux `fill_buf` n'est
+/// donc plus transformé en U+FFFD. La limite de taille porte sur les octets.
+fn read_header_line<R: BufRead>(
+    reader: &mut R,
     line: &mut String,
     head_size: &mut usize,
 ) -> std::io::Result<bool> {
     line.clear();
+    let mut raw: Vec<u8> = Vec::new();
     loop {
-        let (chunk, consumed, complete) = {
+        let (consumed, complete) = {
             let buf = reader.fill_buf()?;
             if buf.is_empty() {
-                return Ok(!line.is_empty());
+                // Fin de flux : on rend ce qui reste, décodé une seule fois.
+                line.push_str(&String::from_utf8_lossy(&raw));
+                return Ok(!raw.is_empty());
             }
             let newline = buf.iter().position(|b| *b == b'\n');
             let n = newline.map_or(buf.len(), |i| i + 1);
-            (
-                String::from_utf8_lossy(&buf[..n]).into_owned(),
-                n,
-                newline.is_some(),
-            )
+            if raw.len().saturating_add(n) > ENTETE_LIGNE_MAX
+                || head_size.saturating_add(n) > ENTETES_MAX
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "en-têtes HTTP trop volumineux",
+                ));
+            }
+            raw.extend_from_slice(&buf[..n]);
+            (n, newline.is_some())
         };
-        if line.len().saturating_add(chunk.len()) > ENTETE_LIGNE_MAX
-            || head_size.saturating_add(consumed) > ENTETES_MAX
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "en-têtes HTTP trop volumineux",
-            ));
-        }
         reader.consume(consumed);
-        line.push_str(&chunk);
         *head_size += consumed;
         if complete {
+            line.push_str(&String::from_utf8_lossy(&raw));
             return Ok(true);
         }
     }
@@ -2342,6 +2346,73 @@ mod tests_content_length {
     #[test]
     fn une_valeur_qui_deborde_est_refusee() {
         assert!(parse_content_length("99999999999999999999999999999").is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_header_utf8 {
+    use super::read_header_line;
+    use std::io::BufReader;
+
+    /// Lit une ligne avec un tampon d'un octet : chaque `fill_buf` ne livre
+    /// qu'un octet, donc tout caractère multi-octets est coupé entre deux lectures.
+    fn lire_par_octets(octets: &[u8]) -> (std::io::Result<bool>, String, usize) {
+        let mut reader = BufReader::with_capacity(1, octets);
+        let mut line = String::new();
+        let mut head = 0;
+        let r = read_header_line(&mut reader, &mut line, &mut head);
+        (r, line, head)
+    }
+
+    #[test]
+    fn caractere_trois_octets_coupe_reste_intact() {
+        // « € » = E2 82 AC, livré un octet à la fois.
+        let texte = "X-Nom: €\r\n";
+        let (r, line, head) = lire_par_octets(texte.as_bytes());
+        assert!(matches!(r, Ok(true)));
+        assert_eq!(line, texte);
+        assert_eq!(head, texte.len(), "le compteur compte des octets");
+    }
+
+    #[test]
+    fn caractere_quatre_octets_coupe_reste_intact() {
+        // « 😀 » = F0 9F 98 80.
+        let texte = "Hôte: 😀\n";
+        let (r, line, _) = lire_par_octets(texte.as_bytes());
+        assert!(matches!(r, Ok(true)));
+        assert_eq!(line, texte);
+    }
+
+    #[test]
+    fn lignes_successives_non_affectees() {
+        let mut reader = BufReader::with_capacity(1, "é\nè€\n".as_bytes());
+        let mut line = String::new();
+        let mut head = 0;
+        assert!(matches!(
+            read_header_line(&mut reader, &mut line, &mut head),
+            Ok(true)
+        ));
+        assert_eq!(line, "é\n");
+        assert!(matches!(
+            read_header_line(&mut reader, &mut line, &mut head),
+            Ok(true)
+        ));
+        assert_eq!(line, "è€\n");
+    }
+
+    #[test]
+    fn fin_de_flux_sans_saut_de_ligne_garde_le_texte() {
+        let (r, line, _) = lire_par_octets("é".as_bytes());
+        assert!(matches!(r, Ok(true)));
+        assert_eq!(line, "é");
+    }
+
+    #[test]
+    fn sequence_tronquee_avant_saut_de_ligne_devient_un_remplacement() {
+        // Octets invalides : décodés une fois la ligne complète, sans bloquer.
+        let (r, line, _) = lire_par_octets(&[b'a', 0xE2, 0x82, b'\n']);
+        assert!(matches!(r, Ok(true)));
+        assert_eq!(line, "a\u{FFFD}\n");
     }
 }
 
