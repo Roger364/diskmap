@@ -683,6 +683,7 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     // « Content-Length: 999999999999 » suffisait à faire tomber le processus
     // entier — aucune route n'était même atteinte.
     let mut trop_gros = false;
+    let mut longueur_invalide = false;
     let mut action = String::new();
     let mut host = String::new();
     loop {
@@ -695,17 +696,27 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
         }
         let lower = h.to_ascii_lowercase();
         if let Some(v) = lower.strip_prefix("content-length:") {
-            let n: usize = v.trim().parse().unwrap_or(0);
-            if n > CORPS_MAX {
-                trop_gros = true;
-            } else {
-                content_len = n;
+            match parse_content_length(v) {
+                Ok(n) if n > CORPS_MAX => trop_gros = true,
+                Ok(n) => content_len = n,
+                Err(()) => longueur_invalide = true,
             }
         } else if let Some(v) = lower.strip_prefix("x-diskmap:") {
             action = v.trim().to_string();
         } else if let Some(v) = lower.strip_prefix("host:") {
             host = v.trim().to_string();
         }
+    }
+
+    if longueur_invalide {
+        let corps = "Content-Length invalide : un entier décimal est attendu";
+        let entete = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
+            corps.len()
+        );
+        stream.write_all(entete.as_bytes())?;
+        stream.write_all(corps.as_bytes())?;
+        return stream.flush();
     }
 
     // On ne lit pas le corps : c'est justement lui qu'on refuse d'allouer.
@@ -762,6 +773,19 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
 /// `BufRead::read_line` agrandit sa chaîne jusqu'au prochain saut de ligne. Une
 /// connexion lente pouvait donc retenir un thread et faire grossir sa mémoire
 /// indéfiniment avant même que les routes ou l'en-tête Host ne soient vérifiés.
+/// Lit la valeur d'un en-tête `Content-Length`.
+///
+/// Une valeur vide, signée ou non numérique est une erreur du client : on la
+/// refuse (400) au lieu de la traiter comme un corps vide, ce que faisait
+/// `unwrap_or(0)` sans rien signaler.
+fn parse_content_length(valeur: &str) -> Result<usize, ()> {
+    let v = valeur.trim();
+    if v.is_empty() || !v.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(());
+    }
+    v.parse::<usize>().map_err(|_| ())
+}
+
 fn read_header_line(
     reader: &mut BufReader<TcpStream>,
     line: &mut String,
@@ -1901,7 +1925,7 @@ fn execute(
     // TOUT ce que le lot a touché, y compris ce qu'il n'a pas supprimé. Un
     // journal qui n'écrit que les succès laisse le même vide que l'incident : on
     // y voit des suppressions, mais pas les cibles refusées entre les deux —
-    // donc pas la preuve qu'un lot avait bien été artículos comme prévu.
+    // donc pas la preuve qu'un lot avait bien été traité comme prévu.
     let mut journal_lignes: Vec<LigneJournal> = Vec::new();
     // Demandés en corbeille, mais la corbeille ne les a pas pris : détruits.
     let mut irreversible = 0usize;
@@ -2288,6 +2312,37 @@ fn mots_avec_raison(
 /// passer outre tape le mot. C'est le but — pas un mur.
 fn eleve_change_le_geste(eleve: bool) -> bool {
     eleve
+}
+
+#[cfg(test)]
+mod tests_content_length {
+    use super::parse_content_length;
+
+    #[test]
+    fn une_valeur_decimale_est_lue() {
+        assert_eq!(parse_content_length("42"), Ok(42));
+        assert_eq!(parse_content_length(" 0 "), Ok(0));
+    }
+
+    #[test]
+    fn une_valeur_absente_ou_vide_est_refusee() {
+        // Avant : `unwrap_or(0)` transformait ce cas en corps vide, sans rien dire.
+        assert!(parse_content_length("").is_err());
+        assert!(parse_content_length("   ").is_err());
+    }
+
+    #[test]
+    fn une_valeur_non_numerique_est_refusee() {
+        assert!(parse_content_length("abc").is_err());
+        assert!(parse_content_length("-1").is_err());
+        assert!(parse_content_length("12 34").is_err());
+        assert!(parse_content_length("1e3").is_err());
+    }
+
+    #[test]
+    fn une_valeur_qui_deborde_est_refusee() {
+        assert!(parse_content_length("99999999999999999999999999999").is_err());
+    }
 }
 
 #[cfg(test)]

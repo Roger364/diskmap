@@ -226,10 +226,12 @@ pub fn alea_u64() -> u64 {
     if r == 0 {
         return u64::from_le_bytes(b);
     }
-    // Repli : jamais une constante, qui serait le pire des cas — un jeton
-    // prévisible pour tout le monde. On combine trois choses que l'appelant ne
-    // voit pas : les nanosecondes, une adresse de pile (l'ASLR les rend
-    // imprévisibles) et l'identifiant du processus.
+    // Repli, atteint seulement si BCryptGenRandom échoue. Ce n'est PAS une
+    // source cryptographique : le jeton y est difficile à deviner pour un tiers
+    // qui ne connaît pas le processus, sans être garanti imprévisible. Jamais
+    // une constante, qui serait pire : un jeton prévisible pour tout le monde.
+    // On combine les nanosecondes, une adresse de pile (randomisée par l'ASLR,
+    // donc variable d'un processus à l'autre) et l'identifiant du processus.
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
