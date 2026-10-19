@@ -13,10 +13,10 @@ next section describes, on Windows, and it has been measured on one machine.
 
 - **The interface is in French**, as are the code, the comments and the commit
   messages. An English interface is not planned yet.
-- **The binary is not signed.** Windows will show a SmartScreen warning on first
-  run, and an unsigned executable that walks an entire disk is the kind of thing
-  antivirus heuristics dislike. Signing is a per-year certificate cost this
-  project has not paid — see *Build and run* to compile it yourself instead.
+- **Releases are unsigned until a signing certificate is configured.** Windows
+  may show a SmartScreen warning on first run, and antivirus heuristics dislike
+  unsigned executables that walk an entire disk. The release CI signs and
+  verifies the binary when both signing secrets are set; see *Build and run*.
 - **There is no installer.** Every push on `master` that passes the CI publishes a
   tagged release with the Windows binary attached, so you can download a tested
   build from the Releases page without installing anything. The binary is taken
@@ -213,6 +213,12 @@ and run it, or build from source:
 cargo build --release
 diskmap.bat
 ```
+
+### Signing releases
+
+Get an OV code-signing certificate from DigiCert, GlobalSign or Sectigo (about €100–200/year). Keep its PFX private and out of Git; configure these repository secrets:
+`CODE_SIGNING_PFX` (base64-encoded PFX: `[Convert]::ToBase64String([IO.File]::ReadAllBytes('diskmap.pfx')) | gh secret set CODE_SIGNING_PFX`) and `CODE_SIGNING_PASSWORD` (`gh secret set CODE_SIGNING_PASSWORD`). Never commit the PFX.
+The release CI signs with a DigiCert timestamp and verifies via `signtool`; release notes report “Signé : oui” and the certificate thumbprint. If either secret is absent, it warns and publishes unsigned.
 
 The binary opens `http://127.0.0.1:8756/` **when you launched it yourself** —
 by double-clicking, or from a terminal. A launch with no console, which is what a
