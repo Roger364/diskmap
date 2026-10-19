@@ -161,6 +161,14 @@ const SONDES = [
     quoi: 'Le cout d un lot, et un temoin en mode definitif',
   },
   {
+    // F-DEL-1 : la garde de racine est-elle GLOBALE ? Un lot qui contient en
+    // profondeur une jonction vers un dossier hors lot doit effacer la jonction,
+    // pas la cible. La sentinelle hors lot doit survivre, et le lot doit disparaitre.
+    nom: 'jonction', fichier: 'sonde-jonction-imbriquee.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'les siennes',
+    quoi: 'Un lot qui contient une jonction imbriquee n efface pas la cible de la jonction',
+  },
+  {
     // Elle ne corrige rien et ne tranche rien : elle rend VISIBLE le contrat de
     // `/api/search` — ce qui est coupe, et ce que le serveur dit de ce qu il a
     // coupe. Ses verdicts portent sur des invariants vrais quel que soit le

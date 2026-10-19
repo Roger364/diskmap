@@ -60,7 +60,7 @@ const ATTENDU = {
     'src/main.rs:643': 'en_attente.push(letter);',
     'src/main.rs:643': 'fn start_scan',
     'src/main.rs:345': 'Navigateur  : non ouvert',
-    'tests/sondes/lancer.mjs:1174': "'--port', String(port), '--no-browser'",
+    'tests/sondes/lancer.mjs:1182': "'--port', String(port), '--no-browser'",
     'src/main.rs:1535': 'fn blocked_reason',
     'src/main.rs:1665': 'gen_vue != snap.gen',
     'src/main.rs:1806': 'app.pending.lock()',
@@ -86,15 +86,15 @@ const ATTENDU = {
     'ui/index.html:986': 'if (mien !== requete) return;',
     'ui/index.html:1105': 'relancer en administrateur',
     'ui/index.html:1116': 'const cause = dr ?',
-    'tests/sondes/lancer.mjs:1406': 'const connus',
-    'tests/sondes/lancer.mjs:787': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:780': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1802': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:787': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1861': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1813': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1734': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1861': 'note(s) de',
+    'tests/sondes/lancer.mjs:1414': 'const connus',
+    'tests/sondes/lancer.mjs:795': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:788': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1810': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:795': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1869': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1821': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1742': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1869': 'note(s) de',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
     'tests/sondes/config.mjs:431': 'export async function attendreTicket',
@@ -123,15 +123,15 @@ const ATTENDU = {
     // Le plancher des comptes, et le registre des aveux. Les symboles pointent
     // sur les DECLARATIONS : une reference qui designerait un commentaire
     // garderait un texte, pas une regle.
-    'tests/sondes/lancer.mjs:384': 'const COMPTES_PLANCHER = {',
-    'tests/sondes/lancer.mjs:464': 'const AVEURS_STRUCTURELS = [',
+    'tests/sondes/lancer.mjs:392': 'const COMPTES_PLANCHER = {',
+    'tests/sondes/lancer.mjs:472': 'const AVEURS_STRUCTURELS = [',
     // Section 7/31 : le mode decouverte de l outil d epreuves. Le symbole est
     // la fonction qui porte la discipline de restauration — ecrite une fois,
     // donc impossible a ecrire deux fois differemment.
     'tests/sondes/epreuve.mjs:344': 'async function sousGardeNeutralisee',
-    'tests/sondes/lancer.mjs:501': 'corbeille_plafond` vaut null',
+    'tests/sondes/lancer.mjs:509': 'corbeille_plafond` vaut null',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
-    'tests/sondes/lancer.mjs:501': 'corbeille_plafond` vaut null',
+    'tests/sondes/lancer.mjs:509': 'corbeille_plafond` vaut null',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
     // Les references vers `src/win32.rs`, longtemps INVISIBLES au controle : le
     // nom de fichier portait un chiffre et la classe de caracteres ne les
@@ -139,18 +139,18 @@ const ATTENDU = {
     // trois premieres sont les DECLARATIONS des fonctions citees — une
     // reference qui designerait un commentaire voisin garderait un texte, pas
     // une regle.
-    'src/win32.rs:216': 'pub fn alea_u64',
-    'src/win32.rs:244': 'pub fn delete_path',
-    'src/win32.rs:294': 'pub fn is_reparse_point',
+    'src/win32.rs:222': 'pub fn alea_u64',
+    'src/win32.rs:250': 'pub fn delete_path',
+    'src/win32.rs:300': 'pub fn is_reparse_point',
     // `:471` designait encore `GetVolumeInformationW` dans la prose, et depuis
     // longtemps plus rien de tel dans le fichier. Recalee sur la FONCTION qui
     // rend `label` et `fs` : c est elle que la phrase annonce.
-    'src/win32.rs:771': 'fn volume_info',
+    'src/win32.rs:777': 'fn volume_info',
     // Section 3.8 : le contrat `corbeille_inerte` expose par l apercu, et la
     // fonction qui recoit la reversibilite MESUREE — c est elle qui fait exiger
     // le mot de la suppression definitive malgre le mode « corbeille ».
-    'src/win32.rs:472': 'pub fn corbeille_nuke',
-    'src/win32.rs:497': 'pub fn corbeille_reversible',
+    'src/win32.rs:478': 'pub fn corbeille_nuke',
+    'src/win32.rs:503': 'pub fn corbeille_reversible',
     'src/main.rs:1436': 'corbeille_inerte: Option<bool>,',
     'src/main.rs:2220': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
@@ -186,14 +186,14 @@ const ATTENDU = {
     'ui/index.html:681': 'cur.ticket = rep && typeof rep.ticket',
     'ui/index.html:699': 'd.scan_completed >= cur.ticket',
     'ui/index.html:1575': 'cur.ticket = typeof res.scan_ticket',
-    'tests/sondes/lancer.mjs:787': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:780': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1802': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:787': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1861': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1813': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1734': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1861': 'note(s) de',
+    'tests/sondes/lancer.mjs:795': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:788': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1810': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:795': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1869': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1821': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1742': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1869': 'note(s) de',
     'ui/index.html:427': 'let peintMs = null;',
     'ui/index.html:1889': 'peintMs === null || (d.finished_ms || 0) === peintMs',
     'ui/index.html:1894': 'rechargerTri();',
@@ -205,9 +205,9 @@ const ATTENDU = {
     // aveux en 451 — pas en 381 et 432, ou il n'y a que la prose qui les
     // annonce. Une troisieme ne designait RIEN (`:9999`), et la quatrieme non
     // plus : `noter()` est en 53.
-    'tests/sondes/lancer.mjs:384': 'const COMPTES_PLANCHER = {',
-    'tests/sondes/lancer.mjs:464': 'const AVEURS_STRUCTURELS = [',
-    'tests/sondes/lancer.mjs:743': 'const dispense = trous.reduce',
+    'tests/sondes/lancer.mjs:392': 'const COMPTES_PLANCHER = {',
+    'tests/sondes/lancer.mjs:472': 'const AVEURS_STRUCTURELS = [',
+    'tests/sondes/lancer.mjs:751': 'const dispense = trous.reduce',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
   },
 };

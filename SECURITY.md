@@ -235,8 +235,8 @@ dossier `$RECYCLE.BIN` existe alors toujours. `corbeille_disponible` répondait 
 à la corbeille **si possible** » — faisait détruire le fichier sur place.
 
 `corbeille_disponible` ne posait pas la bonne question : elle dit si le dossier
-existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:497`) est la question
-qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:472`) en est la
+existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:503`) est la question
+qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:478`) en est la
 mesure. La clé se lit dans `HKEY_CURRENT_USER`, comme `MaxCapacity` : aucune
 élévation requise.
 
@@ -279,7 +279,7 @@ cran qui rend le silence impossible à remettre — supprimer la déclaration ra
 sonde à neuf verdicts, et le plancher la rougit au lieu de la laisser muette.
 
 **La garde a une preuve de morsure, depuis le 11/10/2026.** `epreuve.mjs` neutralise
-`corbeille_reversible` (`src/win32.rs:497`) en `false`, et `sonde-reversibilite.mjs`
+`corbeille_reversible` (`src/win32.rs:503`) en `false`, et `sonde-reversibilite.mjs`
 sort **5/10, code 1** — le premier verdict rouge nommant la cause : *HTTP 400 —
 confirmation attendue : « EFFACER »*. Restaurée, la sonde revient à **10/10**. La
 garde est donc éprouvée dans le sens qui compte : `corbeille_reversible` répond à la
@@ -327,7 +327,7 @@ portée :
 ${d.fs ? `<span class="fs">${d.fs}</span>` : ''}
 ```
 
-`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:771`) : le nom de
+`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:777`) : le nom de
 volume est une **donnée externe**, contrôlable par quiconque formate une clé USB, monte une
 image disque ou renomme un partage. Elle est interpolée dans un `innerHTML` **sans
 `escapeHtml`**, alors que tous les autres noms venus du disque (tableau, carte, recherche,
@@ -575,7 +575,7 @@ point final). Le risque annoncé : l'aperçu afficherait `foo ` et l'effacement 
 - l'aperçu affiche `V:\_r9\piege.txt ` **avec son espace**, et le déclare
   `blocked=true`, `deletable=0`, motif « introuvable sur le disque ».
 
-Le refus vient de `delete_path` (`src/win32.rs:244`), qui interdit le préfixe `\\?\` —
+Le refus vient de `delete_path` (`src/win32.rs:250`), qui interdit le préfixe `\\?\` —
 justement parce qu'il court-circuite la corbeille. Un nom qui n'est adressable qu'en
 verbatim est donc **visible mais jamais effaçable** : il ne peut pas viser un autre fichier,
 il ne peut rien viser du tout. La classe de bug est fermée par une règle déjà en place,
@@ -743,7 +743,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:787`) et le motif est écrit (`tests/sondes/lancer.mjs:1861`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:1802`. Sans ce
+(`tests/sondes/lancer.mjs:795`) et le motif est écrit (`tests/sondes/lancer.mjs:1869`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:788`, motif `tests/sondes/lancer.mjs:1810`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -759,8 +759,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:787`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1813`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:795`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1821`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -799,9 +799,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1734`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1742`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1861`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1869`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -906,7 +906,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1174`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1182`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1265,16 +1265,16 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
   `/api/search`, exigée par `dry`. Un identifiant périmé est refusé, pas réinterprété.
-- **Jeton** : `BCryptGenRandom` (`src/win32.rs:216`), usage unique, dix minutes, lié au
+- **Jeton** : `BCryptGenRandom` (`src/win32.rs:222`), usage unique, dix minutes, lié au
   volume, avec repli qui ne dérive jamais d'une constante.
 - **CSRF** : `X-Diskmap` sur tous les POST, `Host` local sur toutes les routes, lectures
   comprises. Le raisonnement sur le rebinding (l'en-tête `X-Diskmap` est posable librement
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
-  (`src/win32.rs:294`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:787`), pas verte par défaut : le
+  (`src/win32.rs:300`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:795`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:1802`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:788`, motif `tests/sondes/lancer.mjs:1810`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1307,7 +1307,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
   tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
   de celui qui a lancé le programme est une intrusion, même sans intention — R13.
-- **`\\?\` interdit à l'effacement** (`src/win32.rs:244`) : ce préfixe court-circuite la
+- **`\\?\` interdit à l'effacement** (`src/win32.rs:250`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
 - **La réversibilité se constate**, elle ne se déduit pas du code de retour : les fiches `$I`
   sont lues une fois après la boucle, filtrées par date, et l'issue est journalisée comme
@@ -1316,7 +1316,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1406`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1414`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1189`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1659,7 +1659,7 @@ quelque part elle devient une **assertion** — distinction que rien n'exigeait.
 
 Trois instruments, tous mesurés.
 
-**Le plancher des comptes** (`tests/sondes/lancer.mjs:384`). Vingt-quatre
+**Le plancher des comptes** (`tests/sondes/lancer.mjs:392`). Vingt-quatre
 valeurs, prises comme le **plus petit** compte observé sur les logs du 29 et du
 30/09, jamais le plus grand : un plancher pris sur un run chanceux devient rouge
 le jour où la machine change. Deux sondes varient et le tableau le dit —
@@ -1681,7 +1681,7 @@ verification(s), son plancher est 400 » et le run sort en 1 ; un plancher
 sortent en 1, et les deux fichiers ont été restaurés puis comparés par
 empreinte.*
 
-**Le registre des aveux** (`tests/sondes/lancer.mjs:464`). Un aveu doit se
+**Le registre des aveux** (`tests/sondes/lancer.mjs:472`). Un aveu doit se
 justifier, et la justification se **vérifie** :
 
 - `couvert par <fichier> : <nom de vérification>` — une autre sonde affirme la
@@ -1875,7 +1875,7 @@ du dépôt dit déjà que le défaut n'est pas le trou, c'est l'excuse.
 **Ce qui change, et pourquoi ce n'est pas un plancher plus permissif.**
 
 Le champ `couts` entre au registre `AVEURS_STRUCTURELS`
-(`tests/sondes/lancer.mjs:501`) : un trou structurel ne se contente plus de se
+(`tests/sondes/lancer.mjs:509`) : un trou structurel ne se contente plus de se
 nommer, il **déclare** ce qu'il coûte en verdicts. Le plancher se relâche
 d'autant — et d'autant seulement, parce qu'un aveu nu ne détend rien.
 

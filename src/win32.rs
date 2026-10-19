@@ -174,6 +174,12 @@ pub fn drives() -> Vec<Drive> {
 // l'inverse de ce qu'on veut par défaut. Les chemins passés sont donc les
 // chemins normaux (`C:\...`), pas ceux utilisés pour le scan.
 
+// Limite connue (MAX_PATH) : sans préfixe verbatim, SHFileOperationW refuse les
+// chemins de plus de 260 caractères. Un tel chemin n'est donc ni envoyé à la
+// corbeille ni supprimé : `delete_path` le signale par un échec (`exists()`),
+// jamais par un succès. Pour l'utilisateur : raccourcir le chemin, ou supprimer
+// depuis un dossier plus proche de la racine du disque.
+
 const FO_DELETE: u32 = 3;
 const FOF_SILENT: u16 = 0x0004;
 const FOF_NOCONFIRMATION: u16 = 0x0010;
