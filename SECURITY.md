@@ -88,7 +88,7 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1641`) ; `execute` ne résout plus rien et ne supprime que les chemins
+(`src/main.rs:1665`) ; `execute` ne résout plus rien et ne supprime que les chemins
 figés par l'aperçu (`struct Montre`, `src/main.rs:110`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
@@ -235,8 +235,8 @@ dossier `$RECYCLE.BIN` existe alors toujours. `corbeille_disponible` répondait 
 à la corbeille **si possible** » — faisait détruire le fichier sur place.
 
 `corbeille_disponible` ne posait pas la bonne question : elle dit si le dossier
-existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:495`) est la question
-qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:470`) en est la
+existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:497`) est la question
+qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:472`) en est la
 mesure. La clé se lit dans `HKEY_CURRENT_USER`, comme `MaxCapacity` : aucune
 élévation requise.
 
@@ -248,10 +248,10 @@ Trois choix valent d'être écrits, parce qu'ils décident du geste :
   `MaxCapacity` et pour `NeedToPurge` : une valeur non mesurée n'est pas une valeur
   nulle, et un avertissement qui se déclenche sans mesure ne veut plus rien dire.
 - **Le mode « corbeille » n'obtient plus une confirmation moins chère.** `execute`
-  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2196`) : un
+  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2220`) : un
   volume à corbeille inerte exige le même mot que la suppression définitive. La
   confirmation suit le geste réel, pas le mode affiché.
-- **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1412`) est exposé au même
+- **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1436`) est exposé au même
   titre que `corbeille`, et le motif du mot nomme la cause — « ce volume détruit
   sans corbeille (NukeOnDelete=1) » — au lieu de laisser lire « iront dans la
   corbeille ».
@@ -279,7 +279,7 @@ cran qui rend le silence impossible à remettre — supprimer la déclaration ra
 sonde à neuf verdicts, et le plancher la rougit au lieu de la laisser muette.
 
 **La garde a une preuve de morsure, depuis le 11/10/2026.** `epreuve.mjs` neutralise
-`corbeille_reversible` (`src/win32.rs:495`) en `false`, et `sonde-reversibilite.mjs`
+`corbeille_reversible` (`src/win32.rs:497`) en `false`, et `sonde-reversibilite.mjs`
 sort **5/10, code 1** — le premier verdict rouge nommant la cause : *HTTP 400 —
 confirmation attendue : « EFFACER »*. Restaurée, la sonde revient à **10/10**. La
 garde est donc éprouvée dans le sens qui compte : `corbeille_reversible` répond à la
@@ -296,7 +296,7 @@ portée :
   que « ne mord pas » sur une machine élevée ne se lise pas comme un défaut du code.
 - **Elle a demandé de réparer la sonde.** Le `JSON.parse` du corps de `/api/delete`
   n'avait pas de filet, alors que le refus d'une confirmation est du **texte brut**
-  (`src/main.rs:1861`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
+  (`src/main.rs:1885`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
   sans décompte, et le harnais lisait « SANS SYNTHESE » là où il y avait une cause
   nommée — la sonde mesurait sa propre fragilité au lieu du produit. Les quatre
   corps de ce fichier passent désormais par `lireCorps`
@@ -307,12 +307,12 @@ portée :
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
 |---|---|
-| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:956`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:878`) |
+| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:980`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:902`) |
 | DNS rebinding | Rien, pour la même raison |
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1511`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1535`) — voir R5 |
 
 ---
 
@@ -327,7 +327,7 @@ portée :
 ${d.fs ? `<span class="fs">${d.fs}</span>` : ''}
 ```
 
-`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:769`) : le nom de
+`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:771`) : le nom de
 volume est une **donnée externe**, contrôlable par quiconque formate une clé USB, monte une
 image disque ou renomme un partage. Elle est interpolée dans un `innerHTML` **sans
 `escapeHtml`**, alors que tous les autres noms venus du disque (tableau, carte, recherche,
@@ -354,7 +354,7 @@ l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1511`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1535`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -499,7 +499,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2736`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2791`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -524,11 +524,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1782` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1787`) n'était
-appelé que dans `execute` (`src/main.rs:1832`). Des aperçus répétés sans confirmation
+`src/main.rs:1806` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1811`) n'était
+appelé que dans `execute` (`src/main.rs:1856`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1787`).
+endroit (`src/main.rs:1807`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -575,7 +575,7 @@ point final). Le risque annoncé : l'aperçu afficherait `foo ` et l'effacement 
 - l'aperçu affiche `V:\_r9\piege.txt ` **avec son espace**, et le déclare
   `blocked=true`, `deletable=0`, motif « introuvable sur le disque ».
 
-Le refus vient de `delete_path` (`src/win32.rs:242`), qui interdit le préfixe `\\?\` —
+Le refus vient de `delete_path` (`src/win32.rs:244`), qui interdit le préfixe `\\?\` —
 justement parce qu'il court-circuite la corbeille. Un nom qui n'est adressable qu'en
 verbatim est donc **visible mais jamais effaçable** : il ne peut pas viser un autre fichier,
 il ne peut rien viser du tout. La classe de bug est fermée par une règle déjà en place,
@@ -597,7 +597,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2118`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2142`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -1271,7 +1271,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   comprises. Le raisonnement sur le rebinding (l'en-tête `X-Diskmap` est posable librement
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
-  (`src/win32.rs:292`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
+  (`src/win32.rs:294`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
 - **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:787`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
   (`tests/sondes/lancer.mjs:780`, motif `tests/sondes/lancer.mjs:1802`) : « je n'avais rien à
@@ -1307,7 +1307,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
   tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
   de celui qui a lancé le programme est une intrusion, même sans intention — R13.
-- **`\\?\` interdit à l'effacement** (`src/win32.rs:242`) : ce préfixe court-circuite la
+- **`\\?\` interdit à l'effacement** (`src/win32.rs:244`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
 - **La réversibilité se constate**, elle ne se déduit pas du code de retour : les fiches `$I`
   sont lues une fois après la boucle, filtrées par date, et l'issue est journalisée comme
@@ -1317,7 +1317,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
   (`tests/sondes/lancer.mjs:1406`) : `rm -rf` y serait un bug, et le code le dit.
-- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1165`). Un
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1189`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
   serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
@@ -1465,8 +1465,8 @@ L'argument est juste et la décision a produit exactement ce qu'elle annonçait 
 le rapport n'a jamais été consulté. Les quatre gardes sont restées nues.
 
 Il y a plus grave que la garde. Ces quatre entrées — « lettre manquante »
-(`src/main.rs:972`), « id invalide » (`src/main.rs:1012`), « chemin invalide »
-(`src/main.rs:1028`), « route inconnue » (`src/main.rs:1069`) — sont les
+(`src/main.rs:996`), « id invalide » (`src/main.rs:1036`), « chemin invalide »
+(`src/main.rs:1052`), « route inconnue » (`src/main.rs:1093`) — sont les
 validations du routeur, et **aucune requête ne les atteint jamais**. Un serveur
 qui refuse tout les produirait, aussi bien que le bon. C'est la définition
 d'une preuve absente, et elle était écrite en clair dans un fichier vert.
@@ -1476,7 +1476,7 @@ Trois changements, dont deux mesurés :
 **1. Le contrôle exige au lieu de signaler.** `PLANCHER_SANS_REGARD` vaut 0, et
 une garde sans regard fait désormais rouge la chaîne. *Mesuré le 29/09 : une
 garde renommée en un libellé que personne ne cite fait passer le contrôle de
-6/6 à 5/6, et nomme `src/main.rs:1069`.* Le plancher est une arme, pas une
+6/6 à 5/6, et nomme `src/main.rs:1093`.* Le plancher est une arme, pas une
 déclaration.
 
 **2. Le contrôle a lui-même une embuscade.** Un contrôle qui n'a jamais rougi ne
@@ -2624,7 +2624,7 @@ sur ce contrôle. Le format tient : il mérite les prochains contrôles jeunes.
 
 Le pour/contre des deux options (précondition mesurée côté sonde, garde
 applicative côté serveur) a été posé, puis **le code a tranché avant l'avis** :
-la garde que « B » devait créer existe déjà — [src/main.rs:977] répond
+la garde que « B » devait créer existe déjà — [src/main.rs:1001] répond
 `404 « volume inconnu »` à tout POST `/api/scan/<lettre>` hors catalogue,
 **avant** tout démarrage d'analyse. Ce qui manquait n'était pas la garde,
 c'était son épreuve.
@@ -2662,7 +2662,7 @@ branche jamais jouée tourne sans faux rouge ni faux vert.
 18 (local normal), 15 (local normal **et** corbeille absente).
 
 **Consigné sans correction** : `/api/open` sur une lettre inconnue répond
-`409 « volume pas encore analysé »` [src/main.rs:1088] — le message trompe (le
+`409 « volume pas encore analysé »` [src/main.rs:1112] — le message trompe (le
 volume n'est pas « pas encore analysé », il n'existe pas) ; un 404 aligné sur
 la garde du scan serait plus honnête, au prix d'un choix d'affichage. Et le
 ligne de sonde affiche `vert` **avant** que la perte de plancher ne force le
