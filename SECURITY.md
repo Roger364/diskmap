@@ -743,7 +743,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:795`) et le motif est écrit (`tests/sondes/lancer.mjs:1869`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:788`, motif `tests/sondes/lancer.mjs:1810`. Sans ce
+(`tests/sondes/lancer.mjs:789`) et le motif est écrit (`tests/sondes/lancer.mjs:1814`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:788`, motif `tests/sondes/lancer.mjs:1810`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -1100,8 +1100,8 @@ de la **durée d'une analyse**, comme R14.
 (`src/main.rs:643`) le rend dans la réponse HTTP, et `/api/state` publie `scan_requested` et
 `scan_completed`. Le client peut ainsi attendre le ticket de SA demande sans manquer une analyse
 courte ni confondre la fin du scan courant avec celle du scan demandé. Les demandes répétées sont
-coalescées dans la file (`demande_couverte`, `src/main.rs:643`, et `en_attente.push(letter)`,
-`src/main.rs:643`) : dix demandes pendant le même scan demandent une seule analyse supplémentaire,
+coalescées dans la file (`demande_couverte`, `src/main.rs:627`, et `en_attente.push(letter)`,
+`src/main.rs:638`) : dix demandes pendant le même scan demandent une seule analyse supplémentaire,
 pas dix. L'analyse déjà en cours n'est jamais créditée pour une demande qu'elle précède.
 
 La fin est publiée seulement avec l'instantané complet. L'ordre des verrous est conservé
@@ -1272,7 +1272,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:300`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:795`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:789`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
   (`tests/sondes/lancer.mjs:788`, motif `tests/sondes/lancer.mjs:1810`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul

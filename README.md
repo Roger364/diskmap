@@ -437,7 +437,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:795`) and the reason is printed (`tests/sondes/lancer.mjs:1869`). A zero summary has its own door: `tests/sondes/lancer.mjs:788`, reason `tests/sondes/lancer.mjs:1810`.
+(`tests/sondes/lancer.mjs:789`) and the reason is printed (`tests/sondes/lancer.mjs:1814`). A zero summary has its own door: `tests/sondes/lancer.mjs:788`, reason `tests/sondes/lancer.mjs:1810`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -1112,7 +1112,7 @@ Each accepted scan request now gets a monotone per-volume ticket. `start_scan`
 (`src/main.rs:643`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
 so a client can wait for **its** scan without missing a short run or mistaking the current scan's
 completion for the requested one. Repeated requests coalesce in the queue (`demande_couverte`,
-`src/main.rs:643`, and `en_attente.push(letter)`, `src/main.rs:643`): ten requests during one
+`src/main.rs:627`, and `en_attente.push(letter)`, `src/main.rs:638`): ten requests during one
 scan request just one additional pass, not ten. A scan already in progress never satisfies a
 request made after it began.
 
