@@ -24,7 +24,10 @@
 
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const executer = promisify(execFile);
 
 /** Adresse par defaut du serveur a eprouver. */
 export const URL_DEFAUT = process.env.DISKMAP_SONDE_URL || 'http://127.0.0.1:8990/';
@@ -176,7 +179,7 @@ export function volumeJetable(f) {
  *
  * @returns {Array<object>} faits par lettre de volume, `[]` si PowerShell echoue
  */
-export function interrogerVolumes() {
+export async function interrogerVolumes() {
   const script = [
     // Sans cela, PowerShell ecrit dans la page de code de la console et
     // l'etiquette « Reserve au systeme » arrive en caractere de remplacement.
@@ -202,17 +205,17 @@ export function interrogerVolumes() {
   ].join('\n');
 
   const encode = Buffer.from(script, 'utf16le').toString('base64');
-  const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encode], {
-    encoding: 'buffer',
-    timeout: 60_000,
-    windowsHide: true,
-    maxBuffer: 8 * 1024 * 1024,
-  });
-  if (r.status !== 0 || !r.stdout) return [];
   try {
-    const v = JSON.parse(r.stdout.toString('utf8').trim());
+    const { stdout } = await executer(
+      'powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encode],
+      { encoding: 'buffer', timeout: 60_000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+    );
+    if (!stdout) return [];
+    const v = JSON.parse(stdout.toString('utf8').trim());
     return Array.isArray(v) ? v : [v];
   } catch {
+    // Comme avant : commande en échec, dépassement de délai ou JSON invalide
+    // signifie « aucun fait », et le harnais refuse alors les sondes.
     return [];
   }
 }

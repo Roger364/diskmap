@@ -97,7 +97,7 @@ const ATTENDU = {
     'tests/sondes/lancer.mjs:1861': 'note(s) de',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
-    'tests/sondes/config.mjs:428': 'export async function attendreTicket',
+    'tests/sondes/config.mjs:431': 'export async function attendreTicket',
     'tests/sondes/sonde-generation.mjs:71': 'async function analyserEtAttendre',
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
     'ui/index.html:681': 'cur.ticket = rep && typeof rep.ticket',
@@ -161,7 +161,7 @@ const ATTENDU = {
     'src/main.rs:1861': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
     // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
     // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
-    'tests/sondes/config.mjs:349': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
+    'tests/sondes/config.mjs:352': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
     // Le filet ajoute a la sonde : sans lui, un refus en texte brut la tuait par
     // `SyntaxError`, et la mesure de 3.8 n existait pas.
     'tests/sondes/sonde-reversibilite.mjs:83': 'function lireCorps(r)',
@@ -180,7 +180,7 @@ const ATTENDU = {
     'tests/sondes/sonde-ui-suppression.mjs:757': 'taille égale, l’écran range',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
-    'tests/sondes/config.mjs:428': 'export async function attendreTicket',
+    'tests/sondes/config.mjs:431': 'export async function attendreTicket',
     'tests/sondes/sonde-generation.mjs:71': 'async function analyserEtAttendre',
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
     'ui/index.html:681': 'cur.ticket = rep && typeof rep.ticket',

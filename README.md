@@ -1167,7 +1167,7 @@ cashed: the UI and the probes kept waiting on the global flag, which measurement
 between two scans. Now:
 
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
-  `attendreTicket` (`tests/sondes/config.mjs:428`) loops on `scan_completed >= ticket` and never
+  `attendreTicket` (`tests/sondes/config.mjs:431`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
 - the UI records the returned ticket (`ui/index.html:681`) and `poll()` stops on its publication
   (`ui/index.html:699`); the rescan after a deletion waits on the `scan_ticket` returned by the
@@ -1191,7 +1191,7 @@ It is **removed** (29/09/2026). Its last caller — `lot`, the probe that replay
 first turn where `scanning` was false, hence on the PREVIOUS run's snapshot, and the following
 `dry` left with a stale generation. The `gen` guard pushed back, rightly, and the failure surfaced
 as a silent exception on an empty list — a race accident accusing a non-existent deletion defect.
-`lot` now waits for the ticket it asked for (`attendreTicket`, `tests/sondes/config.mjs:428`),
+`lot` now waits for the ticket it asked for (`attendreTicket`, `tests/sondes/config.mjs:431`),
 then, for each batch, for the snapshot carrying every targeted name. Measured 29/09/2026: `lot`
 9/9 in the full run, safety net unchanged.
 

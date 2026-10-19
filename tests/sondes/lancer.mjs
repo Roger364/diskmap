@@ -1263,8 +1263,8 @@ async function analyser(url, lettre, limiteSecondes) {
  * consequences sont destructrices. Un PowerShell qui echoue doit donc arranger
  * le run, jamais le laisser passer.
  */
-function exigerVolumeJetable(vol) {
-  const faits = interrogerVolumes();
+async function exigerVolumeJetable(vol) {
+  const faits = await interrogerVolumes();
   const cible = (faits || []).find((f) => String(f.lettre).toUpperCase() === String(vol).toUpperCase());
 
   // Le releve des volumes alimente les planchers structurels. C est la seule
@@ -1427,7 +1427,7 @@ let filet = null;
 // C: pour rien — et il n'y a ici aucun `finally` qui rattrape quoi que ce soit.
 let racines = null;
 try {
-  exigerVolumeJetable(opt.volume);
+  await exigerVolumeJetable(opt.volume);
   racines = racinesDuFilet(opt.volume, retenues);
 } catch (e) {
   console.error(`\n  REFUS   ${e.message}\n`);

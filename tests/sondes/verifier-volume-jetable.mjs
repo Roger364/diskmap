@@ -13,12 +13,13 @@
 // plutot que de lire le code et de le supposer.
 
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { volumeJetable, interrogerVolumes, decrireVolume } from './config.mjs';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const LANCER = path.join(ICI, 'lancer.mjs');
+const SAUTES = 'filet,corps,suppression,generation,reelle,lot,ui,csrf,erreurs,host';
 
 const verifs = [], echecs = [];
 function verifier(nom, cond, mesure) {
@@ -26,6 +27,52 @@ function verifier(nom, cond, mesure) {
   verifs.push(ok);
   if (!ok) echecs.push(`${nom} — mesuré : ${mesure}`);
   console.log(`${ok ? 'ok   ' : 'ROUGE'} ${nom}${ok ? '' : `\n      mesuré : ${mesure}`}`);
+}
+
+function lancer(args, options) {
+  return new Promise((resolve, reject) => {
+    const { timeout, ...spawnOptions } = options;
+    const enfant = spawn(process.execPath, args, { ...spawnOptions, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let expire = false;
+    const delai = setTimeout(() => {
+      expire = true;
+      enfant.kill();
+    }, timeout);
+    enfant.stdout.setEncoding('utf8').on('data', (morceau) => { stdout += morceau; });
+    enfant.stderr.setEncoding('utf8').on('data', (morceau) => { stderr += morceau; });
+    enfant.once('error', (erreur) => {
+      clearTimeout(delai);
+      reject(erreur);
+    });
+    enfant.once('close', (code, signal) => {
+      clearTimeout(delai);
+      resolve({
+        status: expire ? null : code,
+        signal,
+        stdout,
+        stderr,
+      });
+    });
+  });
+}
+
+function sortieDe(r) {
+  return `${r.stdout || ''}${r.stderr || ''}`;
+}
+
+async function lancerHarnais(mot = '') {
+  const env = {
+    ...process.env,
+    DISKMAP_SONDE_VOLUME: 'C',
+    DISKMAP_SONDE_RACINE: 'C:\\_diskmap_sondes',
+    DISKMAP_SONDE_MACHINE_EPHEMERE: mot,
+  };
+  return lancer(
+    [LANCER, '--volume', 'C', '--attendre', '60', '--sans', SAUTES],
+    { cwd: ICI, timeout: mot ? 180_000 : 120_000, windowsHide: true, env },
+  );
 }
 
 // --- 1. le predicat, sur des cas choisis ----------------------------------
@@ -68,7 +115,7 @@ verifier('le motif de refus nomme le disque et ce qu il partage',
 // Les memes faits, releves pour de vrai. Un cas non mesure ne vaut ni succes ni
 // echec : sans PowerShell, on le dit et on sort en 2.
 console.log('\n--- 2. la regle, sur les volumes reellement montes ---');
-const faits = interrogerVolumes();
+const faits = await interrogerVolumes();
 if (!faits.length) {
   console.log('PAS PU EPROUVER : aucun volume releve (PowerShell indisponible).');
   console.log('  La regle pure (section 1) a bien ete verifiee ; celle-ci n a pas pu l etre.');
@@ -119,18 +166,13 @@ if (jetables.length) {
 // eprouve est cassee. Donc `--sans` est passe ici, et la seule sonde laissee est
 // `arret`, qui ne detruit rien. Le test detecte toujours la porte manquante ; il
 // ne peut plus rien abimer, porte ouverte ou pas.
-const SAUTES3 = 'filet,corps,suppression,generation,reelle,lot,ui,csrf,erreurs,host';
 console.log('\n--- 3. le harnais appelle-t-il vraiment la regle ? ---');
 if (!c) {
   console.log('PAS PU EPROUVER : C: absent, impossible de produire le refus attendu.');
   process.exit(2);
 }
-const r = spawnSync(process.execPath, [LANCER, '--volume', 'C', '--attendre', '60', '--sans', SAUTES3],
-  {
-    cwd: ICI, encoding: 'utf8', timeout: 120_000, windowsHide: true,
-    env: { ...process.env, DISKMAP_SONDE_VOLUME: 'C', DISKMAP_SONDE_RACINE: 'C:\\_diskmap_sondes' },
-  });
-const sortie = `${r.stdout || ''}${r.stderr || ''}`;
+const r = await lancerHarnais();
+const sortie = sortieDe(r);
 verifier('le harnais refuse C: au lieu de lancer les sondes', r.status === 2,
   `code ${r.status} — ${sortie.slice(0, 200)}`);
 verifier('le refus nomme la regle et son motif',
@@ -151,18 +193,8 @@ verifier('le refus dit quoi faire, pas seulement que non', /creer-volume-test/.t
 // travail, et c'est ce qui garde ce test rapide.
 console.log('\n--- 4. la declaration reste-t-elle visible ? ---');
 const MOT = 'runner-de-test-vraiment-furtif';
-const SAUTES = 'filet,corps,suppression,generation,reelle,lot,ui,csrf,erreurs,host';
-const d2 = spawnSync(process.execPath, [LANCER, '--volume', 'C', '--attendre', '60', '--sans', SAUTES],
-  {
-    cwd: ICI, encoding: 'utf8', timeout: 180_000, windowsHide: true,
-    env: {
-      ...process.env,
-      DISKMAP_SONDE_VOLUME: 'C',
-      DISKMAP_SONDE_RACINE: 'C:\\_diskmap_sondes',
-      DISKMAP_SONDE_MACHINE_EPHEMERE: MOT,
-    },
-  });
-const sortie2 = `${d2.stdout || ''}${d2.stderr || ''}`;
+const d2 = await lancerHarnais(MOT);
+const sortie2 = sortieDe(d2);
 verifier('la declaration est reprise mot pour mot dans la sortie',
   sortie2.includes(MOT), sortie2.slice(0, 300));
 verifier('elle est encadree, pas noyee dans la sortie',
@@ -170,14 +202,7 @@ verifier('elle est encadree, pas noyee dans la sortie',
 verifier('elle dit qu elle repose sur une affirmation, pas sur une mesure',
   /DECLARATION, pas sur mesure/.test(sortie2), sortie2.slice(0, 300));
 verifier('le volume refuse reste refuse quand rien ne le declare',
-  (() => {
-    const s3 = spawnSync(process.execPath, [LANCER, '--volume', 'C', '--attendre', '60', '--sans', SAUTES],
-      {
-        cwd: ICI, encoding: 'utf8', timeout: 180_000, windowsHide: true,
-        env: { ...process.env, DISKMAP_SONDE_VOLUME: 'C', DISKMAP_SONDE_RACINE: 'C:\\_diskmap_sondes', DISKMAP_SONDE_MACHINE_EPHEMERE: '' },
-      });
-    return s3.status === 2;
-  })(), 'le run a passe sans declaration');
+  (await lancerHarnais()).status === 2, 'le run a passe sans declaration');
 
 console.log('');
 console.log(`  ${verifs.filter(Boolean).length}/${verifs.length} verifications`);

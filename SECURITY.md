@@ -289,7 +289,7 @@ Deux choses valent d'être dites sur cette preuve, parce qu'elles en limitent la
 portée :
 
 - **Elle n'existe que sur une instance NON ÉLEVÉE.** Sur une instance élevée,
-  `mots_exiges` ajoute `EFFACER` pour cause d'élévation (`tests/sondes/config.mjs:349`),
+  `mots_exiges` ajoute `EFFACER` pour cause d'élévation (`tests/sondes/config.mjs:352`),
   le mot exigé est déjà le bon, et cette garde n'a plus de témoin par ce chemin.
   `epreuve.mjs` est un outil de poste et jamais du CI, où le runner est toujours
   élevé — la précondition est donc sans conséquence, mais elle est écrite ici pour
@@ -1166,7 +1166,7 @@ promesse que personne n'encaissait : l'interface et les sondes continuaient d'at
 drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais :
 
 - `POST /api/scan` répond `{ok, ticket}`, et chaque client attend **son** ticket :
-  `attendreTicket` (`tests/sondes/config.mjs:428`) boucle sur `scan_completed >= ticket` et ne
+  `attendreTicket` (`tests/sondes/config.mjs:431`) boucle sur `scan_completed >= ticket` et ne
   consulte jamais `!scanning` pour conclure ;
 - l'interface note le ticket rendu (`ui/index.html:681`) et `poll()` s'arrête sur sa publication
   (`ui/index.html:699`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
@@ -1196,7 +1196,7 @@ rendait la main au premier tour où `scanning` était faux, donc sur l'instantan
 et le `dry` suivant partait avec une génération périmée. La garde `gen` a repoussé, à raison, et
 l'échec s'est manifesto par une exception muette sur une liste vide — un accident de course qui
 accusait un défaut de suppression inexistant. `lot` attend désormais le ticket qu'elle a demandé
-(`attendreTicket`, `tests/sondes/config.mjs:428`), puis, pour chaque lot, l'instantané qui porte
+(`attendreTicket`, `tests/sondes/config.mjs:431`), puis, pour chaque lot, l'instantané qui porte
 tous les noms visés. Mesuré le 29/09/2026 : `lot` 9/9 au run complet, filet inchangé.
 
 ---
