@@ -264,6 +264,38 @@ a baissé, ce qui est un fait, pas un diagnostic. Elle est notée ici comme
   correction de `renderRows` a résolu le défaut, pas cette limite de mesure.
 - **L'assertion libuv de §7.** Non diagnostiquée. Recidive déclarée.
 
+  **Mesurée le 20/10/2026, non reproduite — fermée comme aveu structurel.**
+  Sur `e9a7ccf` (binaire reconstruit depuis un arbre propre, provenance vérifiée),
+  Node v24.14.1, Windows, volume V: (SONDES) :
+
+  | Condition | Runs | Assertion |
+  |---|---|---|
+  | `sonde-generation` seule, au calme | 60 | 0 |
+  | Charge CPU : 48 processus `node` en boucle sur 24 cœurs | 60 | 0 |
+  | 33 fenêtres Explorateur ouvertes et comptées (`fen-1`…`fen-33`) | 60 | 0 |
+  | Reproducteur minimal : `fetch`, statut seul, puis `process.exit` (sans diskmap) | 60 + 60 | 0 |
+  | Même reproducteur avec pression GC avant la sortie | 60 | 0 |
+
+  Total : **0 assertion sur 420 exécutions**. Aucun seuil n'a été atteint : 33 fenêtres
+  ne déclenchent rien ici, et la charge non plus. Le lien « fenêtres → assertion »
+  de §7 n'est donc pas établi, et le binaire n'a pas été modifié.
+
+  Cause candidate, **non confirmée localement** : un `uv_async_send` sur un handle
+  déjà en cours de fermeture pendant l'arrêt du process. Node a corrigé un cas de
+  ce type (PR nodejs/node#61999, annoncée dans la 24.20.0) ; ce poste est en 24.14.1.
+  Sources : nodejs/node#56645 et #58091.
+
+  Ce que le dépôt contient : la seule trace de l'assertion est un commentaire de
+  `sonde-recherche.mjs` (ligne 326), qui l'attribue à un `process.exit` coupant des
+  sockets `undici` vivantes. Ce chemin a été retiré (la sonde ne force plus la
+  sortie). `sonde-generation` ne contient pas de `process.exit`, donc cette cause
+  ne couvre pas le cas de §7. Le 27/09 n'a pas d'identifiant de run ni de stack
+  complet dans le dépôt : aucun run précis ne peut être relié à ces mesures.
+
+  structurel : l'assertion n'est pas reproductible avec les conditions ci-dessus, et
+  aucune mesure ne justifie une mitigation dans le harnais. Elle reste sans cause
+  confirmée. Une récidive réelle devra fournir la stack complète et l'identifiant du run.
+
 ### Ce qui a été fermé depuis — 11/10/2026
 
 Le premier des trois points, noté ici plutôt que retiré : un point qu'on efface
