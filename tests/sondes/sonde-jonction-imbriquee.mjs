@@ -155,10 +155,20 @@ for (const mode of ['recycle', 'permanent']) {
   }
 }
 
+// LE DÉCOMPTE QUE LE HARNAIS LIT. `compterSortie` (lancer.mjs) compte les
+// lignes `ok`/`ROUGE` ET relit une ligne `N/N vérifications` : les deux termes
+// doivent valoir le compte réel des lignes écrites. Sans cette ligne, la sortie
+// est « muette » et le harnais force la sonde au ROUGE même à code de sortie 0
+// — « aucun décompte écrit : la sonde n'a rien rapporté ». C'est ce qui
+// arrivait le 20/10/2026 aux cas [recycle] et [permanent] : dix vérifications
+// écrites, toutes justes, toutes perdues — le vert de la sonde ne prouvait
+// rien, puisque le harnais ne voyait rien.
+const reussies = verifs.filter(Boolean).length;
 console.log('');
+console.log(`${reussies}/${verifs.length} vérifications sur ${VOL}:`);
 if (echecs.length) {
-  console.log(`ROUGE — ${echecs.length} échec(s) sur ${verifs.length} vérification(s) :`);
+  console.log('Échecs :');
   for (const e of echecs) console.log(`  - ${e}`);
   process.exit(1);
 }
-console.log(`VERT — ${verifs.length} vérification(s) sur ${VOL}:`);
+console.log('VERT — un lot contenant une jonction imbriquée efface la jonction, pas la cible');

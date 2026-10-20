@@ -392,10 +392,18 @@ if (!retenues.length) {
 const COMPTES_PLANCHER = {
   aNommer: 27, arret: 9, 'arret-idle': 3, 'arret-running': 4, corps: 4,
   csrf: 12, elevation: 22, entrees: 12, filet: 16,
-  generation: 6, host: 33, identifiant: 15, lot: 9, mot: 6, palier: 5,
+  generation: 6, host: 33, identifiant: 15, jonction: 10, lot: 9, mot: 6, palier: 5,
   plafond: 6, recherche: 25, rechercheGrande: 7, reelle: 38,
   reversibilite: 10, suppression: 34, tickets: 9, ui: 39,
 };
+// `jonction` vaut 10 : cinq vérifications INCONDITIONNELLES par cas — [recycle]
+// puis [permanent] — écrites dès que le volume est jetable. Un échec de parcours
+// ajoute un verdict ROUGE et sort la sonde en 1, où le plancher ne s'applique
+// plus (il ne parle que des VERTES). Plancher ajouté le 20/10/2026 avec la
+// ligne de décompte de la sonde : sans cette ligne, la sortie était « muette »
+// aux yeux du harnais, qui forçait son rouge à code 0 — les dix verdicts
+// existaient, aucun n'était compté.
+//
 // `reversibilite` vaut 10, et non 8. Deux raisons, toutes deux mesurées :
 //   - le scénario 1 écrit 9 verdicts INCONDITIONNELS, pas 8. Les huit d'origine,
 //     plus « l'aperçu expose corbeille_inerte » ajouté par b5111f7 — le plancher
