@@ -216,16 +216,43 @@ if (api[cible].total > 0) {
     new RegExp(`${attendu.size} emplacement`).test(entete), entete.slice(0, 150));
 
   // ---------- 4. la route de révélation ----------
-  const horsListe = 'C:\\chemin\\absent\\de\\la\\liste';
-  const statutRefus = await page.evaluate(async p => {
+  //
+  // La route compare le chemin reçu à l'instantané du volume NOMMÉ dans la
+  // requête : le témoin doit donc venir de la liste de CE volume-là. La
+  // version antérieure nommait `drive: 'C'` en dur alors que le témoin venait
+  // de `cible` — sur une machine où G: a le plus d'illisibles (113 contre 20,
+  // mesuré le 20/10/2026), la route cherchait « G:\System Volume Information »
+  // dans la liste de C: et répondait 400 : la sonde rougeait sur une garde qui
+  // fonctionnait exactement comme demandé. Les deux appels nomment donc le
+  // volume qui porte le chemin, et rien d'autre ne change entre le refus et
+  // l'acceptation — c'est le chemin seul qui fait la différence.
+  const horsListe = `${cible}:\\chemin\\absent\\de\\la\\liste`;
+  const statutRefus = await page.evaluate(async ({ d, p }) => {
     const r = await fetch('/api/reveal', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Diskmap': '1' },
-      body: JSON.stringify({ drive: 'C', path: p }),
+      body: JSON.stringify({ drive: d, path: p }),
     });
     return r.status;
-  }, horsListe);
+  }, { d: cible, p: horsListe });
   verifier('un chemin hors liste est refusé', statutRefus === 400,
     `statut ${statutRefus}, attendu 400 — la route ouvrirait n'importe quel chemin`);
+
+  // Le témoin n'est PAS un dossier système. `System Volume Information` et
+  // `$RECYCLE.BIN` sont les premiers illisibles de presque tout volume : les
+  // révéler ouvrirait l'Explorateur sur un dossier que l'utilisateur ne peut
+  // même pas parcourir — une fenêtre qui ne prouve rien de l'usage réel. Ils
+  // sont écartés du CHOIX du témoin seulement : la liste affichée, elle, reste
+  // complète, parce que le regroupement et la copie doivent couvrir TOUS les
+  // chemins renvoyés par l'API. Repli sur le premier de la liste s'ils
+  // occupent tout — un volume dont les seuls illisibles sont système existe
+  // (V: en porte un seul), et la route doit accepter ce chemin-là comme un autre.
+  const estSystem = (p) => /(^|\\)(System Volume Information|\$RECYCLE\.BIN)(\\|$)/i.test(p);
+  const reguliers = api[cible].items.filter((i) => !estSystem(i.path));
+  if (!reguliers.length) {
+    noter(`tous les illisibles de ${cible}: sont des dossiers système — `
+      + 'le témoin en est un, et la route doit l’accepter comme un autre');
+  }
+  const temoin = (reguliers[0] || api[cible].items[0]).path;
 
   // Le chemin de la liste est ACCEPTÉ — donc l'Explorateur s'ouvre pour de bon,
   // comme pour un vrai clic. Le guetteur est lancé AVANT l'appel, jamais après :
@@ -233,17 +260,16 @@ if (api[cible].total > 0) {
   // veut éviter. Il ne ferme que les fenêtres nées sous ses yeux — celles de
   // l'utilisateur ne sont pas dans son instantané et ne sont jamais touchées.
   const guet = surveillerFenetres();
-  const premier = api[cible].items[0].path;
-  const statutOk = await page.evaluate(async p => {
+  const statutOk = await page.evaluate(async ({ d, p }) => {
     const r = await fetch('/api/reveal', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Diskmap': '1' },
-      body: JSON.stringify({ drive: 'C', path: p }),
+      body: JSON.stringify({ drive: d, path: p }),
     });
     return r.status;
-  }, premier);
+  }, { d: cible, p: temoin });
   const rapport = await guet.arreter();
   verifier('un chemin de la liste est accepté (et l’Explorateur s’ouvre)', statutOk === 200,
-    `statut ${statutOk} pour « ${premier} »`);
+    `statut ${statutOk} pour « ${temoin} »`);
   // Le geste du serveur est correct même si le ramasse-miettes a échoué : les deux
   // faits sont distincts, et confondre les deux ferait rater un vrai défaut.
   if (!rapport.neutre) {
