@@ -1542,9 +1542,16 @@ fn blocked_reason(path: &Path) -> Option<&'static str> {
         return Some("chemin trop court");
     }
     let rest = &up[3..];
-    let parts: Vec<&str> = rest.split('\\').filter(|p| !p.is_empty()).collect();
+    let parts: Vec<&str> = rest.split(['\\', '/']).filter(|p| !p.is_empty()).collect();
     if parts.is_empty() {
         return Some("racine du volume");
+    }
+    // Les deux séparateurs sont reconnus ici comme dans `dossiers_a_nommer` :
+    // une protection qui ne lit que `\\` est une protection qu'un chemin écrit
+    // avec `/` traverse sans être vu. `..` n'a rien à faire dans un chemin
+    // résolu depuis l'index ; le refuser ici ferme la porte sans rien casser.
+    if parts.contains(&"..") {
+        return Some("composant parent non résolu");
     }
     const FORBIDDEN: &[&str] = &[
         "WINDOWS",
@@ -1807,12 +1814,13 @@ fn dry(
     // l'aléa qui doit être imprévisible — et lui seul.
     let token = format!("{}-{:016x}", now_ms(), win32::alea_u64());
     {
-        let mut p = app.pending.lock().unwrap();
+        let mut p = app.pending.lock().unwrap(); // aperçu : purge des jetons périmés
+
         // Un jeton périmé est retiré ICI aussi, pas seulement à l'exécution :
         // une série d'aperçus jamais confirmés ferait sinon croître cette map
         // sans borne, chacun retenant une liste entière de chemins.
         let now = now_ms();
-        p.retain(|_, v| now - v.at_ms < 600_000);
+        p.retain(|_, v| now - v.at_ms < 600_000); // aperçu
         p.insert(
             token.clone(),
             PendingDel {
@@ -1857,9 +1865,9 @@ fn execute(
     // On valide tout avant de consommer le jeton : une demande refusée (mauvais
     // volume, confirmation absente) ne doit pas obliger à refaire une simulation.
     let peek = {
-        let mut p = app.pending.lock().unwrap();
+        let mut p = app.pending.lock().unwrap(); // exécution : lecture avant validation
         let now = now_ms();
-        p.retain(|_, v| now - v.at_ms < 600_000);
+        p.retain(|_, v| now - v.at_ms < 600_000); // exécution
         p.get(&token).cloned()
     };
     let peek = peek.ok_or((
@@ -1914,7 +1922,7 @@ fn execute(
 
     // Validé : le jeton est consommé, il ne servira qu'une fois.
     let pending = {
-        let mut p = app.pending.lock().unwrap();
+        let mut p = app.pending.lock().unwrap(); // exécution : consommation unique
         p.remove(&token)
     };
     let pending = pending.ok_or((
@@ -2346,6 +2354,88 @@ mod tests_content_length {
     #[test]
     fn une_valeur_qui_deborde_est_refusee() {
         assert!(parse_content_length("99999999999999999999999999999").is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_chemins_et_hote {
+    use super::{blocked_reason, hote_local, port_ok};
+    use std::path::Path;
+
+    fn motif(p: &str) -> Option<&'static str> {
+        blocked_reason(Path::new(p))
+    }
+
+    #[test]
+    fn racine_et_dossiers_systeme_sont_bloques() {
+        assert_eq!(motif(r"C:\"), Some("racine du volume"));
+        assert_eq!(
+            motif(r"C:\Windows\System32"),
+            Some("répertoire système protégé")
+        );
+        // Le 17/11/2026 : la règle ne lisait que `\\` et laissait passer la
+        // même cible écrite avec `/`, alors que `dossiers_a_nommer` lisait
+        // les deux. Une protection à moitié informée n'est pas une protection.
+        assert_eq!(
+            motif("C:/WINDOWS/System32"),
+            Some("répertoire système protégé")
+        );
+        assert_eq!(
+            motif(r"D:\Program Files\outil"),
+            Some("répertoire système protégé")
+        );
+    }
+
+    #[test]
+    fn profils_utilisateur_sont_bloques_jusqu_au_second_niveau() {
+        assert_eq!(motif(r"C:\Users\Ro"), Some("profil utilisateur protégé"));
+        assert_eq!(motif("c:/users/ro"), Some("profil utilisateur protégé"));
+        assert_eq!(motif(r"C:\Users\Ro\Documents"), None);
+    }
+
+    #[test]
+    fn un_parent_non_resolu_est_refuse() {
+        assert_eq!(
+            motif(r"D:\donnees\..\Windows"),
+            Some("composant parent non résolu")
+        );
+    }
+
+    #[test]
+    fn un_chemin_ordinaire_passe() {
+        assert_eq!(motif(r"D:\Donnees\2026\rapport.txt"), None);
+    }
+
+    #[test]
+    fn hote_local_accepte_les_noms_attendus_et_refuse_les_leurres() {
+        for h in [
+            "127.0.0.1",
+            "127.0.0.1:8756",
+            "localhost",
+            "LOCALHOST.",
+            "[::1]",
+            "[::1]:8756",
+        ] {
+            assert!(hote_local(h), "« {h} » devait être accepté");
+        }
+        for h in [
+            "127.0.0.1.evil.test",
+            "evil.test:8756",
+            "127.0.0.1:8800@evil.test",
+            "[::1]:abc",
+            "",
+            "localhost.evil.test",
+        ] {
+            assert!(!hote_local(h), "« {h} » devait être refusé");
+        }
+    }
+
+    #[test]
+    fn port_ok_ne_laisse_pas_un_suffixe_de_nom() {
+        assert!(port_ok("8756"));
+        assert!(port_ok(""));
+        assert!(!port_ok("8800@evil.test"));
+        assert!(!port_ok("-1"));
     }
 }
 
