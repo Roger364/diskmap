@@ -216,9 +216,20 @@ diskmap.bat
 
 ### Signing releases
 
-Get an OV code-signing certificate from DigiCert, GlobalSign or Sectigo (about €100–200/year). Keep its PFX private and out of Git; configure these repository secrets:
-`CODE_SIGNING_PFX` (base64-encoded PFX: `[Convert]::ToBase64String([IO.File]::ReadAllBytes('diskmap.pfx')) | gh secret set CODE_SIGNING_PFX`) and `CODE_SIGNING_PASSWORD` (`gh secret set CODE_SIGNING_PASSWORD`). Never commit the PFX.
-The release CI signs with a DigiCert timestamp and verifies via `signtool`; release notes report “Signé : oui” and the certificate thumbprint. If either secret is absent, it warns and publishes unsigned.
+Today the release job can sign with a private PFX: configure `CODE_SIGNING_PFX`
+(base64) and `CODE_SIGNING_PASSWORD` as repository secrets, never in Git. With
+neither secret set it **warns and publishes unsigned** — that is exactly what
+happened for `v0.1.96`; the release notes say so and publish the SHA-256.
+
+SignPath is the intended route once the application has been tested and
+approved. The plan is to submit the same CI artifact for **test-signing**, run
+the acceptance checks on the signed binary, then resubmit it for
+**release-signing** after approval. This requires no secret in the repository
+until that step; `SIGNPATH_API_TOKEN` will be added only then.
+
+The provenance date is the **commit date**, not the wall-clock build time, so
+two builds of one commit carry the same binary hash. That is what SignPath's
+origin verification expects.
 
 The binary opens `http://127.0.0.1:8756/` **when you launched it yourself** —
 by double-clicking, or from a terminal. A launch with no console, which is what a

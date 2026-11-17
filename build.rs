@@ -14,9 +14,14 @@
 //
 // Le tout affiché au démarrage, sur la console, à la place d'un simple
 // « Espace disque : http://… ».
+//
+// Le 17/11/2026, la porte 2 du plan SignPath a posé une contrainte nouvelle :
+// l'origine vérifiée exige que le binaire soit déterminé par le dépôt. Un
+// horodatage pris à l'horloge murale faisait donc deux binaires différents
+// pour un même commit. La date gravée est désormais CELLE DU COMMIT, lue dans
+// git : elle varie d'un commit à l'autre, jamais d'une compilation à l'autre.
 
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
     // Sans cela, cargo rebuild à chaque compilation : le dépôt est surveillé en
@@ -53,10 +58,16 @@ fn main() {
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "agent NON DECLARE".to_string());
 
-    let provenance = format!(
-        "{sha} · {arbre} · construit par {agent} le {}",
-        horodatage()
-    );
+    // Date du COMMIT, pas date de compilation : c'est ce qui rend deux
+    // compilations du même commit identiques, condition d'une origine
+    // vérifiable par SignPath. Si git ne répond pas, on le dit — on ne
+    // fabrique pas une date plausible à partir de l'horloge locale.
+    let date = git(&["log", "-1", "--format=%ct"])
+        .and_then(|s| s.trim().parse::<i64>().ok())
+        .map(horodatage)
+        .unwrap_or_else(|| "date du commit inconnue".into());
+
+    let provenance = format!("{sha} · {arbre} · construit par {agent} le {date}");
     println!("cargo:rustc-env=DISKMAP_PROVENANCE={provenance}");
     println!("cargo:rustc-env=DISKMAP_ARBRE_SALLE={sale}");
     println!("cargo:rustc-env=DISKMAP_COMMIT={sha}");
@@ -76,16 +87,17 @@ fn git(args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Date UTC de la compilation, `AAAA-MM-JJ HH:MM:SS`.
+/// Date UTC du COMMIT, `AAAA-MM-JJ HH:MM:SS UTC`.
 ///
-/// Écrit à la main plutôt qu'importé : le projet n'a que trois dépendances et
+/// Écrite à la main plutôt qu'importé : le projet n'a que trois dépendances et
 /// celle-ci ne vaut pas une de plus. Algorithme de Howard Hinnant
 /// (`civil_from_days`), exact pour les dates avant 1970 comme après.
-fn horodatage() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+///
+/// L'entrée vient de `git log --format=%ct` : c'est un fait sur le dépôt, pas
+/// une lecture de l'horloge de la machine qui compile. Deux builds du même
+/// commit gravent donc la même provenance — mesuré le 17/11/2026 par comparaison
+/// des SHA-256 de deux `cargo build --release` successifs.
+fn horodatage(secs: i64) -> String {
     let jours = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
     let z = jours + 719_468;
