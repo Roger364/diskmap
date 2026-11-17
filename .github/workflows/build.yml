@@ -38,7 +38,13 @@ jobs:
       # L'empreinte voyage AVEC le binaire : un consuming job qui la recalcule
       # sur le fichier telecharge peut ainsi dire « c'est le meme », au lieu de
       # le supposer. Les deux fichiers sont eprouves ensemble.
+      #
+      # `id` est pose des maintenant, avant SignPath : l'action
+      # `signpath/github-action-submit-signing-request` exigera un
+      # `github-artifact-id`, et il devra designer CET artifact-ci — le seul
+      # qui ait ete compile, eprouve et verifie par empreinte.
       - name: Publier le binaire eprouve
+        id: binaire-eprouve
         uses: actions/upload-artifact@v7
         with:
           name: diskmap-windows
