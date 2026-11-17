@@ -6,7 +6,12 @@ on:
   pull_request:
 
 jobs:
-  windows:
+  # Un seul binaire pour tout le pipeline. Les jobs qui l'eprouvent ne
+  # compilent plus : ils consomment l'artifact de celui-ci et en verifient
+  # l'empreinte. Le 17/11/2026, l'audit a mesure que `windows` et `sondes`
+  # compilaient chacun leur copie, alors que la release publiait celle du
+  # premier et que les sondes destructives eprouvaient celle du second.
+  build:
     runs-on: windows-latest
     # Le binaire grave son origine a la compilation : sans ce mot, la release
     # publiee dirait « agent NON DECLARE » — un livrable qui ne sait pas qui l'a
@@ -20,6 +25,53 @@ jobs:
 
       - name: Compiler
         run: cargo build --release
+
+      - name: Empreinte du binaire eprouve
+        shell: pwsh
+        run: |
+          $racine = Join-Path $env:GITHUB_WORKSPACE 'target\release'
+          $binaire = Join-Path $racine 'diskmap.exe'
+          $empreinte = (Get-FileHash -LiteralPath $binaire -Algorithm SHA256).Hash
+          [IO.File]::WriteAllText((Join-Path $racine 'diskmap.sha256'), $empreinte)
+          Write-Host "Binaire compile : $empreinte"
+
+      # L'empreinte voyage AVEC le binaire : un consuming job qui la recalcule
+      # sur le fichier telecharge peut ainsi dire « c'est le meme », au lieu de
+      # le supposer. Les deux fichiers sont eprouves ensemble.
+      - name: Publier le binaire eprouve
+        uses: actions/upload-artifact@v7
+        with:
+          name: diskmap-windows
+          path: |
+            target/release/diskmap.exe
+            target/release/diskmap.sha256
+
+  windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Plus de `cargo build --release` ici : le binaire vient du job `build`,
+      # et il est vérifié avant toute autre étape.
+      - name: Recuperer le binaire eprouve
+        uses: actions/download-artifact@v8
+        with:
+          name: diskmap-windows
+          path: target/release
+
+      - name: Verifier l'empreinte du binaire
+        shell: pwsh
+        run: |
+          $racine = Join-Path $env:GITHUB_WORKSPACE 'target\release'
+          $attendu = [IO.File]::ReadAllText((Join-Path $racine 'diskmap.sha256')).Trim()
+          $mesure = (Get-FileHash -LiteralPath (Join-Path $racine 'diskmap.exe') -Algorithm SHA256).Hash
+          if ($mesure -ne $attendu) {
+            throw "Binaire different de celui du job build : attendu $attendu, mesure $mesure"
+          }
+          Write-Host "Binaire conforme a l'artifact du job build : $mesure"
 
       - name: Qualite Rust
         run: |
@@ -90,12 +142,6 @@ jobs:
           }
           exit $LASTEXITCODE
 
-      - name: Publier le binaire
-        uses: actions/upload-artifact@v7
-        with:
-          name: diskmap-windows
-          path: target/release/diskmap.exe
-
   # Les sondes qui CREENT et SUPPRIMENT, y compris celle qui rejoue l'incident
   # du 26/09/2026. Elles sont écartées du job ci-dessus pour une seule raison :
   # ce job peut tourner sur un runner auto-hébergé, où « volume jetable » n'est
@@ -106,16 +152,29 @@ jobs:
   # défaut d'identifiant-position et le filet de sécurité ne sont vérifiés que par
   # une main, un jour, sur le poste de quelqu'un.
   sondes:
+    needs: build
     runs-on: windows-latest
-    env:
-      DISKMAP_AGENT: github-actions
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Le binaire eprouve ici est le meme que celui de la release : il vient
+      # du job `build`, et l'empreinte est verifiee avant la premiere sonde.
+      - name: Recuperer le binaire eprouve
+        uses: actions/download-artifact@v8
+        with:
+          name: diskmap-windows
+          path: target/release
 
-      - name: Compiler
-        run: cargo build --release
+      - name: Verifier l'empreinte du binaire
+        shell: pwsh
+        run: |
+          $racine = Join-Path $env:GITHUB_WORKSPACE 'target\release'
+          $attendu = [IO.File]::ReadAllText((Join-Path $racine 'diskmap.sha256')).Trim()
+          $mesure = (Get-FileHash -LiteralPath (Join-Path $racine 'diskmap.exe') -Algorithm SHA256).Hash
+          if ($mesure -ne $attendu) {
+            throw "Binaire different de celui du job build : attendu $attendu, mesure $mesure"
+          }
+          Write-Host "Binaire conforme a l'artifact du job build : $mesure"
 
       - name: Installer les sondes navigateur
         working-directory: tests/sondes
@@ -174,13 +233,13 @@ jobs:
           }
           exit $LASTEXITCODE
 
-  # Le binaire telechargeable ne doit jamais avoir ete eprouve par quelqu'un
-  # d'autre que celui qui le publie. Il est donc pris TEL QUEL dans l'artifact du
-  # job `windows` — celui qui a passe fmt, clippy, test et les sondes non
-  # destructives. Le recompiler ici republierait un autre binaire que celui qui
-  # a ete verifie : c'est exactement le defaut qui rendait le 26/09/2026
-  # inexpliquable, « un binaire perime que personne ne savait de quel commit il
-  # sortait ». Ici, le tag nomme le commit, et le binaire est celui du commit.
+  # Le binaire telechargeable ne doit jamais etre un autre que celui qui a ete
+  # eprouve. Il est pris TEL QUEL dans l'artifact unique du job `build`, consomme
+  # ensuite par les deux jobs de verification. Le recompiler ici republierait un
+  # autre binaire que celui qui a ete verifie : c'est exactement le defaut qui
+  # rendait le 26/09/2026 inexpliquable, « un binaire perime que personne ne
+  # savait de quel commit il sortait ». L'empreinte jointe a l'artifact est
+  # recalculee sur le fichier MEME qui part dans la release, pas sur une copie.
   #
   # `needs: [windows, sondes]` n'est pas decoratif : si la qualite OU les sondes
   # echouent, aucune release n'est creee. Publier n'est pas une consequence du
@@ -201,6 +260,16 @@ jobs:
         with:
           name: diskmap-windows
           path: .
+
+      - name: Verifier l'empreinte avant publication
+        shell: pwsh
+        run: |
+          $attendu = [IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE 'diskmap.sha256')).Trim()
+          $mesure = (Get-FileHash -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'diskmap.exe') -Algorithm SHA256).Hash
+          if ($mesure -ne $attendu) {
+            throw "Release differente du binaire eprouve : attendu $attendu, mesure $mesure"
+          }
+          Write-Host "Release conforme au binaire eprouve : $mesure"
 
       - name: Sign release binary
         id: signature
@@ -226,7 +295,7 @@ jobs:
             if (-not $signtool) { throw 'signtool.exe introuvable dans le Windows SDK du runner.' }
             $signtool = $signtool.FullName
 
-            $binaires = @('.\diskmap-CI.exe', '.\diskmap.exe') |
+            $binaires = @('.\diskmap.exe') |
               Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
             if (-not $binaires) { throw 'Aucun binaire DiskMap à signer.' }
             foreach ($binaire in $binaires) {
