@@ -62,13 +62,25 @@ function sortieDe(r) {
   return `${r.stdout || ''}${r.stderr || ''}`;
 }
 
-async function lancerHarnais(mot = '') {
+async function lancerHarnais(mot = '', avecContexteRunner = false) {
   const env = {
     ...process.env,
     DISKMAP_SONDE_VOLUME: 'C',
     DISKMAP_SONDE_RACINE: 'C:\\_diskmap_sondes',
     DISKMAP_SONDE_MACHINE_EPHEMERE: mot,
   };
+  // Depuis le 17/11/2026, une declaration seule ne suffit plus : on simule
+  // explicitement le contexte d'un runner GitHub pour le cas ou l'on veut voir
+  // la banniere, et on le retire pour prouver que la garde mord sans lui.
+  if (avecContexteRunner) {
+    env.GITHUB_ACTIONS = 'true';
+    env.GITHUB_RUN_ID = '424242';
+    env.RUNNER_TEMP = process.env.TEMP || process.env.TMP || ICI;
+  } else {
+    delete env.GITHUB_ACTIONS;
+    delete env.GITHUB_RUN_ID;
+    delete env.RUNNER_TEMP;
+  }
   return lancer(
     [LANCER, '--volume', 'C', '--attendre', '60', '--sans', SAUTES],
     { cwd: ICI, timeout: mot ? 180_000 : 120_000, windowsHide: true, env },
@@ -193,7 +205,13 @@ verifier('le refus dit quoi faire, pas seulement que non', /creer-volume-test/.t
 // travail, et c'est ce qui garde ce test rapide.
 console.log('\n--- 4. la declaration reste-t-elle visible ? ---');
 const MOT = 'runner-de-test-vraiment-furtif';
-const d2 = await lancerHarnais(MOT);
+const d3 = await lancerHarnais(MOT); // declaration SEULE, sans contexte de runner
+const sortie3 = sortieDe(d3);
+verifier('la declaration seule ne suffit plus a ouvrir les sondes',
+  d3.status === 2 && /contexte de runner non vérifiable/.test(sortie3), sortie3.slice(0, 300));
+verifier('le refus nomme les signaux manquants, pas seulement « non »',
+  /GITHUB_ACTIONS.*GITHUB_RUN_ID.*RUNNER_TEMP/.test(sortie3), sortie3.slice(0, 300));
+const d2 = await lancerHarnais(MOT, true); // declaration + contexte simule
 const sortie2 = sortieDe(d2);
 verifier('la declaration est reprise mot pour mot dans la sortie',
   sortie2.includes(MOT), sortie2.slice(0, 300));
@@ -201,6 +219,8 @@ verifier('elle est encadree, pas noyee dans la sortie',
   /={5,}[\s\S]*DECLARATION[\s\S]*={5,}/.test(sortie2), sortie2.slice(0, 300));
 verifier('elle dit qu elle repose sur une affirmation, pas sur une mesure',
   /DECLARATION, pas sur mesure/.test(sortie2), sortie2.slice(0, 300));
+verifier('le contexte de runner mesuré est affiché a cote de l affirmation',
+  /Contexte mesuré : runner GitHub 424242/.test(sortie2), sortie2.slice(0, 400));
 verifier('le volume refuse reste refuse quand rien ne le declare',
   (await lancerHarnais()).status === 2, 'le run a passe sans declaration');
 

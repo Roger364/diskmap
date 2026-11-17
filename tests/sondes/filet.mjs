@@ -2,8 +2,8 @@
 //
 // POURQUOI IL EXISTE, ET POURQUOI C'EST UN PROXY
 // -------------------------------------------------
-// Le 26/09/2026, une sonde de coût a détruit 65 fichiers réels et en a envoyé
-// 68 autres à la corbeille, dispersés sur tout le volume de travail. Elle ne
+// Le 26/09/2026, une sonde de coût a détruit 79 fichiers réels et en a envoyé
+// 89 autres à la corbeille, dispersés sur tout le volume de travail. Elle ne
 // s'était pas trompée de cible : elle avait envoyé des IDENTIFIANTS, et c'est
 // le serveur qui les a résolus — contre un index réanalysé depuis, donc vers
 // d'autres fichiers que les siens. La sonde faisait confiance à la

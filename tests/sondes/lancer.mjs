@@ -42,7 +42,7 @@
 // filet qui a manqué le 26/09/2026 — il n'existait pas. Voir `filet.mjs` pour
 // pourquoi c'est un proxy et non une vérification dans chaque sonde.
 
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
 import net from 'net';
 import path from 'path';
@@ -51,7 +51,7 @@ import { fileURLToPath } from 'url';
 import { creerFilet } from './filet.mjs';
 import {
   URL_DEFAUT, VOLUME_DEFAUT, VOLUME_SANS_CORBEILLE, racine, MACHINE_EPHEMERE,
-  interrogerVolumes, volumeJetable, decrireVolume,
+  contexteRunnerEphemere, interrogerVolumes, volumeJetable, decrireVolume,
 } from './config.mjs';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
@@ -301,6 +301,29 @@ function plusRecentQue(reference, cibles) {
     }
   }
   return pire;
+}
+
+// Délai MURAL par sonde. `--attendre` borne l'attente de l'analyse d'un volume,
+// pas l'exécution de la sonde : le 17/11/2026, l'audit a mesuré qu'un `spawn`
+// sans borne pouvait retenir le run jusqu'à la limite du runner. La valeur est
+// configurable pour un runner lent, mais un nombre invalide ne désactive pas
+// la garde — il retombe sur la valeur mesurée.
+const delaiBrut = Number(process.env.DISKMAP_SONDE_DELAI_MS);
+const DELAI_SONDE_MS = Number.isFinite(delaiBrut) && delaiBrut > 0
+  ? delaiBrut
+  : 10 * 60 * 1000;
+
+// `ChildProcess.kill()` ne tue que le node père : un Chromium lancé par une
+// sonde survivrait au délai et garderait le port occupé. Sur Windows on coupe
+// l'arbre, puis on garde `kill()` comme repli.
+function arreterArbre(p) {
+  if (process.platform === 'win32' && p.pid) {
+    try {
+      spawnSync('taskkill', ['/PID', String(p.pid), '/T', '/F'],
+        { windowsHide: true, stdio: 'ignore' });
+    } catch { /* le repli ci-dessous suffit si taskkill est absent */ }
+  }
+  p.kill();
 }
 
 // ------------------------------------------------------------------ arguments
@@ -1307,16 +1330,27 @@ async function exigerVolumeJetable(vol) {
   const v = volumeJetable(cible);
   if (!v.jetable) {
     if (MACHINE_EPHEMERE) {
-      // La seule voie qui passe, et elle est bruyante. Elle dit ce qu elle
-      // repose : rien. Ni un fait, ni un releve — une affirmation de
-      // l operateur, dont le MOT est affiche pour qu on puisse le discuter.
-      // Si cette ligne te surprend dans un log, c est que quelqu un l a posee
-      // sans y penser, et c est exactement le moment de le voir.
+      const contexte = contexteRunnerEphemere();
+      if (!contexte.ok) {
+        // Le 17/11/2026 : une variable posée à la main suffisait à faire
+        // tourner des sondes destructives sur un vrai disque. Le mot est
+        // conservé — il dit POURQUOI — mais il exige désormais un runner
+        // reconnaissable, dont le dossier temporaire existe réellement.
+        throw new Error(
+          `DECLARATION « ${MACHINE_EPHEMERE} » refusée : ${contexte.motif}. ` +
+          `Une affirmation seule n'ouvre plus les sondes destructives.`
+        );
+      }
+      // La voie qui passe est bruyante : elle dit ce sur quoi elle repose.
+      // Ni un fait sur le disque, ni un relevé : une affirmation de
+      // l'operateur, adossée à un contexte de runner mesuré, et dont le MOT
+      // est affiché pour qu'on puisse le discuter.
       console.log('  ============================================================');
       console.log(`  DECLARATION  « ${MACHINE_EPHEMERE} »`);
       console.log(`  ${vol}: n est PAS un disque virtuel. Il est accepte sur`);
       console.log('  DECLARATION, pas sur mesure. Si cette machine contient');
       console.log('  des donnees, cette declaration est fausse.');
+      console.log(`  Contexte mesuré : ${contexte.motif}`);
       console.log('  ============================================================');
       console.log('');
       return;
@@ -1327,7 +1361,7 @@ async function exigerVolumeJetable(vol) {
       + `Monte un volume jetable (tests\\sondes\\creer-volume-test.ps1) et pointe le run dessus, `
       + `ou passe --liste pour consulter la table sans rien lancer. `
       + `Sur une machine ephemere dont aucun volume n est virtuel, declaree : `
-      + `DISKMAP_SONDE_MACHINE_EPHEMERE=<pourquoi>.`
+      + `DISKMAP_SONDE_MACHINE_EPHEMERE=<pourquoi>, avec un contexte de runner verifiable.`
     );
   }
   console.log(`  volume de travail ${vol}: — ${v.motif}`);
@@ -1620,12 +1654,28 @@ function lireResidus(racines, volume) {
     // et ses propres vérifications la jugent. Ceux qu'une autre sonde provoque
     // n'ont aucune explication : une sonde a alors visé hors de sa racine, et
     // c'est exactement l'incident du 26/09/2026.
-    const incidentsAvant = filet.incidents.length;    const sortie = await new Promise((resoudre) => {
+    const incidentsAvant = filet.incidents.length;
+    const sortie = await new Promise((resoudre) => {
       const p = spawn(process.execPath, [fichier, ...args], { cwd: ICI, windowsHide: true });
       let tout = '';
+      let expire = false;
+      const delai = setTimeout(() => {
+        expire = true;
+        arreterArbre(p);
+      }, DELAI_SONDE_MS);
       p.stdout.on('data', (d) => { tout += d.toString(); });
       p.stderr.on('data', (d) => { tout += d.toString(); });
-      p.on('close', (code) => resoudre({ code, tout }));
+      p.on('close', (code, signal) => {
+        clearTimeout(delai);
+        if (expire) {
+          // Code 2 = « PAS PU » dans le vocabulaire du harnais : un délai
+          // mural est une impossibilité de mesurer, pas un produit en défaut.
+          // Le texte reste dans la sortie pour que la reprise de la CI nomme
+          // la bonne cause au lieu de parler d'analyse de volume.
+          tout += `\n[harness] DELAI MURAL ${s.nom} : ${Math.round(DELAI_SONDE_MS / 1000)} s (signal ${signal || 'kill'})`;
+        }
+        resoudre({ code: expire ? 2 : code, tout, expire });
+      });
     });
     // La derniere ligne qui compte : « 8/8 verifications ». L'accent est
     // ACCEPTÉ dans les deux écritures : la regex ne portait que `verifications`,

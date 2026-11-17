@@ -88,7 +88,7 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1669`) ; `execute` ne résout plus rien et ne supprime que les chemins
+(`src/main.rs:1676`) ; `execute` ne résout plus rien et ne supprime que les chemins
 figés par l'aperçu (`struct Montre`, `src/main.rs:110`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
@@ -248,7 +248,7 @@ Trois choix valent d'être écrits, parce qu'ils décident du geste :
   `MaxCapacity` et pour `NeedToPurge` : une valeur non mesurée n'est pas une valeur
   nulle, et un avertissement qui se déclenche sans mesure ne veut plus rien dire.
 - **Le mode « corbeille » n'obtient plus une confirmation moins chère.** `execute`
-  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2224`) : un
+  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2232`) : un
   volume à corbeille inerte exige le même mot que la suppression définitive. La
   confirmation suit le geste réel, pas le mode affiché.
 - **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1440`) est exposé au même
@@ -289,14 +289,14 @@ Deux choses valent d'être dites sur cette preuve, parce qu'elles en limitent la
 portée :
 
 - **Elle n'existe que sur une instance NON ÉLEVÉE.** Sur une instance élevée,
-  `mots_exiges` ajoute `EFFACER` pour cause d'élévation (`tests/sondes/config.mjs:352`),
+  `mots_exiges` ajoute `EFFACER` pour cause d'élévation (`tests/sondes/config.mjs:377`),
   le mot exigé est déjà le bon, et cette garde n'a plus de témoin par ce chemin.
   `epreuve.mjs` est un outil de poste et jamais du CI, où le runner est toujours
   élevé — la précondition est donc sans conséquence, mais elle est écrite ici pour
   que « ne mord pas » sur une machine élevée ne se lise pas comme un défaut du code.
 - **Elle a demandé de réparer la sonde.** Le `JSON.parse` du corps de `/api/delete`
   n'avait pas de filet, alors que le refus d'une confirmation est du **texte brut**
-  (`src/main.rs:1889`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
+  (`src/main.rs:1897`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
   sans décompte, et le harnais lisait « SANS SYNTHESE » là où il y avait une cause
   nommée — la sonde mesurait sa propre fragilité au lieu du produit. Les quatre
   corps de ce fichier passent désormais par `lireCorps`
@@ -499,7 +499,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2862`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2952`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -524,11 +524,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1810` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1815`) n'était
-appelé que dans `execute` (`src/main.rs:1860`). Des aperçus répétés sans confirmation
+`src/main.rs:1817` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1823`) n'était
+appelé que dans `execute` (`src/main.rs:1868`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1811`).
+endroit (`src/main.rs:1819`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -597,7 +597,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2146`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2154`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -743,7 +743,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:797`) et le motif est écrit (`tests/sondes/lancer.mjs:1822`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:796`, motif `tests/sondes/lancer.mjs:1818`. Sans ce
+(`tests/sondes/lancer.mjs:820`) et le motif est écrit (`tests/sondes/lancer.mjs:1872`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:819`, motif `tests/sondes/lancer.mjs:1868`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -759,8 +759,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:803`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1829`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:826`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1879`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -799,9 +799,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1750`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1800`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1877`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1927`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -906,7 +906,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1190`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1213`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -1166,7 +1166,7 @@ promesse que personne n'encaissait : l'interface et les sondes continuaient d'at
 drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais :
 
 - `POST /api/scan` répond `{ok, ticket}`, et chaque client attend **son** ticket :
-  `attendreTicket` (`tests/sondes/config.mjs:431`) boucle sur `scan_completed >= ticket` et ne
+  `attendreTicket` (`tests/sondes/config.mjs:456`) boucle sur `scan_completed >= ticket` et ne
   consulte jamais `!scanning` pour conclure ;
 - l'interface note le ticket rendu (`ui/index.html:681`) et `poll()` s'arrête sur sa publication
   (`ui/index.html:699`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
@@ -1196,7 +1196,7 @@ rendait la main au premier tour où `scanning` était faux, donc sur l'instantan
 et le `dry` suivant partait avec une génération périmée. La garde `gen` a repoussé, à raison, et
 l'échec s'est manifesto par une exception muette sur une liste vide — un accident de course qui
 accusait un défaut de suppression inexistant. `lot` attend désormais le ticket qu'elle a demandé
-(`attendreTicket`, `tests/sondes/config.mjs:431`), puis, pour chaque lot, l'instantané qui porte
+(`attendreTicket`, `tests/sondes/config.mjs:456`), puis, pour chaque lot, l'instantané qui porte
 tous les noms visés. Mesuré le 29/09/2026 : `lot` 9/9 au run complet, filet inchangé.
 
 ---
@@ -1272,9 +1272,9 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
   (`src/win32.rs:300`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:797`), pas verte par défaut : le
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:820`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:796`, motif `tests/sondes/lancer.mjs:1818`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:819`, motif `tests/sondes/lancer.mjs:1868`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1316,7 +1316,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1422`) : `rm -rf` y serait un bug, et le code le dit.
+  (`tests/sondes/lancer.mjs:1456`) : `rm -rf` y serait un bug, et le code le dit.
 - **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1193`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
@@ -1659,7 +1659,7 @@ quelque part elle devient une **assertion** — distinction que rien n'exigeait.
 
 Trois instruments, tous mesurés.
 
-**Le plancher des comptes** (`tests/sondes/lancer.mjs:392`). Vingt-quatre
+**Le plancher des comptes** (`tests/sondes/lancer.mjs:415`). Vingt-quatre
 valeurs, prises comme le **plus petit** compte observé sur les logs du 29 et du
 30/09, jamais le plus grand : un plancher pris sur un run chanceux devient rouge
 le jour où la machine change. Deux sondes varient et le tableau le dit —
@@ -1681,7 +1681,7 @@ verification(s), son plancher est 400 » et le run sort en 1 ; un plancher
 sortent en 1, et les deux fichiers ont été restaurés puis comparés par
 empreinte.*
 
-**Le registre des aveux** (`tests/sondes/lancer.mjs:480`). Un aveu doit se
+**Le registre des aveux** (`tests/sondes/lancer.mjs:503`). Un aveu doit se
 justifier, et la justification se **vérifie** :
 
 - `couvert par <fichier> : <nom de vérification>` — une autre sonde affirme la
@@ -1875,7 +1875,7 @@ du dépôt dit déjà que le défaut n'est pas le trou, c'est l'excuse.
 **Ce qui change, et pourquoi ce n'est pas un plancher plus permissif.**
 
 Le champ `couts` entre au registre `AVEURS_STRUCTURELS`
-(`tests/sondes/lancer.mjs:517`) : un trou structurel ne se contente plus de se
+(`tests/sondes/lancer.mjs:540`) : un trou structurel ne se contente plus de se
 nommer, il **déclare** ce qu'il coûte en verdicts. Le plancher se relâche
 d'autant — et d'autant seulement, parce qu'un aveu nu ne détend rien.
 

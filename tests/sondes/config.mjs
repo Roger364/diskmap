@@ -13,8 +13,8 @@
 // verifie avant d'agir, jamais apres.
 //
 // Cette regle n'est pas une precaution de principe : le 26/09/2026, une sonde de
-// cout qui ne la suivait pas a detruit definitivement 65 fichiers reels et en a
-// envoye 68 autres (74 Go) a la corbeille, disperses sur tout le volume. Les
+// cout qui ne la suivait pas a detruit definitivement 79 fichiers reels et en a
+// envoye 89 autres a la corbeille, disperses sur tout le volume. Les
 // chemins qu'elle visait etaient resolus contre un index reanalyse : ils
 // designaient d'autres fichiers que les siens.
 //
@@ -50,7 +50,7 @@ export const VOLUME_SANS_CORBEILLE = (process.env.DISKMAP_SONDE_VOLUME_SANS_CORB
   .replace(/:$/, '');
 
 /**
- * Ce que l operateur AFFIRME, quand aucun fait ne peut le prouver.
+ * Ce que l operateur AFFIRME, adosse a un contexte de runner mesurable.
  *
  * Un runner GitHub est jetable parce que le RUNNER est ephemere, pas parce que
  * son `D:` ressemble a un disque virtuel. Aucun releve ne peut etablir cela :
@@ -62,9 +62,34 @@ export const VOLUME_SANS_CORBEILLE = (process.env.DISKMAP_SONDE_VOLUME_SANS_CORB
  * suivants, pose dans un poste de travail par copier-coller — et la regle
  * n interroge plus rien. En exigeant un MOT, le log affiche ce quelqu un a
  * reellement cru, et la mention reste assez visible pour etre remarkee.
- * Elle est donc reprise telle quelle a l ecran, a chaque run.
+ * Elle est donc reprise telle quelle a l ecran, a chaque run, avec le contexte
+ * mesure qui l a laisse passer — voir `contexteRunnerEphemere`.
  */
 export const MACHINE_EPHEMERE = (process.env.DISKMAP_SONDE_MACHINE_EPHEMERE || '').trim();
+
+/**
+ * Le second signal, mesurable celui-là. Le 17/11/2026, l'audit a nommé le
+ * défaut : une seule affirmation suffisait à ouvrir les sondes destructives
+ * sur un disque physique. Un runner GitHub éphémère est aussi reconnaissable
+ * par son environnement ET par l'existence réelle de son dossier temporaire.
+ *
+ * Le mot reste exigé : il dit POURQUOI on accepte un disque que la règle
+ * refuse. Mais il ne suffit plus. Un `GITHUB_ACTIONS=true` copié sur un poste
+ * ne crée pas un `RUNNER_TEMP` qui existe — et c'est ce dernier fait qui est
+ * vérifié ici, pas une confiance aveugle dans la variable.
+ */
+export function contexteRunnerEphemere() {
+  const actions = (process.env.GITHUB_ACTIONS || '').toLowerCase() === 'true';
+  const runId = (process.env.GITHUB_RUN_ID || '').trim();
+  const temp = (process.env.RUNNER_TEMP || '').trim();
+  const manquants = [];
+  if (!actions) manquants.push('GITHUB_ACTIONS');
+  if (!/^\d+$/.test(runId)) manquants.push('GITHUB_RUN_ID');
+  if (!temp || !fs.existsSync(temp)) manquants.push('RUNNER_TEMP');
+  return manquants.length
+    ? { ok: false, motif: `contexte de runner non vérifiable (${manquants.join(', ')})` }
+    : { ok: true, motif: `runner GitHub ${runId}, dossier temporaire ${temp}` };
+}
 
 /**
  * Racine de travail sur un volume donne.

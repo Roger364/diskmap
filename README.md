@@ -268,7 +268,7 @@ npx playwright install chromium           once: the browser they drive
 node tests\sondes\lancer.mjs --liste      the probe table, runs nothing
 node tests\sondes\lancer.mjs --volume V   everything, on a disposable volume
 node tests\sondes\epreuve.mjs             the bite proofs: neutralise, expect red, restore
-cd tests\sondes && npm test               the disposable-volume rule, on its own
+cd tests\sondes && npm test               read-only checks, including the disposable-volume rule
 ```
 
 The first two lines are not optional, and until 11/10/2026 they were written
@@ -277,6 +277,11 @@ refuses (`Playwright est introuvable`), and `epreuve.mjs` cannot run a single
 entry — the bite-proof queue is closed without saying so. `npm ci` and not
 `npm install`: it is the lockfile the CI resolves, so a local run and a CI run
 mean the same thing.
+
+Each probe also has a wall-clock limit of ten minutes. `DISKMAP_SONDE_DELAI_MS`
+raises it on a slow runner; a probe that exceeds it is reported `PAS PU`, never
+green. The 17/11/2026 measurement used one millisecond on the read-only `corps`
+probe and got exactly that verdict, so the limit is a guard and not a comment.
 
 `epreuve.mjs` is the odd one out of the five: it **rewrites a source file**
 (neutralise one guard, then restores it), so it refuses to start on a dirty tree
@@ -319,8 +324,9 @@ the sandbox where it was written. Here is the exact procedure:
    ```
    Or run it with the rest of the table: `node tests\sondes\lancer.mjs --volume V`.
 
-Without a disposable volume (and without `DISKMAP_SONDE_MACHINE_EPHEMERE` declared),
-the probe **abstains and creates nothing**. That is the expected behaviour on `C:` or
+Without a disposable volume (and without both `DISKMAP_SONDE_MACHINE_EPHEMERE`
+and a verifiable ephemeral-runner context), the probe **abstains and creates
+nothing**. That is the expected behaviour on `C:` or
 `G:`, and it is what makes it safe to run the table on a developer's machine.
 
 Read the verdicts, not the exit code alone. A green run means the junction was removed
@@ -472,7 +478,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:797`) and the reason is printed (`tests/sondes/lancer.mjs:1822`). A zero summary has its own door: `tests/sondes/lancer.mjs:796`, reason `tests/sondes/lancer.mjs:1818`.
+(`tests/sondes/lancer.mjs:820`) and the reason is printed (`tests/sondes/lancer.mjs:1872`). A zero summary has its own door: `tests/sondes/lancer.mjs:819`, reason `tests/sondes/lancer.mjs:1868`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -494,7 +500,7 @@ re-reads the log.
 
 So two instruments, both with a floor and both counter-proved on the real harness:
 
-- **A floor per probe** (`tests/sondes/lancer.mjs:392`). Twenty-four values, each the *smallest* count
+- **A floor per probe** (`tests/sondes/lancer.mjs:415`). Twenty-four values, each the *smallest* count
   observed across the 29 and 30/09 runs, never the largest: a floor taken on a lucky run turns
   red the day the machine changes. Two probes vary and the table says so — `tickets` is 9 or 10
   depending on whether a scan was caught in flight, `elevation` is 18 here and 19 on the runner,
@@ -503,7 +509,7 @@ So two instruments, both with a floor and both counter-proved on the real harnes
   come with it, one of them free: a floor higher than what the probe wrote, a floor whose probe
   **no longer exists** (a rename, leaving a guard that can never fire again), and a printed count
   of how many green probes have *no* floor — a choice, and an invisible choice is not one.
-- **An admission register** (`tests/sondes/lancer.mjs:480`). An admission must justify itself, and the
+- **An admission register** (`tests/sondes/lancer.mjs:503`). An admission must justify itself, and the
   justification is verified. `couvert par <file> : <verification name>` means another probe
   *asserts* the same thing: the file must be in the catalogue and its source must contain a
   `verifier(` carrying that name — which is the answer to a third hole, *cited is not exercised*:
@@ -600,7 +606,7 @@ itself as the opposite.
 
 **What changed.** `AVEURS_STRUCTURELS` gained a `couts` field: a structural hole
 no longer merely names itself, it **declares what it costs in verdicts**, and the floor relaxes by
-exactly that (`tests/sondes/lancer.mjs:759`) — and by nothing else, because an unjustified
+exactly that (`tests/sondes/lancer.mjs:782`) — and by nothing else, because an unjustified
 admission relaxes nothing at all. The number is not guessed; it is read from one place and
 recounted every run (`PLANCHERS RELACHES`). A
 probe cannot buy its floor: it can only declare, once, in writing, the hole it just named. And if
@@ -865,8 +871,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:803`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1829`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:826`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1879`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1208,7 +1214,7 @@ cashed: the UI and the probes kept waiting on the global flag, which measurement
 between two scans. Now:
 
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
-  `attendreTicket` (`tests/sondes/config.mjs:431`) loops on `scan_completed >= ticket` and never
+  `attendreTicket` (`tests/sondes/config.mjs:456`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
 - the UI records the returned ticket (`ui/index.html:681`) and `poll()` stops on its publication
   (`ui/index.html:699`); the rescan after a deletion waits on the `scan_ticket` returned by the
@@ -1232,7 +1238,7 @@ It is **removed** (29/09/2026). Its last caller — `lot`, the probe that replay
 first turn where `scanning` was false, hence on the PREVIOUS run's snapshot, and the following
 `dry` left with a stale generation. The `gen` guard pushed back, rightly, and the failure surfaced
 as a silent exception on an empty list — a race accident accusing a non-existent deletion defect.
-`lot` now waits for the ticket it asked for (`attendreTicket`, `tests/sondes/config.mjs:431`),
+`lot` now waits for the ticket it asked for (`attendreTicket`, `tests/sondes/config.mjs:456`),
 then, for each batch, for the snapshot carrying every targeted name. Measured 29/09/2026: `lot`
 9/9 in the full run, safety net unchanged.
 
@@ -1331,9 +1337,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1750`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1800`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1877`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1927`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,
@@ -1414,12 +1420,15 @@ nothing read — the run is refused rather than assumed, because a case that was
 not measured is neither success nor failure, and here both readings are
 destructive.
 
-The one way through is `DISKMAP_SONDE_MACHINE_EPHEMERE=<why>`, which asserts that
-the **machine** is disposable rather than the volume. No measurement can
-establish that: a CI runner's spare drive is a physical disk like any other,
-and it is the runner that is thrown away. It is a value, not a flag, and it is
-reprinted inside a banner on every run it permits — a declaration nobody can see
-is a declaration nobody read.
+The one way through is `DISKMAP_SONDE_MACHINE_EPHEMERE=<why>` **plus** a runner
+that can be recognised as ephemeral: `GITHUB_ACTIONS=true`, a numeric
+`GITHUB_RUN_ID` and a `RUNNER_TEMP` directory that actually exists. The first
+asserts that the **machine** is disposable rather than the volume — no
+measurement can establish that, since a CI runner's spare drive is a physical
+disk like any other. The second prevents the assertion from being copied onto
+a workstation by accident. The word is a value, not a flag, and it is reprinted
+inside a banner on every run it permits — a declaration nobody can see is a
+declaration nobody read.
 
 None of this touches the application. `diskmap` still deletes on whatever volume
 you point it at, with its own protections intact; the rule governs only where

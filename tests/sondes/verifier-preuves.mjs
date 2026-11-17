@@ -15,8 +15,10 @@
 // Ce contrôle n'exige PAS que tous les constats aient une preuve — il les
 // COMPTE et les nomme. Exiger la couverture complète rendrait le contrôle rouge en
 // permanence, et un contrôle rouge en permanence n'est plus un contrôle. Il sort en
-// échec sur une seule chose : une preuve qui désigne un constat inexistant, parce
-// que là, c'est le contrôle qui a tort, pas le dépôt.
+// échec sur deux choses : une preuve qui désigne un constat inexistant (le
+// contrôle a tort), et une régression du PLANCHER de preuves déjà mesurées (le
+// dépôt perd une garde déjà prouvée). Le 17/11/2026, cinq constats portaient une
+// preuve rejouable : descendre sous ce nombre est une régression, pas une note.
 //
 // Usage : node tests/sondes/verifier-preuves.mjs
 
@@ -72,6 +74,10 @@ for (const p of preuves) {
 
 // --- l'écart, compté et nommé
 const couverts = new Set(preuves.filter((p) => p.sujet).map((p) => sujet(p.sujet)));
+const PLANCHER_PREUVES = 5; // mesuré le 17/11/2026, à relever quand une épreuve est ajoutée
+verifier('le nombre de preuves rejouables ne régresse pas',
+  couverts.size >= PLANCHER_PREUVES,
+  `${couverts.size} constat(s) couvert(s), plancher ${PLANCHER_PREUVES}`);
 const nus = [...constats].filter((c) => !couverts.has(c)).sort((a, b) => {
   const na = Number(String(a).replace(/\D/g, ''));
   const nb = Number(String(b).replace(/\D/g, ''));

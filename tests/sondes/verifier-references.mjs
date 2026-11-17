@@ -60,16 +60,16 @@ const ATTENDU = {
     'src/main.rs:638': 'en_attente.push(letter);',
     'src/main.rs:643': 'fn start_scan',
     'src/main.rs:345': 'Navigateur  : non ouvert',
-    'tests/sondes/lancer.mjs:1190': "'--port', String(port), '--no-browser'",
+    'tests/sondes/lancer.mjs:1213': "'--port', String(port), '--no-browser'",
     'src/main.rs:1539': 'fn blocked_reason',
-    'src/main.rs:1669': 'gen_vue != snap.gen',
-    'src/main.rs:1810': 'app.pending.lock()',
-    'src/main.rs:1811': 'retiré ICI aussi',
-    'src/main.rs:1815': 'p.retain',
-    'src/main.rs:1860': 'app.pending.lock()',
-    'src/main.rs:2146': 'let rescan = scan_ticket.is_some()',
+    'src/main.rs:1676': 'gen_vue != snap.gen',
+    'src/main.rs:1817': 'app.pending.lock().unwrap(); // aperçu',
+    'src/main.rs:1819': 'retiré ICI aussi',
+    'src/main.rs:1823': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
+    'src/main.rs:1868': 'app.pending.lock().unwrap(); // exécution : lecture',
+    'src/main.rs:2154': 'let rescan = scan_ticket.is_some()',
     'src/main.rs:125': 'scanning: Mutex<Option<char>>',
-    'src/main.rs:2862': 'fn journal',
+    'src/main.rs:2952': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',
     'src/scan.rs:503': 'pub fn dir_path',
@@ -86,18 +86,18 @@ const ATTENDU = {
     'ui/index.html:986': 'if (mien !== requete) return;',
     'ui/index.html:1105': 'relancer en administrateur',
     'ui/index.html:1116': 'const cause = dr ?',
-    'tests/sondes/lancer.mjs:1422': 'const connus',
-    'tests/sondes/lancer.mjs:797': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:796': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1818': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:803': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1822': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1829': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1750': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1877': 'note(s) de',
+    'tests/sondes/lancer.mjs:1456': 'const connus',
+    'tests/sondes/lancer.mjs:820': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:819': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1868': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:826': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1872': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1879': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1800': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1927': 'note(s) de',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
-    'tests/sondes/config.mjs:431': 'export async function attendreTicket',
+    'tests/sondes/config.mjs:456': 'export async function attendreTicket',
     'tests/sondes/sonde-generation.mjs:71': 'async function analyserEtAttendre',
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
     'ui/index.html:681': 'cur.ticket = rep && typeof rep.ticket',
@@ -123,13 +123,13 @@ const ATTENDU = {
     // Le plancher des comptes, et le registre des aveux. Les symboles pointent
     // sur les DECLARATIONS : une reference qui designerait un commentaire
     // garderait un texte, pas une regle.
-    'tests/sondes/lancer.mjs:392': 'const COMPTES_PLANCHER = {',
-    'tests/sondes/lancer.mjs:480': 'const AVEURS_STRUCTURELS = [',
+    'tests/sondes/lancer.mjs:415': 'const COMPTES_PLANCHER = {',
+    'tests/sondes/lancer.mjs:503': 'const AVEURS_STRUCTURELS = [',
     // Section 7/31 : le mode decouverte de l outil d epreuves. Le symbole est
     // la fonction qui porte la discipline de restauration — ecrite une fois,
     // donc impossible a ecrire deux fois differemment.
     'tests/sondes/epreuve.mjs:344': 'async function sousGardeNeutralisee',
-    'tests/sondes/lancer.mjs:517': 'corbeille_plafond` vaut null',
+    'tests/sondes/lancer.mjs:540': 'corbeille_plafond` vaut null',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
     // Les references vers `src/win32.rs`, longtemps INVISIBLES au controle : le
     // nom de fichier portait un chiffre et la classe de caracteres ne les
@@ -150,16 +150,16 @@ const ATTENDU = {
     'src/win32.rs:478': 'pub fn corbeille_nuke',
     'src/win32.rs:503': 'pub fn corbeille_reversible',
     'src/main.rs:1440': 'corbeille_inerte: Option<bool>,',
-    'src/main.rs:2224': 'fn mots_exiges',
+    'src/main.rs:2232': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
     // motif de refus que la sonde lisait mal : elle designe le `format!` qui
     // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
     // qui compte, et une reference qui designerait la ligne voisine garderait un
     // texte, pas la cause.
-    'src/main.rs:1889': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
+    'src/main.rs:1897': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
     // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
     // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
-    'tests/sondes/config.mjs:352': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
+    'tests/sondes/config.mjs:377': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
     // Le filet ajoute a la sonde : sans lui, un refus en texte brut la tuait par
     // `SyntaxError`, et la mesure de 3.8 n existait pas.
     'tests/sondes/sonde-reversibilite.mjs:83': 'function lireCorps(r)',
@@ -178,20 +178,20 @@ const ATTENDU = {
     'tests/sondes/sonde-ui-suppression.mjs:757': 'taille égale, l’écran range',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
-    'tests/sondes/config.mjs:431': 'export async function attendreTicket',
+    'tests/sondes/config.mjs:456': 'export async function attendreTicket',
     'tests/sondes/sonde-generation.mjs:71': 'async function analyserEtAttendre',
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
     'ui/index.html:681': 'cur.ticket = rep && typeof rep.ticket',
     'ui/index.html:699': 'd.scan_completed >= cur.ticket',
     'ui/index.html:1575': 'cur.ticket = typeof res.scan_ticket',
-    'tests/sondes/lancer.mjs:797': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:796': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1818': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:803': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1822': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1829': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1750': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1877': 'note(s) de',
+    'tests/sondes/lancer.mjs:820': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:819': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1868': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:826': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1872': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1879': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1800': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1927': 'note(s) de',
     'ui/index.html:427': 'let peintMs = null;',
     'ui/index.html:1889': 'peintMs === null || (d.finished_ms || 0) === peintMs',
     'ui/index.html:1894': 'rechargerTri();',
@@ -203,9 +203,9 @@ const ATTENDU = {
     // aveux en 451 — pas en 381 et 432, ou il n'y a que la prose qui les
     // annonce. Une troisieme ne designait RIEN (`:9999`), et la quatrieme non
     // plus : `noter()` est en 53.
-    'tests/sondes/lancer.mjs:392': 'const COMPTES_PLANCHER = {',
-    'tests/sondes/lancer.mjs:480': 'const AVEURS_STRUCTURELS = [',
-    'tests/sondes/lancer.mjs:759': 'const dispense = trous.reduce',
+    'tests/sondes/lancer.mjs:415': 'const COMPTES_PLANCHER = {',
+    'tests/sondes/lancer.mjs:503': 'const AVEURS_STRUCTURELS = [',
+    'tests/sondes/lancer.mjs:782': 'const dispense = trous.reduce',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
   },
 };
