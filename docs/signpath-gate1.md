@@ -53,6 +53,17 @@ leurs chiffres sont repris de la sortie de
 `node tests/sondes/lancer.mjs --volume V` dans la table des contrôles. Le journal
 brut de ce run n'est pas encore archivé dans `evidence/`.
 
+Ces mêmes compteurs sont reproductibles publiquement : le job `sondes` du run
+[44956721088](https://github.com/Roger364/diskmap/actions/runs/44956721088)
+(commit `a6e658f`, tête de cette branche) donne `25/25 sondes vertes` et, à
+l'identique, `suppression 34/34`, `reelle 38/38`, `aNommer 27/27`,
+`recherche 25/25`, `rechercheGrande 7/7`, `arret 9/9`, `arret-idle 3/3`,
+`arret-running 4/4`, `reversibilite 10/10`. Journal du job archivé hors dépôt :
+`evidence/ci-44956721088-sondes.log`. Restent locales, parce que liées à la
+machine, les deux comptages de scan (`V:` 3 dossiers / 0 fichier, `C:` 724 770
+dossiers / 3 757 828 fichiers) et les compteurs que l'environnement du runner
+décale (`tickets`, `plafond`, `palier`, `ui`, `elevation`, `csrf`, `erreurs`).
+
 **Reste à faire, dans cet ordre :** archiver la sortie du run A3–A9
 (`node tests/sondes/lancer.mjs --volume V`) dans `evidence/` ; puis A11–A13 après
 une requête SignPath `test-signing` ; puis A14, décision de Ro. A10 est verte
