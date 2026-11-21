@@ -1,6 +1,6 @@
 # Porte 1 — dossier d'acceptation diskmap avant SignPath
 
-**Statut : PARTIEL au 2026-11-21.** A1, A2, A3–A9 et A10 sont prouvés (section « Preuves du 21/11/2026 »). A11–A13 attendent un compte SignPath ; A14 appartient à Ro. Tant que ces cases sont vides, l'application n'est ni testée ni approuvée au sens du plan SignPath.
+**Statut : PARTIEL au 2026-11-21.** A1, A2, A3–A9 et A10 sont prouvés (A1, A2 et A10 dans « Preuves du 21/11/2026 », A3–A9 dans la table des contrôles). A11–A13 attendent un compte SignPath ; A14 appartient à Ro. Tant que ces cases sont vides, l'application n'est ni testée ni approuvée au sens du plan SignPath.
 
 **Référence :** plan SignPath déposé dans le vault `team-memory`, note `2026-11-17_workbuddy_diskmap-plan-signpath.md`.
 **Prérequis organisationnel :** satisfait pour la revue — PR #1 et #2 sont fusionnées (17–18/11/2026). La ruleset `27500006` n'a pas été vérifiée dans cette passe.
@@ -48,8 +48,13 @@ Binaire de référence : asset `diskmap.exe` de la release **v0.1.100**, commit
 Le binaire, le journal CI complet et la fiche `A1-A2-A10.md` sont archivés hors
 dépôt dans `G:/workspaces/workbuddy-ai/_sauvegardes/diskmap-2026-11-21/evidence/`.
 
-**Reste à faire, dans cet ordre :** A3–A9 sur un VHD jetable
-(`tests/sondes/creer-volume-test.ps1`, élévation requise) ; puis A11–A13 après
+Les preuves A3–A9 proviennent d'un run local sur `V:` jetable le 2026-11-21 ;
+leurs chiffres sont repris de la sortie de
+`node tests/sondes/lancer.mjs --volume V` dans la table des contrôles. Le journal
+brut de ce run n'est pas encore archivé dans `evidence/`.
+
+**Reste à faire, dans cet ordre :** archiver la sortie du run A3–A9
+(`node tests/sondes/lancer.mjs --volume V`) dans `evidence/` ; puis A11–A13 après
 une requête SignPath `test-signing` ; puis A14, décision de Ro. A10 est verte
 mais porte la réserve structurelle de la sonde `host` : elle ne prouve pas la
 garde 403 de l'application.
