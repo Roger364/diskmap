@@ -14,7 +14,7 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 | Already released in the form to be signed | ✅ | Releases `v0.1.89`…`v0.1.100` published from CI artifact |
 | Documented functionality | ✅ | README.md (what it does, deleting, security, build) |
 | Verifiable automated builds from source | ✅ | `.github/workflows/build.yml`: single artifact, hash verified by consuming jobs, provenance (commit, tree state, agent) embedded in binary |
-| Signed binaries carry product name/version metadata | ✅ | Added via `build.rs` + `winres` crate: `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0` (commit `pending`) |
+| Signed binaries carry product name/version metadata | ✅ | Added via `build.rs` + `winres` crate: `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0` (commit `0956adb`) |
 | Uninstallation capability | N/A | No installer (portable .exe); nothing to uninstall. Document in application. |
 | No unrequested network transfers | ✅ | Fully local; only `http://127.0.0.1` for the UI |
 | Team owns source repo + build scripts | ✅ | Roger364 owns `Roger364/diskmap` |
