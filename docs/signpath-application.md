@@ -42,8 +42,9 @@ ships as a single portable executable.
   uploaded by the `build` job and consumed (hash-verified) by the `windows`,
   `sondes` and `release` jobs. The release job never rebuilds.
 - Provenance embedded in the binary: commit (12 chars), tree state
-  (clean/dirty), agent (`github-actions`), commit date (UTC). Two builds of one
-  commit carry the same SHA-256.
+  (clean/dirty), agent (`github-actions`), commit date (UTC). The date is the
+  commit date, not the build time, so two builds of one commit embed the same
+  origin line; the SHA-256 of the uploaded file is published with each release.
 - PE metadata: ProductName=diskmap, ProductVersion=0.1.0, FileDescription,
   CompanyName, LegalCopyright, OriginalFilename (via build.rs + winres).
 - No signing secrets in the repository. SignPath is the intended route.

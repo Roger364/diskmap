@@ -11,7 +11,7 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 | OSI-approved license, no dual-licensing | ✅ | `LICENSE` = MIT |
 | No proprietary / non-open-source components | ✅ | Rust std + Windows SDK (system libraries); no vendored proprietary code |
 | Actively maintained | ✅ | Commits through 2026-11; CI green on `master` |
-| Already released in the form to be signed | ✅ | Releases `v0.1.89`…`v0.1.100` published from CI artifact |
+| Already released in the form to be signed | ✅ | Releases `v0.1.89`…`v0.1.100` published from CI artifact ; the PE-resources build (`0956adb`) is not released yet — publish one before the first signed release |
 | Documented functionality | ✅ | README.md (what it does, deleting, security, build) |
 | Verifiable automated builds from source | ✅ | `.github/workflows/build.yml`: single artifact, hash verified by consuming jobs, provenance (commit, tree state, agent) embedded in binary |
 | Signed binaries carry product name/version metadata | ✅ | Added via `build.rs` + `winres` crate: `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0` (commit `0956adb`) |
@@ -19,12 +19,12 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 | No unrequested network transfers | ✅ | Fully local; only `http://127.0.0.1` for the UI |
 | Team owns source repo + build scripts | ✅ | Roger364 owns `Roger364/diskmap` |
 | Team responsible for dev + maintenance | ✅ | Solo maintainer |
-| MFA on GitHub + SignPath | ✅ | Enabled on the GitHub account (Roger364) — 2026-11-22 |
+| MFA on GitHub + SignPath | ✅ GitHub / ⚠️ SignPath | GitHub (Roger364) enabled 2026-11-22 ; SignPath: to enable when the account is created |
 | Code signing policy published on home page | ✅ | README.md § "Code signing policy" (added 2026-11-22) |
 | Team structure with roles (author/reviewer/approver) | ✅ | Named in the policy (solo: maintainer holds all three) |
 | Privacy statement | ✅ | In the policy (fully local, no telemetry) |
 | Manual approval of every signing request | ✅ | Maintainer approves in SignPath dashboard |
-| Artifact configuration (PE metadata enforced) | ⚠️ | To configure in SignPath; add `ProductName`/`ProductVersion` to the binary first |
+| Artifact configuration (PE metadata enforced) | ⚠️ | PE metadata present in the binary (`0956adb`, verified via `VersionInfo`) ; artifact configuration still to create in SignPath (`ProductName`, `ProductVersion` enforced) |
 | `SIGNPATH_API_TOKEN` only at gate 4 | ✅ | Not created yet (correct) |
 
 ## Prerequisites to complete before applying
