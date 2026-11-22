@@ -20,7 +20,7 @@ La signature modifie le hash d'un binaire. Il ne faut donc **pas** exiger que le
 | A1 | Provenance | `diskmap.exe --version` | commit de la release, `arbre propre`, `github-actions`, date = date du commit | v0.1.100 : `diskmap 0.1.0 — 78d0f63a9d71` ; `78d0f63a9d71 · arbre propre · construit par github-actions le 2026-11-18 00:40:49 UTC` ; asset téléchargé le 21/11/2026. |
 | A2 | Hash source | `Get-FileHash .\diskmap.exe -Algorithm SHA256` sur l'artefact **non signé** | identique à la release GitHub et au `diskmap.sha256` de l'artifact | asset, binaire de l'artifact et `diskmap.sha256` : `4084FB192459E5D412F5C6E732032CCD8AA8535BC5066B1EFCA798436CBB94E1` (les trois recalculés). |
 | A3 | Scan réel | lancer sur un volume de travail, attendre la fin | scan terminé, totals cohérents, droits/refus listés plutôt que tus | V: jetable (Msft Virtual Disk), run local `node tests/sondes/lancer.mjs --volume V` → `suppression 34/34`, `reelle 38/38`, `aNommer 27/27` ; scan de V: (3 dossiers, 0 fichiers) et C: (724 820 dossiers, 3 758 182 fichiers) terminé ; droits/refus listés (5 exécutions refusées par le filet). Journal brut archivé : `evidence/sondes-run-V.log` (25/25 sondes vertes, exit 0). |
-| A4 | Recherche et tri | mêmes critères via `/api/tree` et `/api/search` | ordre identique, troncature annoncée si `exact=false` | `recherche 25/25`, `rechercheGrande 7/7` (noms distincts 598/800, `package.json` sur C: total 27 569, rendu 800, `exact=false`, `tronque=true`). |
+| A4 | Recherche et tri | mêmes critères via `/api/tree` et `/api/search` | ordre identique, troncature annoncée si `exact=false` | `recherche 25/25`, `rechercheGrande 7/7` (noms distincts 634/800, `package.json` sur C: total 27 569, rendu 800, `exact=false`, `tronque=true`). |
 | A5 | Arrêt en cours | demander l'arrêt pendant un scan | 409 puis arrêt propre, aucun `scan_running` résiduel | `arret 9/9`, `arret-idle 3/3`, `arret-running 4/4` (serveur dédié 8811). |
 | A6 | Aperçu de suppression | `mode=dry` avec `gen` courante | chemins figés, éléments protégés marqués `blocked`, jeton à usage unique | `suppression 34/34` ; filet : aperçu douteux (1/1) neutralisé, jeton à usage unique. |
 | A7 | Corbeille | supprimer un fichier créé pour l'essai | `$I` présent, journal écrit, réversibilité constatée | `reelle 38/38`, `reversibilite 10/10` (scénario 1 joué ; scénario 2 NukeOnDelete non exercé — pas de volume désigné). |
@@ -51,7 +51,8 @@ dépôt dans `G:/workspaces/workbuddy-ai/_sauvegardes/diskmap-2026-11-21/evidenc
 Les preuves A3–A9 proviennent d'un run local sur `V:` jetable le 2026-11-21 ;
 leurs chiffres sont repris de la sortie de
 `node tests/sondes/lancer.mjs --volume V` dans la table des contrôles. Le journal
-brut de ce run n'est pas encore archivé dans `evidence/`.
+brut de ce run est archivé : `evidence/sondes-run-V.log` (75 lignes, sha256
+`d11cd11f…f12a4000`, `25/25 sondes vertes`, exit 0).
 
 Ces mêmes compteurs sont reproductibles publiquement : le job `sondes` du run
 [44956721088](https://github.com/Roger364/diskmap/actions/runs/44956721088)
@@ -60,13 +61,14 @@ l'identique, `suppression 34/34`, `reelle 38/38`, `aNommer 27/27`,
 `recherche 25/25`, `rechercheGrande 7/7`, `arret 9/9`, `arret-idle 3/3`,
 `arret-running 4/4`, `reversibilite 10/10`. Journal du job archivé hors dépôt :
 `evidence/ci-44956721088-sondes.log`. Restent locales, parce que liées à la
-machine, les deux comptages de scan (`V:` 3 dossiers / 0 fichier, `C:` 724 770
-dossiers / 3 757 828 fichiers) et les compteurs que l'environnement du runner
+machine, les deux comptages de scan (`V:` 3 dossiers / 0 fichier, `C:` 724 820
+dossiers / 3 758 182 fichiers), tels quels dans `evidence/sondes-run-V.log`, et
+les compteurs que l'environnement du runner
 décale (`tickets`, `plafond`, `palier`, `ui`, `elevation`, `csrf`, `erreurs`).
 
-**Reste à faire, dans cet ordre :** archiver la sortie du run A3–A9
-(`node tests/sondes/lancer.mjs --volume V`) dans `evidence/` ; puis A11–A13 après
-une requête SignPath `test-signing` ; puis A14, décision de Ro. A10 est verte
+**Reste à faire, dans cet ordre :** A11–A13 après une requête SignPath
+`test-signing` ; puis A14, décision de Ro. Le journal du run local et celui du
+job CI sont archivés et hashés dans `SHA256SUMS`. A10 est verte
 mais porte la réserve structurelle de la sonde `host` : elle ne prouve pas la
 garde 403 de l'application.
 
