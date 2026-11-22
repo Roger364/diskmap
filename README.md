@@ -1503,7 +1503,8 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
   roles — **author** (commits to `master`), **reviewer** (reviews pull requests)
   and **approver** (approves signing requests in the SignPath dashboard). This is
   stated explicitly because SignPath requires the roles to be named.
-- **MFA:** required on both the GitHub account and the SignPath account; enabling it is a
+- **MFA:** enabled on the GitHub account (Roger364) as of 2026-11-22; will be
+  enabled on the SignPath account when it is created. MFA on both is a
   prerequisite before the first signing request (tracked in
   `docs/signpath-eligibility.md`).
 - **What gets signed:** only the Windows binary `diskmap.exe` produced by the

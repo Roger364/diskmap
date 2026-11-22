@@ -19,7 +19,7 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 | No unrequested network transfers | ✅ | Fully local; only `http://127.0.0.1` for the UI |
 | Team owns source repo + build scripts | ✅ | Roger364 owns `Roger364/diskmap` |
 | Team responsible for dev + maintenance | ✅ | Solo maintainer |
-| MFA on GitHub + SignPath | ⚠️ | To enable on GitHub (Settings → Password and authentication); no SignPath account exists yet |
+| MFA on GitHub + SignPath | ✅ | Enabled on the GitHub account (Roger364) — 2026-11-22 |
 | Code signing policy published on home page | ✅ | README.md § "Code signing policy" (added 2026-11-22) |
 | Team structure with roles (author/reviewer/approver) | ✅ | Named in the policy (solo: maintainer holds all three) |
 | Privacy statement | ✅ | In the policy (fully local, no telemetry) |
@@ -29,7 +29,7 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 
 ## Prerequisites to complete before applying
 
-1. Enable MFA on the GitHub account (`Roger364`).
+1. ~~Enable MFA on the GitHub account (`Roger364`).~~ Done (2026-11-22).
 2. Add PE version resources (`ProductName` = `diskmap`, `ProductVersion` = `0.1.0`) to the binary
    (via `build.rs` with `winres` or post-build `rcedit`). Currently the binary reports identity
    only through `--version`.
