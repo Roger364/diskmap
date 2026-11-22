@@ -14,7 +14,7 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 | Already released in the form to be signed | ✅ | Releases `v0.1.89`…`v0.1.100` published from CI artifact |
 | Documented functionality | ✅ | README.md (what it does, deleting, security, build) |
 | Verifiable automated builds from source | ✅ | `.github/workflows/build.yml`: single artifact, hash verified by consuming jobs, provenance (commit, tree state, agent) embedded in binary |
-| Signed binaries carry product name/version metadata | ⚠️ | Binary carries commit + tree state + agent via `--version`; no PE `ProductName`/`ProductVersion` resource yet. To add before signing (rcedit or build.rs). |
+| Signed binaries carry product name/version metadata | ✅ | Added via `build.rs` + `winres` crate: `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0` (commit `pending`) |
 | Uninstallation capability | N/A | No installer (portable .exe); nothing to uninstall. Document in application. |
 | No unrequested network transfers | ✅ | Fully local; only `http://127.0.0.1` for the UI |
 | Team owns source repo + build scripts | ✅ | Roger364 owns `Roger364/diskmap` |
@@ -30,9 +30,9 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 ## Prerequisites to complete before applying
 
 1. ~~Enable MFA on the GitHub account (`Roger364`).~~ Done (2026-11-22).
-2. Add PE version resources (`ProductName` = `diskmap`, `ProductVersion` = `0.1.0`) to the binary
+2. ~~Add PE version resources (`ProductName` = `diskmap`, `ProductVersion` = `0.1.0`) to the binary
    (via `build.rs` with `winres` or post-build `rcedit`). Currently the binary reports identity
-   only through `--version`.
+   only through `--version`.~~ Done (2026-11-22) — `build.rs` + `winres` crate.
 3. Publish the code signing policy (done in README.md).
 4. Ensure the README download/release pages mention "Code signing policy" (done).
 5. Verify no proprietary component is shipped (done — only Rust std + Windows SDK).

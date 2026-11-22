@@ -77,6 +77,26 @@ fn main() {
         "cargo:rustc-env=DISKMAP_VERSION={}",
         env!("CARGO_PKG_VERSION")
     );
+
+    // Ressources PE : nom et version du produit, exigés par SignPath Foundation
+    // (artifact configuration : ProductName et ProductVersion fixés et contrôlés).
+    // Windows uniquement ; rc.exe vient du Windows SDK installé sur le runner.
+    #[cfg(target_os = "windows")]
+    {
+        let mut res = winres::WindowsResource::new();
+        res.set("ProductName", "diskmap");
+        res.set("ProductVersion", env!("CARGO_PKG_VERSION"));
+        res.set("FileVersion", env!("CARGO_PKG_VERSION"));
+        res.set("FileDescription", "Disk space explorer for Windows");
+        res.set("CompanyName", "Roger364");
+        res.set(
+            "LegalCopyright",
+            "MIT License - Copyright (c) 2026 Roger364",
+        );
+        res.set("OriginalFilename", "diskmap.exe");
+        res.compile()
+            .expect("compilation des ressources Windows (rc.exe) a echoue");
+    }
 }
 
 fn git(args: &[&str]) -> Option<String> {
