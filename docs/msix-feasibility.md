@@ -23,8 +23,9 @@ Microsoft Store (free signing, no SmartScreen, automatic updates).
    access (volume scanning, deletion, opening Explorer). A pure UWP sandbox would
    block this. Desktop Bridge (runFullTrust capability) is the correct model. ✅
 3. **Registry virtualization.** Full-trust MSIX apps can write to HKCU; HKLM
-   writes are virtualized. diskmap does not appear to write to the registry. ✅
-   (to confirm in src.)
+   writes are virtualized. diskmap does not write to the registry: `src/win32.rs`
+   only reads the per-volume `BitBucket` keys under `HKCU` through `RegGetValueW`,
+   and declares no `RegSetValueW`/`RegCreateKeyW`. ✅
 4. **Startup / background.** The app is launched by the user (double-click or
    terminal). No service or background task needed. ✅
 5. **Network.** Localhost only. MSIX allows localhost loopback for full-trust

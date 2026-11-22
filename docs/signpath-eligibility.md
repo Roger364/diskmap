@@ -19,7 +19,7 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 | No unrequested network transfers | ✅ | Fully local; only `http://127.0.0.1` for the UI |
 | Team owns source repo + build scripts | ✅ | Roger364 owns `Roger364/diskmap` |
 | Team responsible for dev + maintenance | ✅ | Solo maintainer |
-| MFA on GitHub + SignPath | ⚠️ | To enable (GitHub: Settings → Password and authentication) |
+| MFA on GitHub + SignPath | ⚠️ | To enable on GitHub (Settings → Password and authentication); no SignPath account exists yet |
 | Code signing policy published on home page | ✅ | README.md § "Code signing policy" (added 2026-11-22) |
 | Team structure with roles (author/reviewer/approver) | ✅ | Named in the policy (solo: maintainer holds all three) |
 | Privacy statement | ✅ | In the policy (fully local, no telemetry) |

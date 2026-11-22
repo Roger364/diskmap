@@ -228,8 +228,11 @@ the acceptance checks on the signed binary, then resubmit it for
 until that step; `SIGNPATH_API_TOKEN` will be added only then.
 
 The provenance date is the **commit date**, not the wall-clock build time, so
-two builds of one commit carry the same binary hash. That is what SignPath's
-origin verification expects.
+two builds of one commit embed the same origin line. The SHA-256 of the uploaded
+file is published with each release.
+
+The repository's [Code signing policy](#code-signing-policy) is the reference
+SignPath checks.
 
 The binary opens `http://127.0.0.1:8756/` **when you launched it yourself** —
 by double-clicking, or from a terminal. A launch with no console, which is what a
@@ -1489,8 +1492,9 @@ second job, on an ephemeral `windows-latest` runner, runs the lot.
 
 ## Code signing policy
 
-Free code signing is provided by **SignPath Foundation** (https://signpath.org), certificate
-issued to SignPath Foundation. See the *Signing releases* section for the current state.
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/). The application is not submitted yet; see the
+*Signing releases* section for the current state.
 
 - **Publisher of record:** SignPath Foundation acts as publisher for the signed
   binary; diskmap's own identity is carried by the repository, the commit hash
@@ -1499,7 +1503,9 @@ issued to SignPath Foundation. See the *Signing releases* section for the curren
   roles — **author** (commits to `master`), **reviewer** (reviews pull requests)
   and **approver** (approves signing requests in the SignPath dashboard). This is
   stated explicitly because SignPath requires the roles to be named.
-- **MFA:** enabled on the GitHub account and on the SignPath account.
+- **MFA:** required on both the GitHub account and the SignPath account; enabling it is a
+  prerequisite before the first signing request (tracked in
+  `docs/signpath-eligibility.md`).
 - **What gets signed:** only the Windows binary `diskmap.exe` produced by the
   `build` job of `.github/workflows/build.yml`, taken verbatim from its artifact
   (never rebuilt at release time). The binary is built from source checked into
@@ -1512,8 +1518,9 @@ issued to SignPath Foundation. See the *Signing releases* section for the curren
 - **Build provenance:** every release carries the commit hash, the state of the
   working tree at build time (`arbre propre` / `arbre SALLE`), the agent that
   built it, and the SHA-256 of the uploaded file. The provenance date is the
-  commit date, so two builds of one commit carry the same hash — which is what
-  SignPath's origin verification expects.
+  commit date, not the wall-clock build time, so two builds of one commit embed
+  the same origin line; the SHA-256 of the uploaded file is published with each
+  release.
 - **Manual approval:** every signing request is approved by the maintainer in the
   SignPath dashboard before release.
 
