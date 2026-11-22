@@ -28,7 +28,9 @@ that was not explicitly previewed. It is fully local, has no telemetry, and
 ships as a single portable executable.
 
 ## Activity evidence
-- Releases: v0.1.89 … v0.1.100 published from CI artifacts (GitHub Releases).
+- Releases: v0.1.89 … v0.1.117 published from CI artifacts (GitHub Releases).
+  Binary submitted for signing: v0.1.117 (commit f192e3d, sha256
+  767362C1E859D761041C7DFA237A4AA80EB7A4109F07F40AF407A7644CEED4B0).
 - CI: GitHub Actions (`build`, `windows`, `sondes`, `release`) green on every
   push to master; 25/25 probes green; 66 Rust tests.
 - Source: https://github.com/Roger364/diskmap (public, MIT).

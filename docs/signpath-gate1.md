@@ -17,8 +17,8 @@ La signature modifie le hash d'un binaire. Il ne faut donc **pas** exiger que le
 
 | ID | Contrôle | Commande ou observation | Attendu | Preuve à joindre |
 |---|---|---|---|---|
-| A1 | Provenance | `diskmap.exe --version` | commit de la release, `arbre propre`, `github-actions`, date = date du commit | v0.1.100 : `diskmap 0.1.0 — 78d0f63a9d71` ; `78d0f63a9d71 · arbre propre · construit par github-actions le 2026-11-18 00:40:49 UTC` ; asset téléchargé le 21/11/2026. |
-| A2 | Hash source | `Get-FileHash .\diskmap.exe -Algorithm SHA256` sur l'artefact **non signé** | identique à la release GitHub et au `diskmap.sha256` de l'artifact | asset, binaire de l'artifact et `diskmap.sha256` : `4084FB192459E5D412F5C6E732032CCD8AA8535BC5066B1EFCA798436CBB94E1` (les trois recalculés). |
+| A1 | Provenance | `diskmap.exe --version` | commit de la release, `arbre propre`, `github-actions`, date = date du commit | v0.1.117 (binaire soumis) : `diskmap 0.1.0 — f192e3df80f5` ; `f192e3df80f5 · arbre propre · construit par github-actions le 2026-11-22 05:59:57 UTC`. Historique : v0.1.115 `9c7f08c76e63`, v0.1.100 `78d0f63a9d71`. |
+| A2 | Hash source | `Get-FileHash .\diskmap.exe -Algorithm SHA256` sur l'artefact **non signé** | identique à la release GitHub et au `diskmap.sha256` de l'artifact | v0.1.117 (soumis) : `767362C1E859D761041C7DFA237A4AA80EB7A4109F07F40AF407A7644CEED4B0`, identique au `digest` de l'asset et aux notes de release. Historique : v0.1.115 `5A4AD285…E1D2`, v0.1.100 `4084FB19…94E1`. |
 | A3 | Scan réel | lancer sur un volume de travail, attendre la fin | scan terminé, totals cohérents, droits/refus listés plutôt que tus | V: jetable (Msft Virtual Disk), run local `node tests/sondes/lancer.mjs --volume V` → `suppression 34/34`, `reelle 38/38`, `aNommer 27/27` ; scan de V: (3 dossiers, 0 fichiers) et C: (724 820 dossiers, 3 758 182 fichiers) terminé ; droits/refus listés (5 exécutions refusées par le filet). Journal brut archivé : `evidence/sondes-run-V.log` (25/25 sondes vertes, exit 0). |
 | A4 | Recherche et tri | mêmes critères via `/api/tree` et `/api/search` | ordre identique, troncature annoncée si `exact=false` | `recherche 25/25`, `rechercheGrande 7/7` (noms distincts 634/800, `package.json` sur C: total 27 569, rendu 800, `exact=false`, `tronque=true`). |
 | A5 | Arrêt en cours | demander l'arrêt pendant un scan | 409 puis arrêt propre, aucun `scan_running` résiduel | `arret 9/9`, `arret-idle 3/3`, `arret-running 4/4` (serveur dédié 8811). |
@@ -28,7 +28,7 @@ La signature modifie le hash d'un binaire. Il ne faut donc **pas** exiger que le
 | A9 | Dossiers à nommer | lot touchant `.git` ou `Documents` | refus tant que le nom n'est pas saisi | `aNommer 27/27`. |
 | A10 | Gardes HTTP | sondes `host`, `corps`, `entrees` | vertes en CI sur le commit fusionné | run [44209801027](https://github.com/Roger364/diskmap/actions/runs/44209801027), commit 78d0f63 : build/windows/sondes/release = success ; `host 34/34`, `corps 4/4`, `entrees 12/12`, `25/25 sondes vertes`. Réserve : la sonde `host` déclare la garde 403 non exercée (le parseur Node répond 400 avant). |
 | A11 | Signature de test | `Get-AuthenticodeSignature .\diskmap.exe` sur le binaire **signé pour test** | `Status = Valid`, chaîne de certificat SignPath reconnue sur la machine de test | _à remplir_ |
-| A12 | Hash signé | `Get-FileHash` sur le binaire signé pour test | consigné comme **nouveau** hash, distinct de A2 | _à remplir_ |
+| A12 | Hash signé | `Get-FileHash` sur le binaire signé pour test | consigné comme **nouveau** hash, distinct de A2 — pour v0.1.117, donc distinct de `767362C1…ED4B0` | _à remplir_ |
 | A13 | Comportement signé | rejouer A1, A3, A6, A7 avec le binaire signé pour test | mêmes résultats qu'en non signé | _à remplir_ |
 | A14 | Décision | Ro lit les preuves A1–A13 et statue | `APPROUVÉ` ou `REFUSÉ`, daté et signé | _à remplir_ |
 
@@ -137,6 +137,52 @@ Binaire de référence : asset `diskmap.exe` de la release **v0.1.115**, commit
 | PE | `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0`, `CompanyName=Roger364`, `OriginalFilename=diskmap.exe`, `FileDescription=Disk space explorer for Windows`. | `(Get-Item .\diskmap.exe).VersionInfo` |
 | Sig | `Get-AuthenticodeSignature` → `NotSigned` (normal, aucun certificat). | `Get-AuthenticodeSignature .\diskmap.exe` |
 
-Ce binaire est celui qui sera soumis à SignPath en `test-signing` (A11) puis
-resoumis en `release-signing`. Le hash à reporter dans A12 est donc
-`5A4AD285…E1D2`, distinct de l'ancien `4084FB19…94E1` (v0.1.100, sans PE).
+## Binaire soumis à SignPath — release v0.1.117
+
+Le binaire envoyé en `test-signing` (A11) puis resoumis en `release-signing`
+est l'asset de la **v0.1.117** : c'est la dernière release et elle correspond à
+`master`. PR #4 (docs seulement : `signpath-eligibility.md` +1/−1,
+`signpath-gate1.md` +21/−0) fusionnée le 2026-11-22T05:59:57Z → `master` =
+`f192e3d` ; run
+[44991750829](https://github.com/Roger364/diskmap/actions/runs/44991750829) :
+`build`, `windows`, `sondes`, `release` = `success` ; release
+[v0.1.117](https://github.com/Roger364/diskmap/releases/tag/v0.1.117) publiée le
+2026-11-22T06:12:42Z.
+
+Binaire de référence : asset `diskmap.exe` de **v0.1.117**, commit `f192e3d`,
+non signé, 740 864 o, sha256
+`767362C1E859D761041C7DFA237A4AA80EB7A4109F07F40AF407A7644CEED4B0`.
+
+| ID | Preuve | Commande reproductible |
+|---|---|---|
+| A1 | Le binaire déclare `f192e3df80f5`, arbre propre, `github-actions`, 2026-11-22 05:59:57 UTC. | `./diskmap.exe --version` |
+| A2 | Hash de l'asset = `767362C1…ED4B0`, identique au `digest` de l'asset et à la ligne des notes de release. | `Get-FileHash .\diskmap.exe -Algorithm SHA256` ; comparer au `digest` de l'asset GitHub |
+| PE | `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0`, `CompanyName=Roger364`, `OriginalFilename=diskmap.exe`, `FileDescription=Disk space explorer for Windows`. | `(Get-Item .\diskmap.exe).VersionInfo` |
+| Sig | `Get-AuthenticodeSignature` → `NotSigned` (normal, aucun certificat). | `Get-AuthenticodeSignature .\diskmap.exe` |
+
+Le hash à reporter dans A12 est celui du binaire **signé** : il sera donc
+différent de `767362C1…ED4B0`.
+
+Réserve opérationnelle (édition *Open Source Code Signing*) : SignPath exige la
+vérification du trusted build system et de l'origine, et interdit alors les
+submitters interactifs. L'artefact doit donc être téléversé par GitHub Actions
+(`upload-artifact` puis `SignPath/github-action-submit-signing-request`) dans le
+run qui l'a produit. Si le job de signature est ajouté après coup, le fichier
+réellement soumis sera celui du run de signature : même code, hash différent
+(ligne d'origine du nouveau commit). A2 devra alors être recalculé sur ce
+fichier **avant** A11 ; `767362C1…ED4B0` reste la référence de la forme publiée
+au 22/11 et de ses métadonnées PE.
+
+### Pourquoi v0.1.115 et v0.1.117 n'ont pas le même hash
+
+`build.rs` compile le hash court du commit dans le binaire — c'est la chaîne que
+`--version` affiche. `9c7f08c` et `f192e3d` sont deux commits différents, donc
+deux chaînes différentes, donc deux fichiers différents : même taille (740 864 o),
+mais `5A4AD285…E1D2` pour v0.1.115 et `767362C1…ED4B0` pour v0.1.117, alors que
+le code Rust est identique (la PR #4 ne touche que `docs/`).
+
+Ce n'est donc pas une non-reproductibilité du build : c'est une ligne de version
+volontairement embarquée. Conséquence pratique : ne jamais citer « le hash de
+diskmap » sans le tag de la release. Un rebuild du même commit devrait
+réembarquer la même ligne d'origine, mais l'égalité octet par octet entre deux
+builds n'a pas été mesurée et n'est pas exigée par la porte 1.

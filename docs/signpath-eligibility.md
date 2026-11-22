@@ -11,7 +11,7 @@ Status: **eligible in principle, pending account + application** (A11–A13).
 | OSI-approved license, no dual-licensing | ✅ | `LICENSE` = MIT |
 | No proprietary / non-open-source components | ✅ | Rust std + Windows SDK (system libraries); no vendored proprietary code |
 | Actively maintained | ✅ | Commits through 2026-11; CI green on `master` |
-| Already released in the form to be signed | ✅ | Releases `v0.1.89`…`v0.1.115` published from CI artifact ; the PE-resources build ships in `v0.1.115` (commit `9c7f08c`, asset `diskmap.exe` 740 864 o, sha256 `5A4AD285…E1D2`) |
+| Already released in the form to be signed | ✅ | Releases `v0.1.89`…`v0.1.117` published from CI artifact ; the PE-resources build ships since `v0.1.115`. The binary submitted to SignPath is `v0.1.117` (commit `f192e3d`, asset `diskmap.exe` 740 864 o, sha256 `767362C1…ED4B0`). Hashes differ between releases because `build.rs` embeds the commit hash, not because the source changed |
 | Documented functionality | ✅ | README.md (what it does, deleting, security, build) |
 | Verifiable automated builds from source | ✅ | `.github/workflows/build.yml`: single artifact, hash verified by consuming jobs, provenance (commit, tree state, agent) embedded in binary |
 | Signed binaries carry product name/version metadata | ✅ | Added via `build.rs` + `winres` crate: `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0` (commit `0956adb`) |
