@@ -119,3 +119,24 @@ Point à vérifier lors de la création dans SignPath : la façon dont l'interfa
 2. Remplacer dans `.github/workflows/build.yml` le fallback PFX par la consommation de l'artefact signé.
 3. Publier avec SHA-256 du binaire signé et empreinte du certificat dans les notes de release.
 4. Mettre à jour `README.md` et `SECURITY.md` : fin de la mention « release unsigned », commande `Get-AuthenticodeSignature`.
+
+## Preuves du 22/11/2026 — release v0.1.115 (première build avec ressources PE)
+
+PR #3 fusionnée le 2026-11-22T05:13:25Z → `master` = `9c7f08c`
+(`Merge pull request #3 from Roger364/prep/gate1-preuves`). Run 44988460699 :
+`build`, `windows`, `sondes`, `release` = `success`.
+
+Binaire de référence : asset `diskmap.exe` de la release **v0.1.115**, commit
+`9c7f08c`, non signé, 740 864 o, sha256
+`5A4AD2858DCCAB83C6C97F5901945AC196CF933FF393413296BA04254C96E1D2`.
+
+| ID | Preuve | Commande reproductible |
+|---|---|---|
+| A1 | Le binaire déclare `9c7f08c`, arbre propre, `github-actions`, 2026-11-22 05:13:25 UTC. | `./diskmap.exe --version` |
+| A2 | Hash de l'asset = `5A4AD285…E1D2`, identique au `digest` de l'asset et à la ligne des notes de release. | `Get-FileHash .\diskmap.exe -Algorithm SHA256` ; comparer au `digest` de l'asset GitHub |
+| PE | `ProductName=diskmap`, `ProductVersion=0.1.0`, `FileVersion=0.1.0`, `CompanyName=Roger364`, `OriginalFilename=diskmap.exe`, `FileDescription=Disk space explorer for Windows`. | `(Get-Item .\diskmap.exe).VersionInfo` |
+| Sig | `Get-AuthenticodeSignature` → `NotSigned` (normal, aucun certificat). | `Get-AuthenticodeSignature .\diskmap.exe` |
+
+Ce binaire est celui qui sera soumis à SignPath en `test-signing` (A11) puis
+resoumis en `release-signing`. Le hash à reporter dans A12 est donc
+`5A4AD285…E1D2`, distinct de l'ancien `4084FB19…94E1` (v0.1.100, sans PE).
