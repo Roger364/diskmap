@@ -228,8 +228,11 @@ the acceptance checks on the signed binary, then resubmit it for
 until that step; `SIGNPATH_API_TOKEN` will be added only then.
 
 The provenance date is the **commit date**, not the wall-clock build time, so
-two builds of one commit carry the same binary hash. That is what SignPath's
-origin verification expects.
+two builds of one commit embed the same origin line. The SHA-256 of the uploaded
+file is published with each release.
+
+The repository's [Code signing policy](#code-signing-policy) is the reference
+SignPath checks.
 
 The binary opens `http://127.0.0.1:8756/` **when you launched it yourself** —
 by double-clicking, or from a terminal. A launch with no console, which is what a
@@ -1486,6 +1489,41 @@ second job, on an ephemeral `windows-latest` runner, runs the lot.
   hidden.
 - The `*.bin` caches contain the full tree of the volumes scanned. They are
   excluded by `.gitignore` and must never be committed.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/). The application is not submitted yet; see the
+*Signing releases* section for the current state.
+
+- **Publisher of record:** SignPath Foundation acts as publisher for the signed
+  binary; diskmap's own identity is carried by the repository, the commit hash
+  embedded in the binary (`diskmap.exe --version`) and the published SHA-256.
+- **Team structure (solo project):** the maintainer (Roger364) holds all three
+  roles — **author** (commits to `master`), **reviewer** (reviews pull requests)
+  and **approver** (approves signing requests in the SignPath dashboard). This is
+  stated explicitly because SignPath requires the roles to be named.
+- **MFA:** enabled on the GitHub account (Roger364) as of 2026-11-22; will be
+  enabled on the SignPath account when it is created. MFA on both is a
+  prerequisite before the first signing request (tracked in
+  `docs/signpath-eligibility.md`).
+- **What gets signed:** only the Windows binary `diskmap.exe` produced by the
+  `build` job of `.github/workflows/build.yml`, taken verbatim from its artifact
+  (never rebuilt at release time). The binary is built from source checked into
+  this repository; no proprietary or third-party code is included beyond system
+  libraries (Rust standard library, Windows SDK).
+- **Privacy:** diskmap is fully local. It does not transfer any information to
+  other networked systems unless specifically requested by the user (no telemetry,
+  no update check, no analytics). The only network activity is the browser opening
+  `http://127.0.0.1` for the local UI.
+- **Build provenance:** every release carries the commit hash, the state of the
+  working tree at build time (`arbre propre` / `arbre SALLE`), the agent that
+  built it, and the SHA-256 of the uploaded file. The provenance date is the
+  commit date, not the wall-clock build time, so two builds of one commit embed
+  the same origin line; the SHA-256 of the uploaded file is published with each
+  release.
+- **Manual approval:** every signing request is approved by the maintainer in the
+  SignPath dashboard before release.
 
 ## License
 

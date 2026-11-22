@@ -24,7 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Compiler
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Empreinte du binaire eprouve
         shell: pwsh
@@ -82,8 +82,8 @@ jobs:
       - name: Qualite Rust
         run: |
           cargo fmt -- --check
-          cargo clippy --all-targets -- -D warnings
-          cargo test
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
 
       - name: Installer les sondes navigateur
         working-directory: tests/sondes

@@ -1,9 +1,9 @@
 # Porte 1 — dossier d'acceptation diskmap avant SignPath
 
-**Statut : À REMPLIR.** Ce document ne certifie rien. Il décrit les preuves à réunir avant toute resubmission en `release-signing`. Tant que les cases « Preuve » sont vides, l'application n'est ni testée ni approuvée au sens du plan SignPath.
+**Statut : PARTIEL au 2026-11-21.** A1, A2, A3–A9 et A10 sont prouvés (A1, A2 et A10 dans « Preuves du 21/11/2026 », A3–A9 dans la table des contrôles). A11–A13 attendent un compte SignPath ; A14 appartient à Ro. Tant que ces cases sont vides, l'application n'est ni testée ni approuvée au sens du plan SignPath.
 
 **Référence :** plan SignPath déposé dans le vault `team-memory`, note `2026-11-17_workbuddy_diskmap-plan-signpath.md`.
-**Prérequis organisationnel :** PR #1 (`prep/signpath-gate2 → master`) doit être revue et fusionnée par Ro. La ruleset `27500006` reste désactivée jusqu'à ce que la revue soit réellement en place.
+**Prérequis organisationnel :** satisfait pour la revue — PR #1 et #2 sont fusionnées (17–18/11/2026). La ruleset `27500006` n'a pas été vérifiée dans cette passe.
 
 ## Correction importante au plan initial
 
@@ -17,22 +17,60 @@ La signature modifie le hash d'un binaire. Il ne faut donc **pas** exiger que le
 
 | ID | Contrôle | Commande ou observation | Attendu | Preuve à joindre |
 |---|---|---|---|---|
-| A1 | Provenance | `diskmap.exe --version` | commit de la release, `arbre propre`, `github-actions`, date = date du commit | _à remplir_ |
-| A2 | Hash source | `Get-FileHash .\diskmap.exe -Algorithm SHA256` sur l'artefact **non signé** | identique à la release GitHub et au `diskmap.sha256` de l'artifact | _à remplir_ |
-| A3 | Scan réel | lancer sur un volume de travail, attendre la fin | scan terminé, totals cohérents, droits/refus listés plutôt que tus | _à remplir_ |
-| A4 | Recherche et tri | mêmes critères via `/api/tree` et `/api/search` | ordre identique, troncature annoncée si `exact=false` | _à remplir_ |
-| A5 | Arrêt en cours | demander l'arrêt pendant un scan | 409 puis arrêt propre, aucun `scan_running` résiduel | _à remplir_ |
-| A6 | Aperçu de suppression | `mode=dry` avec `gen` courante | chemins figés, éléments protégés marqués `blocked`, jeton à usage unique | _à remplir_ |
-| A7 | Corbeille | supprimer un fichier créé pour l'essai | `$I` présent, journal écrit, réversibilité constatée | _à remplir_ |
-| A8 | Définitif | tenter sans `EFFACER`, puis avec | refus puis succès, journal distinguant les deux lots | _à remplir_ |
-| A9 | Dossiers à nommer | lot touchant `.git` ou `Documents` | refus tant que le nom n'est pas saisi | _à remplir_ |
-| A10 | Gardes HTTP | sondes `host`, `corps`, `entrees` | vertes en CI sur le commit fusionné | _à remplir_ |
+| A1 | Provenance | `diskmap.exe --version` | commit de la release, `arbre propre`, `github-actions`, date = date du commit | v0.1.100 : `diskmap 0.1.0 — 78d0f63a9d71` ; `78d0f63a9d71 · arbre propre · construit par github-actions le 2026-11-18 00:40:49 UTC` ; asset téléchargé le 21/11/2026. |
+| A2 | Hash source | `Get-FileHash .\diskmap.exe -Algorithm SHA256` sur l'artefact **non signé** | identique à la release GitHub et au `diskmap.sha256` de l'artifact | asset, binaire de l'artifact et `diskmap.sha256` : `4084FB192459E5D412F5C6E732032CCD8AA8535BC5066B1EFCA798436CBB94E1` (les trois recalculés). |
+| A3 | Scan réel | lancer sur un volume de travail, attendre la fin | scan terminé, totals cohérents, droits/refus listés plutôt que tus | V: jetable (Msft Virtual Disk), run local `node tests/sondes/lancer.mjs --volume V` → `suppression 34/34`, `reelle 38/38`, `aNommer 27/27` ; scan de V: (3 dossiers, 0 fichiers) et C: (724 820 dossiers, 3 758 182 fichiers) terminé ; droits/refus listés (5 exécutions refusées par le filet). Journal brut archivé : `evidence/sondes-run-V.log` (25/25 sondes vertes, exit 0). |
+| A4 | Recherche et tri | mêmes critères via `/api/tree` et `/api/search` | ordre identique, troncature annoncée si `exact=false` | `recherche 25/25`, `rechercheGrande 7/7` (noms distincts 634/800, `package.json` sur C: total 27 569, rendu 800, `exact=false`, `tronque=true`). |
+| A5 | Arrêt en cours | demander l'arrêt pendant un scan | 409 puis arrêt propre, aucun `scan_running` résiduel | `arret 9/9`, `arret-idle 3/3`, `arret-running 4/4` (serveur dédié 8811). |
+| A6 | Aperçu de suppression | `mode=dry` avec `gen` courante | chemins figés, éléments protégés marqués `blocked`, jeton à usage unique | `suppression 34/34` ; filet : aperçu douteux (1/1) neutralisé, jeton à usage unique. |
+| A7 | Corbeille | supprimer un fichier créé pour l'essai | `$I` présent, journal écrit, réversibilité constatée | `reelle 38/38`, `reversibilite 10/10` (scénario 1 joué ; scénario 2 NukeOnDelete non exercé — pas de volume désigné). |
+| A8 | Définitif | tenter sans `EFFACER`, puis avec | refus puis succès, journal distinguant les deux lots | `reelle 38/38` (refus sans `EFFACER` puis succès avec, journal distinguant les deux lots). |
+| A9 | Dossiers à nommer | lot touchant `.git` ou `Documents` | refus tant que le nom n'est pas saisi | `aNommer 27/27`. |
+| A10 | Gardes HTTP | sondes `host`, `corps`, `entrees` | vertes en CI sur le commit fusionné | run [44209801027](https://github.com/Roger364/diskmap/actions/runs/44209801027), commit 78d0f63 : build/windows/sondes/release = success ; `host 34/34`, `corps 4/4`, `entrees 12/12`, `25/25 sondes vertes`. Réserve : la sonde `host` déclare la garde 403 non exercée (le parseur Node répond 400 avant). |
 | A11 | Signature de test | `Get-AuthenticodeSignature .\diskmap.exe` sur le binaire **signé pour test** | `Status = Valid`, chaîne de certificat SignPath reconnue sur la machine de test | _à remplir_ |
 | A12 | Hash signé | `Get-FileHash` sur le binaire signé pour test | consigné comme **nouveau** hash, distinct de A2 | _à remplir_ |
 | A13 | Comportement signé | rejouer A1, A3, A6, A7 avec le binaire signé pour test | mêmes résultats qu'en non signé | _à remplir_ |
 | A14 | Décision | Ro lit les preuves A1–A13 et statue | `APPROUVÉ` ou `REFUSÉ`, daté et signé | _à remplir_ |
 
 Aucune suppression réelle ne doit être faite sur un disque contenant des données. Les essais A7–A9 se font sur un volume jetable (`tests/sondes/creer-volume-test.ps1`) ou sur les artefacts créés par la sonde elle-même.
+
+## Preuves du 21/11/2026
+
+Binaire de référence : asset `diskmap.exe` de la release **v0.1.100**, commit
+`78d0f63`, non signé, 739 840 o.
+
+| ID | Preuve | Commande reproductible |
+|---|---|---|
+| A1 | Le binaire déclare `78d0f63`, arbre propre, `github-actions`, 2026-11-18 00:40:49 UTC. | `./diskmap.exe --version` |
+| A2 | Les trois hashes concordent : `4084FB19…94E1`. | `sha256sum diskmap.exe artifact/diskmap.exe` ; `cat artifact/diskmap.sha256` |
+| A10 | Jobs `build`, `windows`, `sondes`, `release` verts ; `host 34/34`, `corps 4/4`, `entrees 12/12` ; `25/25 sondes vertes`. | `gh run view 44209801027 --json jobs` ; journal du job `sondes` |
+
+Le binaire, le journal CI complet et la fiche `A1-A2-A10.md` sont archivés hors
+dépôt dans `G:/workspaces/workbuddy-ai/_sauvegardes/diskmap-2026-11-21/evidence/`.
+
+Les preuves A3–A9 proviennent d'un run local sur `V:` jetable le 2026-11-21 ;
+leurs chiffres sont repris de la sortie de
+`node tests/sondes/lancer.mjs --volume V` dans la table des contrôles. Le journal
+brut de ce run est archivé : `evidence/sondes-run-V.log` (75 lignes, sha256
+`d11cd11f…f12a4000`, `25/25 sondes vertes`, exit 0).
+
+Ces mêmes compteurs sont reproductibles publiquement : le job `sondes` du run
+[44956721088](https://github.com/Roger364/diskmap/actions/runs/44956721088)
+(commit `a6e658f`, tête de cette branche) donne `25/25 sondes vertes` et, à
+l'identique, `suppression 34/34`, `reelle 38/38`, `aNommer 27/27`,
+`recherche 25/25`, `rechercheGrande 7/7`, `arret 9/9`, `arret-idle 3/3`,
+`arret-running 4/4`, `reversibilite 10/10`. Journal du job archivé hors dépôt :
+`evidence/ci-44956721088-sondes.log`. Restent locales, parce que liées à la
+machine, les deux comptages de scan (`V:` 3 dossiers / 0 fichier, `C:` 724 820
+dossiers / 3 758 182 fichiers), tels quels dans `evidence/sondes-run-V.log`, et
+les compteurs que l'environnement du runner
+décale (`tickets`, `plafond`, `palier`, `ui`, `elevation`, `csrf`, `erreurs`).
+
+**Reste à faire, dans cet ordre :** A11–A13 après une requête SignPath
+`test-signing` ; puis A14, décision de Ro. Le journal du run local et celui du
+job CI sont archivés et hashés dans `SHA256SUMS`. A10 est verte
+mais porte la réserve structurelle de la sonde `host` : elle ne prouve pas la
+garde 403 de l'application.
 
 ## Brouillon de configuration SignPath
 
