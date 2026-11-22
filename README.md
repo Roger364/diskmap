@@ -1487,6 +1487,36 @@ second job, on an ephemeral `windows-latest` runner, runs the lot.
 - The `*.bin` caches contain the full tree of the volumes scanned. They are
   excluded by `.gitignore` and must never be committed.
 
+## Code signing policy
+
+Free code signing is provided by **SignPath Foundation** (https://signpath.org), certificate
+issued to SignPath Foundation. See the *Signing releases* section for the current state.
+
+- **Publisher of record:** SignPath Foundation acts as publisher for the signed
+  binary; diskmap's own identity is carried by the repository, the commit hash
+  embedded in the binary (`diskmap.exe --version`) and the published SHA-256.
+- **Team structure (solo project):** the maintainer (Roger364) holds all three
+  roles — **author** (commits to `master`), **reviewer** (reviews pull requests)
+  and **approver** (approves signing requests in the SignPath dashboard). This is
+  stated explicitly because SignPath requires the roles to be named.
+- **MFA:** enabled on the GitHub account and on the SignPath account.
+- **What gets signed:** only the Windows binary `diskmap.exe` produced by the
+  `build` job of `.github/workflows/build.yml`, taken verbatim from its artifact
+  (never rebuilt at release time). The binary is built from source checked into
+  this repository; no proprietary or third-party code is included beyond system
+  libraries (Rust standard library, Windows SDK).
+- **Privacy:** diskmap is fully local. It does not transfer any information to
+  other networked systems unless specifically requested by the user (no telemetry,
+  no update check, no analytics). The only network activity is the browser opening
+  `http://127.0.0.1` for the local UI.
+- **Build provenance:** every release carries the commit hash, the state of the
+  working tree at build time (`arbre propre` / `arbre SALLE`), the agent that
+  built it, and the SHA-256 of the uploaded file. The provenance date is the
+  commit date, so two builds of one commit carry the same hash — which is what
+  SignPath's origin verification expects.
+- **Manual approval:** every signing request is approved by the maintainer in the
+  SignPath dashboard before release.
+
 ## License
 
 MIT — see `LICENSE`.
