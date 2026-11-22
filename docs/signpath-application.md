@@ -28,9 +28,13 @@ that was not explicitly previewed. It is fully local, has no telemetry, and
 ships as a single portable executable.
 
 ## Activity evidence
-- Releases: v0.1.89 … v0.1.117 published from CI artifacts (GitHub Releases).
-  Binary submitted for signing: v0.1.117 (commit f192e3d, sha256
+- Releases: 51 public releases since 2026-09-25, published from CI artifacts
+  (GitHub Releases). Reference form: v0.1.117 (commit f192e3d, sha256
   767362C1E859D761041C7DFA237A4AA80EB7A4109F07F40AF407A7644CEED4B0).
+  Under the Open Source Code Signing edition the artifact actually signed must
+  come from the CI run that carries the signing request; that file will differ
+  from v0.1.117 (commit hash embedded by `build.rs`), and its sha256 is
+  recalculated before the signing request.
 - CI: GitHub Actions (`build`, `windows`, `sondes`, `release`) green on every
   push to master; 25/25 probes green; 66 Rust tests.
 - Source: https://github.com/Roger364/diskmap (public, MIT).
@@ -64,3 +68,47 @@ https://github.com/Roger364/diskmap#code-signing-policy
 
 ## Contact
 Roger364 (GitHub). MFA enabled on the account.
+
+## Form fields — signpath.org/apply
+
+Values in the order the form presents them. Legal name, email and discovery
+channel belong to the maintainer and are deliberately not stored in this
+repository.
+
+| Field | Value |
+|---|---|
+| Project Name | `diskmap` |
+| Repository URL | `https://github.com/Roger364/diskmap` |
+| Homepage URL | `https://github.com/Roger364/diskmap` |
+| Download URL | `https://github.com/Roger364/diskmap#build-and-run` |
+| Privacy Policy URL | empty — no account, no telemetry, nothing collected. If the form insists: `https://github.com/Roger364/diskmap#code-signing-policy` (Privacy bullet) |
+| Wikipedia URL | empty |
+| Tagline | A fast, local disk-space explorer for Windows that shows what is big and what is old, and deletes only what you have previewed. |
+| Category | Other |
+| Description | diskmap is a disk space explorer for Windows. For every volume it shows the size and last-activity date of folders and files, sortable, with tree navigation, a treemap and a global search; the scan is written in Rust and runs in parallel. A local HTTP server serves a single-page interface, so nothing leaves the machine. Deletion is guarded: a full dry run first, a one-shot token, the Recycle Bin by default where one exists, protected paths, and an audit log — a file that was not previewed cannot be deleted. |
+| Reputation | Early-stage, solo-maintained project, two months old: the evidence is a public, reproducible release history rather than reach. 51 releases since 2026-09-25, each built and tested by GitHub Actions from the tagged commit and published with the SHA-256 of the uploaded `diskmap.exe`; the binary embeds its commit hash, so a download can be traced back to a commit. GitHub records 67 downloads of the asset. No third-party coverage (articles, community threads) to cite yet. |
+| Maintainer Type | Individual |
+| Build System | GitHub Actions — `https://github.com/Roger364/diskmap/blob/master/.github/workflows/build.yml` |
+| First Name / Last Name | the maintainer's legal name (account holder) |
+| Email | the maintainer's address, used for the account and notifications |
+| Company Name | empty (individual) |
+| Primary Discovery Channel | maintainer only — if the route was the promptbox `SIGNPATH.md` template, the honest answer is *GitHub repository* |
+| Please specify the exact source | the exact URL if the channel was a page, e.g. `https://github.com/sebbourgeois/promptbox/blob/master/docs/SIGNPATH.md` — to confirm, do not guess |
+
+### Why this Download URL
+
+The form requires the download page to mention that the project uses the
+SignPath Foundation for code signing. `releases/latest` is the direct download
+page, but its notes still say *unsigned, no certificate configured*: the release
+job writes that body. The README page holds both the download instructions
+(*Build and run*) and the code signing policy naming SignPath Foundation, so it
+satisfies the condition today. The permanent fix is one line in the release-body
+template of `build.yml`, so that every future release page carries the mention;
+that is a workflow change and a release, not part of this document.
+
+### Category
+
+The Foundation's public categories are Accessibility, Audio, Developer tools,
+Educational, Gaming, Graphics, Productivity, Science, Other. There is no
+System/Utilities category; *Other* is the honest grouping for a disk-space
+tool. *Productivity* is the nearest alternative if a reviewer prefers it.
