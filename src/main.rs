@@ -1034,7 +1034,13 @@ fn route(
                 .and_then(|s| s.chars().next())
                 .ok_or(("400 Bad Request", "drive manquant".into()))?
                 .to_ascii_uppercase();
-            let id: Option<u32> = q.get("id").and_then(|s| s.parse().ok());
+            let id: Option<u32> = match q.get("id") {
+                Some(s) => Some(
+                    s.parse()
+                        .map_err(|_| ("400 Bad Request", "id invalide".into()))?,
+                ),
+                None => None,
+            };
             let kind = q.get("kind").cloned().unwrap_or_else(|| "dir".into());
             let snap = snap_de(app, letter)?;
             // Un chemin venu du client n'est ouvert que s'il est dans l'index,
@@ -1070,7 +1076,7 @@ fn route(
                     snap.dir_path(did)
                 }
             } else {
-                let id = id.ok_or(("400 Bad Request", "id invalide".into()))?;
+                let id = id.ok_or(("400 Bad Request", "id ou chemin manquant".into()))?;
                 if kind == "file" {
                     if (id as usize) >= snap.n_files() {
                         return Err(("400 Bad Request", "fichier hors bornes".into()));
