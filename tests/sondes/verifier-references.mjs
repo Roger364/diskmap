@@ -111,8 +111,8 @@ const ATTENDU = {
     // sont les GARDES elles-memes — le libelle doit s y trouver, pas un
     // commentaire voisin : c est ce que la reference doit designer.
     'src/main.rs:1000': 'lettre manquante',
-    'src/main.rs:1040': 'id invalide',
-    'src/main.rs:1056': 'chemin invalide',
+    'src/main.rs:1073': 'id invalide',
+    'src/main.rs:1053': 'chemin invalide',
     'src/main.rs:1097': 'route inconnue',
     'tests/sondes/verifier-libelles.mjs:217': "const leurre = 'zzcontrolejamaisvu'",
     // Section 7/29 : l ecoute du reseau que les quatre sondes a navigateur

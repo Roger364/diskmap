@@ -1465,8 +1465,8 @@ L'argument est juste et la décision a produit exactement ce qu'elle annonçait 
 le rapport n'a jamais été consulté. Les quatre gardes sont restées nues.
 
 Il y a plus grave que la garde. Ces quatre entrées — « lettre manquante »
-(`src/main.rs:1000`), « id invalide » (`src/main.rs:1040`), « chemin invalide »
-(`src/main.rs:1056`), « route inconnue » (`src/main.rs:1097`) — sont les
+(`src/main.rs:1000`), « id invalide » (`src/main.rs:1073`), « chemin invalide »
+(`src/main.rs:1053`), « route inconnue » (`src/main.rs:1097`) — sont les
 validations du routeur, et **aucune requête ne les atteint jamais**. Un serveur
 qui refuse tout les produirait, aussi bien que le bon. C'est la définition
 d'une preuve absente, et elle était écrite en clair dans un fichier vert.

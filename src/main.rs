@@ -1034,10 +1034,7 @@ fn route(
                 .and_then(|s| s.chars().next())
                 .ok_or(("400 Bad Request", "drive manquant".into()))?
                 .to_ascii_uppercase();
-            let id: u32 = q
-                .get("id")
-                .and_then(|s| s.parse().ok())
-                .ok_or(("400 Bad Request", "id invalide".into()))?;
+            let id: Option<u32> = q.get("id").and_then(|s| s.parse().ok());
             let kind = q.get("kind").cloned().unwrap_or_else(|| "dir".into());
             let snap = snap_de(app, letter)?;
             // Un chemin venu du client n'est ouvert que s'il est dans l'index,
@@ -1072,16 +1069,19 @@ fn route(
                 } else {
                     snap.dir_path(did)
                 }
-            } else if kind == "file" {
-                if (id as usize) >= snap.n_files() {
-                    return Err(("400 Bad Request", "fichier hors bornes".into()));
-                }
-                snap.file_path(id)
             } else {
-                if (id as usize) >= snap.n_dirs() {
-                    return Err(("400 Bad Request", "dossier hors bornes".into()));
+                let id = id.ok_or(("400 Bad Request", "id invalide".into()))?;
+                if kind == "file" {
+                    if (id as usize) >= snap.n_files() {
+                        return Err(("400 Bad Request", "fichier hors bornes".into()));
+                    }
+                    snap.file_path(id)
+                } else {
+                    if (id as usize) >= snap.n_dirs() {
+                        return Err(("400 Bad Request", "dossier hors bornes".into()));
+                    }
+                    snap.dir_path(id)
                 }
-                snap.dir_path(id)
             };
             let ps = p.to_string_lossy().into_owned();
             // /select, met en surbrillance le fichier dans l'explorateur.
