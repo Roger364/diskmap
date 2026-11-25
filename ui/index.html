@@ -240,6 +240,7 @@
     background:transparent; border-color:var(--accent-dim); color:var(--accent);
   }
   .ok { color:#7fc0a0; }
+  .grp { font-size:11px; padding:0 5px; border-radius:8px; background:rgba(255,255,255,.06); color:var(--muted); margin-left:6px; }
   .ko { color:var(--hot); }
   /* Ni vert ni rouge : la corbeille a bien pris le lot, et ce qui reste à dire
      est un avertissement. La couleur de `.warn`, en texte. */
@@ -253,6 +254,7 @@
   <div class="spacer"></div>
   <input class="search" id="q" placeholder="Rechercher partout (ex. node_modules)…" />
   <button class="btn" id="go">Chercher</button>
+  <button class="btn" id="dup" title="Fichiers de contenu identique — à partir de 1 Mio, lecture plafonnée à 2 Gio">Doublons</button>
   <button class="btn" id="stop" title="Arrêter le serveur proprement — l'analyse en cours est annulée et son cache reste intact">Arrêter</button>
 </header>
 
@@ -386,7 +388,7 @@ let cur = { drive: null, chemin: null, path: [], sort: 'size', order: 'desc', vi
   // qu'elle ne montrait pas : elle écrivait « tronqué » quand la page était
   // complète, dans un cas sur deux. Une personne qui supprime doit savoir
   // qu'elle regarde une liste partielle.
-  total: 0, totalExact: true, isSearch: false };
+  total: 0, totalExact: true, mode: 'folder', groupes: 0, gain: 0 };
 
 // Le chemin du dossier demande qui n'existe plus, le temps que l'ecran le dise.
 // Vide tant que rien n'a disparu. Le 27/09, l'interface epinglait le dossier
@@ -708,7 +710,7 @@ function poll() {
       // vrai après l'arrêt ferait croire à la veille qu'une analyse suit, et
       // elle ne rechargerait plus jamais l'écran.
       pollTimer = null;
-      await load();
+      if (cur.mode === 'dup') await duplicates(); else await load();
     }
   }, 700);
 }
@@ -1001,7 +1003,7 @@ async function search() {
   // pseudo-palier n'est jamais cliquable — il est toujours le dernier.
   cur.path = [{ name: `${cur.drive}:\\`, chemin: `${cur.drive}:\\` },
     { name: `« ${q} »`, chemin: null }];
-  cur.isSearch = true;
+  cur.mode = 'search';
   renderCrumbs();
   // On affiche le VRAI compte. L'ancien texte disait « tronqué — affinez »
   // alors que rien n'avait été coupé dans un cas sur deux, et ne disait
@@ -1023,6 +1025,63 @@ async function search() {
       <td class="name"><span class="ic">${r.is_dir ? '📁' : '📄'}</span>
         <span class="nm">${escapeHtml(r.name)}</span>
         <span style="color:var(--muted);font-size:11.5px;margin-left:8px">${escapeHtml(r.path)}</span></td>
+      <td class="num">${hsize(r.size)}</td>
+      <td class="num"></td>
+      <td class="num" style="color:var(--muted)">${r.is_dir ? nf.format(r.count) : ''}</td>
+      <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span></td>
+      <td class="act"><button title="Ouvrir dans l'explorateur">${r.is_dir ? '📂' : '📄'}</button></td>`;
+    if (r.is_dir) tr.querySelector('.nm').onclick = () => { $('#q').value = ''; aller(r.path); };
+    tr.querySelector('.act button').onclick = () =>
+      fetch(`/api/open?drive=${cur.drive}&chemin=${encodeURIComponent(r.path)}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
+    const chk = tr.querySelector('.sel .chk');
+    chk.onchange = () => toggleSel(r, chk.checked);
+    frag.appendChild(tr);
+  }
+  tb.appendChild(frag);
+  updateSelBar();
+  setView('table');
+}
+
+// ---------- detection de doublons ----------
+async function duplicates() {
+  if (!cur.drive) return;
+  const mien = ++requete;
+  let qs = `drive=${cur.drive}&min=1048576&limit=800&sort=${cur.sort}&order=${cur.order}`;
+  if (cur.chemin) qs += `&base=${encodeURIComponent(cur.chemin)}`;
+  let res;
+  try { res = await api('/api/duplicates?' + qs, { headers: ENTETE_ACTION }); }
+  catch (e) { $('#count').textContent = 'Erreur : ' + e.message; return; }
+  if (mien !== requete) return;
+  cur.rows = res.rows;
+  cur.gen = res.gen;
+  peintMs = (state.drives.find((x) => x.letter === cur.drive) || {}).finished_ms || 0;
+  cur.parentSize = res.rows.reduce((s, r) => s + r.size, 0) || 1;
+  cur.truncated = res.truncated;
+  cur.total = res.fichiers_total;
+  cur.totalExact = res.exact !== false;
+  cur.mode = 'dup';
+  cur.groupes = res.groupes;
+  cur.gain = res.gain_total;
+  cur.path = [{ name: `${cur.drive}:\\`, chemin: `${cur.drive}:\\` },
+    { name: 'Doublons', chemin: null }];
+  renderCrumbs();
+  const affiches = cur.rows.length;
+  const total = typeof cur.total === 'number' ? cur.total : affiches;
+  let compte = `${res.groupes} groupe(s) · ${nf.format(affiches)} fichier(s)`;
+  if (res.groupes_total > res.groupes) compte += ` — ${res.groupes_total} groupes au total`;
+  if (!cur.totalExact) compte += ' (partiel : budget de lecture atteint)';
+  $('#count').textContent = compte;
+
+  const tb = $('#rows'); tb.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const r of cur.rows.slice(0, 800)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="sel"><input type="checkbox" class="chk" ${cur.sel.has(selKey(r)) ? 'checked' : ''}></td>
+      <td class="name"><span class="ic">${r.is_dir ? '📁' : '📄'}</span>
+        <span class="nm">${escapeHtml(r.name)}</span>
+        <span style="color:var(--muted);font-size:11.5px;margin-left:8px">${escapeHtml(r.path)}</span>
+        ${r.groupe ? `<span class="grp" title="Groupe ${r.groupe} — empreinte ${r.empreinte}">#${r.groupe}</span>` : ''}</td>
       <td class="num">${hsize(r.size)}</td>
       <td class="num"></td>
       <td class="num" style="color:var(--muted)">${r.is_dir ? nf.format(r.count) : ''}</td>
@@ -1839,10 +1898,13 @@ $('#autocols').onclick = () => {
 // `load(true)` et non `load()` dans les deux cas : un re-tri ne doit pas perdre
 // la selection.
 const rechargerTri = () => {
-  if ($('#q').value.trim()) search(); else load(true);
+  if (cur.mode === 'dup') duplicates();
+  else if ($('#q').value.trim()) search();
+  else load(true);
 };
 $('#sort').onchange = e => { cur.sort = e.target.value; rechargerTri(); };
 $('#order').onchange = e => { cur.order = e.target.value; rechargerTri(); };
+$('#dup').onclick = duplicates;
 $('#go').onclick = search;
 $('#q').onkeydown = e => { if (e.key === 'Enter') search(); };
 document.querySelectorAll('.view .btn').forEach(b => {

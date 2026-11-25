@@ -35,6 +35,8 @@ next section describes, on Windows, and it has been measured on one machine.
 - Sort by size, last activity, name or file count.
 - Case-insensitive global search across the whole volume — searching
   `node_modules` returns every occurrence with its size and path.
+- **Duplicates** detection: files with identical content, grouped by size then
+  SHA-256 (read budget 2 GiB, prefix-first to skip files that differ early).
 - **Map** view (treemap) alongside the table.
 - Open any entry in Windows Explorer.
 - **Delete** selected entries — see below.
@@ -1023,8 +1025,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:427`). The watch compares (`ui/index.html:1889`) and reloads
-(`ui/index.html:1894`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:429`). The watch compares (`ui/index.html:1951`) and reloads
+(`ui/index.html:1956`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1098,8 +1100,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:427`). The watch compares (`ui/index.html:1889`) and reloads
-(`ui/index.html:1894`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:429`). The watch compares (`ui/index.html:1951`) and reloads
+(`ui/index.html:1956`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1164,10 +1166,10 @@ window to open. Like R14, the defect depends on the **duration of a scan**, not 
 > cover it: its snapshot was taken before the request existed.
 
 Each accepted scan request now gets a monotone per-volume ticket. `start_scan`
-(`src/main.rs:643`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
+(`src/main.rs:647`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
 so a client can wait for **its** scan without missing a short run or mistaking the current scan's
 completion for the requested one. Repeated requests coalesce in the queue (`demande_couverte`,
-`src/main.rs:627`, and `en_attente.push(letter)`, `src/main.rs:638`): ten requests during one
+`src/main.rs:631`, and `en_attente.push(letter)`, `src/main.rs:642`): ten requests during one
 scan request just one additional pass, not ten. A scan already in progress never satisfies a
 request made after it began.
 
@@ -1230,9 +1232,9 @@ between two scans. Now:
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
   `attendreTicket` (`tests/sondes/config.mjs:456`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
-- the UI records the returned ticket (`ui/index.html:681`) and `poll()` stops on its publication
-  (`ui/index.html:699`); the rescan after a deletion waits on the `scan_ticket` returned by the
-  execution (`ui/index.html:1575`);
+- the UI records the returned ticket (`ui/index.html:683`) and `poll()` stops on its publication
+  (`ui/index.html:701`); the rescan after a deletion waits on the `scan_ticket` returned by the
+  execution (`ui/index.html:1634`);
 - `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
   — the fact-based wait below remains its proof of existence;
 - the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the

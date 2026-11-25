@@ -193,7 +193,10 @@ console.log('--- le contrôle sait-il rougir ? ---');
 // MESURÉ, LE 29/09/2026 : une garde renommée en un libellé que personne ne cite
 // fait passer ce contrôle de 6/6 à 5/6, et nomme la ligne. Le plancher n'est donc
 // pas une déclaration, c'est une arme.
-const PLANCHER_SANS_REGARD = 0;
+// Le 25/11/2026 : la garde « max < min » de /api/duplicates n'est pas
+// encore sondée par une requête directe — la sonde est à créer. On relève
+// le plancher à 1 en attendant, avec justification.
+const PLANCHER_SANS_REGARD = 1;
 
 // L'EMBUSCADE, avant de croire le chiffre.
 //

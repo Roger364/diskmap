@@ -4,10 +4,11 @@
 // quelques routes JSON) + un scan parallèle par volume, avec cache binaire sur disque
 // pour que les lancements suivants soient quasi instantanés.
 
+mod doublons;
 mod scan;
 mod win32;
 
-use scan::{trier_lignes, Progress, Row, Snapshot, Tri};
+use scan::{sel, trier_lignes, Progress, Row, Snapshot, Tri};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -132,6 +133,8 @@ struct App {
     /// que le premier s'exécute, et empêche l'interface de relancer une analyse
     /// pendant l'arrêt.
     stopping: AtomicBool,
+    /// Une seule détection de doublons à la fois.
+    dup: AtomicBool,
 }
 
 #[derive(serde::Serialize)]
@@ -389,6 +392,7 @@ fn main() {
         cache_dir: cache_dir(),
         eleve: win32::est_eleve(),
         stopping: AtomicBool::new(false),
+        dup: AtomicBool::new(false),
     });
 
     // Les volumes sans cache sont mis en file : ils seront analysés les uns après
@@ -1020,6 +1024,7 @@ fn route(
 
         ("GET", "/api/tree") => tree(app, q),
         ("GET", "/api/search") => search(app, q),
+        ("GET", "/api/duplicates") => duplicates(app, q),
         ("GET", "/api/unreadable") => unreadable(app, q),
 
         ("POST", "/api/reveal") => reveal(app, body),
@@ -3045,6 +3050,184 @@ fn search(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         }))
         .unwrap(),
     ))
+}
+
+#[derive(serde::Serialize)]
+struct DupRow {
+    #[serde(flatten)]
+    row: Row,
+    groupe: u32,
+    empreinte: String,
+}
+
+fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
+    let letter = q
+        .get("drive")
+        .and_then(|s| s.chars().next())
+        .ok_or(("400 Bad Request", "drive manquant".into()))?
+        .to_ascii_uppercase();
+    let min: u64 = q
+        .get("min")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1_048_576);
+    let max: u64 = q
+        .get("max")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(u64::MAX);
+    if max < min {
+        return Err(("400 Bad Request", "max < min".into()));
+    }
+    let budget: u64 = q
+        .get("budget")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2_147_483_648)
+        .min(8_589_934_592);
+    let limit: usize = q
+        .get("limit")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(500)
+        .min(20_000);
+    let snap = snap_de(app, letter)?;
+    let base = if let Some(c) = q.get("base") {
+        dossier_de(&snap, c).ok_or(("404 Not Found", format!("dossier introuvable : {c}")))?
+    } else {
+        0
+    };
+
+    // Une seule détection à la fois.
+    if app.dup.swap(true, Ordering::AcqRel) {
+        return Err((
+            "503 Service Unavailable",
+            "détection de doublons déjà en cours".into(),
+        ));
+    }
+    let _garde = DupGuard(&app.dup);
+
+    let tri = Tri::depuis(q.get("sort").map(|s| s.as_str()).unwrap_or("size"));
+    let decroissant = q.get("order").map(|s| s != "asc").unwrap_or(true);
+
+    let stopping = AtomicBool::new(false);
+    let o = doublons::Options {
+        base,
+        min,
+        max,
+        budget,
+        limit,
+        stopping: &stopping,
+    };
+    let r = doublons::chercher(&snap, &o);
+
+    // Fabriquer les lignes avec leur groupe.
+    let mut lignes: Vec<DupRow> = Vec::new();
+    for (gi, g) in r.groupes.iter().enumerate() {
+        for &idx in &g.fichiers {
+            let f = &snap.files[idx as usize];
+            lignes.push(DupRow {
+                row: Row {
+                    id: idx,
+                    sel: sel(idx, false),
+                    name: f.name.to_string(),
+                    size: f.size,
+                    count: 1,
+                    mtime: f.mtime,
+                    is_dir: false,
+                    path: snap.file_path(idx).to_string_lossy().into_owned(),
+                },
+                groupe: (gi + 1) as u32,
+                empreinte: g.empreinte.clone(),
+            });
+        }
+    }
+
+    // Trier les lignes (stable, par path d'abord puis trier_lignes).
+    // On trie par path d'abord pour que trier_lignes (stable, départage par name) donne un ordre total.
+    lignes.sort_by(|a, b| a.row.path.cmp(&b.row.path));
+    let mut rows_only: Vec<Row> = lignes.iter().map(|d| d.row.clone()).collect();
+    trier_lignes(&mut rows_only, tri, decroissant);
+    // Reconstruire DupRow dans le nouvel ordre.
+    // On utilise un map path->DupRow pour retrouver.
+    let mut map: HashMap<String, DupRow> = lignes
+        .into_iter()
+        .map(|d| (d.row.path.clone(), d))
+        .collect();
+    let mut lignes: Vec<DupRow> = Vec::with_capacity(rows_only.len());
+    for r in &rows_only {
+        if let Some(d) = map.remove(&r.path) {
+            lignes.push(d);
+        }
+    }
+
+    // Coupe aux frontières de groupe : on ne montre jamais la moitié d'un groupe.
+    // On trouve les indices de coupe.
+    let mut groupes_rendus = 0usize;
+    let mut coupe_idx = lignes.len();
+    // On parcourt les groupes dans l'ordre des lignes pour trouver la coupe.
+    // Simplification : on coupe à limit si possible, sinon on rend le groupe entier.
+    if lignes.len() > limit {
+        // Trouver la frontière de groupe la plus proche <= limit.
+        let mut acc = 0usize;
+        let mut last_boundary = 0usize;
+        let mut current_groupe = 0u32;
+        for (i, d) in lignes.iter().enumerate() {
+            if d.groupe != current_groupe {
+                last_boundary = i;
+                current_groupe = d.groupe;
+            }
+            acc += 1;
+            if acc >= limit {
+                coupe_idx = if last_boundary > 0 {
+                    last_boundary
+                } else {
+                    i + 1
+                };
+                break;
+            }
+        }
+        if coupe_idx == lignes.len() {
+            coupe_idx = lignes.len();
+        }
+    }
+    lignes.truncate(coupe_idx);
+
+    // Compte des groupes rendus.
+    let mut groupes_rendus = 0u32;
+    let mut current_groupe = 0u32;
+    for d in &lignes {
+        if d.groupe != current_groupe {
+            groupes_rendus += 1;
+            current_groupe = d.groupe;
+        }
+    }
+
+    let total_fichiers: usize = r.groupes.iter().map(|g| g.fichiers.len()).sum();
+    let tronque = r.groupes_total > 0 && lignes.len() < total_fichiers;
+
+    Ok(Resp::Json(
+        serde_json::to_string(&serde_json::json!({
+            "rows": lignes,
+            "groupes": groupes_rendus,
+            "groupes_total": r.groupes_total,
+            "fichiers": lignes.len(),
+            "fichiers_total": total_fichiers,
+            "gain": r.gain_total,
+            "gain_total": r.gain_total,
+            "truncated": tronque,
+            "exact": r.exact,
+            "budget": budget,
+            "octets_lus": r.octets_lus,
+            "modifies": r.modifies,
+            "illisibles": r.illisibles,
+            "gen": snap.gen,
+        }))
+        .unwrap(),
+    ))
+}
+
+struct DupGuard<'a>(&'a AtomicBool);
+impl Drop for DupGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
 }
 
 #[derive(serde::Deserialize)]
