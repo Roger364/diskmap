@@ -88,8 +88,8 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1686`) ; `execute` ne résout plus rien et ne supprime que les chemins
-figés par l'aperçu (`struct Montre`, `src/main.rs:110`).
+(`src/main.rs:1691`) ; `execute` ne résout plus rien et ne supprime que les chemins
+figés par l'aperçu (`struct Montre`, `src/main.rs:111`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
 ci-dessus ferme l'éffacement, parce que c'est lui qui était mesuré. Mais l'interface
@@ -248,10 +248,10 @@ Trois choix valent d'être écrits, parce qu'ils décident du geste :
   `MaxCapacity` et pour `NeedToPurge` : une valeur non mesurée n'est pas une valeur
   nulle, et un avertissement qui se déclenche sans mesure ne veut plus rien dire.
 - **Le mode « corbeille » n'obtient plus une confirmation moins chère.** `execute`
-  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2242`) : un
+  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2247`) : un
   volume à corbeille inerte exige le même mot que la suppression définitive. La
   confirmation suit le geste réel, pas le mode affiché.
-- **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1450`) est exposé au même
+- **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1455`) est exposé au même
   titre que `corbeille`, et le motif du mot nomme la cause — « ce volume détruit
   sans corbeille (NukeOnDelete=1) » — au lieu de laisser lire « iront dans la
   corbeille ».
@@ -296,7 +296,7 @@ portée :
   que « ne mord pas » sur une machine élevée ne se lise pas comme un défaut du code.
 - **Elle a demandé de réparer la sonde.** Le `JSON.parse` du corps de `/api/delete`
   n'avait pas de filet, alors que le refus d'une confirmation est du **texte brut**
-  (`src/main.rs:1907`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
+  (`src/main.rs:1912`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
   sans décompte, et le harnais lisait « SANS SYNTHESE » là où il y avait une cause
   nommée — la sonde mesurait sa propre fragilité au lieu du produit. Les quatre
   corps de ce fichier passent désormais par `lireCorps`
@@ -307,12 +307,12 @@ portée :
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
 |---|---|
-| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:984`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:906`) |
+| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:988`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:910`) |
 | DNS rebinding | Rien, pour la même raison |
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1549`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1554`) — voir R5 |
 
 ---
 
@@ -320,7 +320,7 @@ portée :
 
 ### R1 — XSS stockée via le nom de volume → effacement arbitraire · **Haute** · *corrigé*
 
-`ui/index.html:524-525` :
+`ui/index.html:526-527` :
 
 ```js
 <span class="lbl">${d.label || ''}</span>
@@ -344,17 +344,17 @@ aucun nœud texte cassé.
 
 ### R2 — L'aperçu montre 25 chemins, l'exécution en supprime N · **Haute** · *corrigé*
 
-`ui/index.html:1116` : `for (const it of d.items.slice(0, 25))`, suivi de
+`ui/index.html:1175` : `for (const it of d.items.slice(0, 25))`, suivi de
 `… et ${d.items.length - 25} autre(s)`. Rien n'empêche l'exécution de traiter les N.
 
 « Tout sélectionner » dans un dossier de 200 entrées affiche donc 175 chemins que
 l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
-(`ui/index.html:1105`) est lui aussi purement client, et ne couvre pas le *nombre*.
+(`ui/index.html:1164`) est lui aussi purement client, et ne couvre pas le *nombre*.
 
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1549`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1554`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -499,7 +499,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2962`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2967`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -524,11 +524,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1827` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1833`) n'était
-appelé que dans `execute` (`src/main.rs:1878`). Des aperçus répétés sans confirmation
+`src/main.rs:1832` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1838`) n'était
+appelé que dans `execute` (`src/main.rs:1883`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1829`).
+endroit (`src/main.rs:1834`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -597,7 +597,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2164`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2169`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -683,11 +683,11 @@ arrivée**.
 > Une seule réponse a le droit de peindre : la dernière demandée. Une réponse périmée ne touche
 > même pas l'état — sinon la suivante hérite d'un état déjà mêlé.
 
-**Le correctif.** Un jeton par requête (`ui/index.html:733`), incrémenté au départ de `load()` et
-de `search()`, comparé à l'arrivée (`ui/index.html:769` et `ui/index.html:986`). La réponse
+**Le correctif.** Un jeton par requête (`ui/index.html:735`), incrémenté au départ de `load()` et
+de `search()`, comparé à l'arrivée (`ui/index.html:771` et `ui/index.html:988`). La réponse
 périmée rend la main sans rien écrire. Son **erreur** non plus n'est pas dite : la parler ferait
 remonter d'un cran un dossier qui n'a pas disparu, puisque le chemin à remonter serait celui de la
-requête périmée (`ui/index.html:792`).
+requête périmée (`ui/index.html:794`).
 
 **Épreuves, les deux sens.** Jeton retiré, 2 s de latence injectée sur `/api/tree` : deux verdicts
 rougissent, et le nouveau — « l'ordre demandé n'a jamais été contredit à l'écran » — nomme la
@@ -922,15 +922,15 @@ drapeau recommence. Ici l'absence de fenêtre est le défaut, et l'ouverture est
 qu'il faut demander. Ouvrir une fenêtre qu'on n'a pas demandée est une intrusion, quelle que soit
 l'innocence du code.
 
-**Le correctif.** Une fonction pure et testable (`src/main.rs:212`), alimentée par le signal réel
-(`src/main.rs:340`). Les deux drapeaux restent, et **priment sur le signal** : `--browser` pour
+**Le correctif.** Une fonction pure et testable (`src/main.rs:215`), alimentée par le signal réel
+(`src/main.rs:343`). Les deux drapeaux restent, et **priment sur le signal** : `--browser` pour
 forcer, `--no-browser` pour interdire. Un comportement qu'on ne peut ni forcer ni interdire n'est
 pas une règle, c'est une pente. Quand les deux sont présents, l'interdit l'emporte — l'ordre des
 deux lignes décidait de l'issue, et une règle dont l'issue tient à l'ordre de deux lignes n'en
 est pas une.
 
 **Et il le dit.** Sans console, le serveur affiche pourquoi il n'ouvre rien
-(`src/main.rs:345`). Un serveur qui se tait laisse croire à un défaut ; celui qui n'explique pas sa
+(`src/main.rs:348`). Un serveur qui se tait laisse croire à un défaut ; celui qui n'explique pas sa
 décision ne la méritait pas.
 
 **Épreuves, les deux sens.** Lancement sans drapeau, sans console, fenêtres comptées avant et
@@ -980,7 +980,7 @@ final    {gen 9, statut ready,     scanning null, veille vive, requete 6}
 
 **`scanning` n'est pas un booléen, et le l'écrire comme tel a coûté une vérification.** Le champ
 `scanning` de `/api/state` porte la **lettre** du volume en cours — `"C"`, `"V"` — ou `null`
-quand rien ne tourne : `scanning: Mutex<Option<char>>` (`src/main.rs:125`), sérialisé en
+quand rien ne tourne : `scanning: Mutex<Option<char>>` (`src/main.rs:126`), sérialisé en
 `Option<String>`. Ce tableau le décrivait `true` / `false`, parce que le champ `status` du même
 volume vaut `"scanning"` : les deux se confondent d'un mot.
 
@@ -1021,9 +1021,9 @@ qui n'existait pas — et un écran « corrigé » qui resterait faux.
 > l'utilisateur a été perdu en route.
 
 **Le correctif.** Un repère unique : l'écran note, à chaque peinture, le `finished_ms` du volume
-qu'il montre (`ui/index.html:427`). La veille compare (`ui/index.html:1889`) : tant que le
+qu'il montre (`ui/index.html:429`). La veille compare (`ui/index.html:1951`) : tant que le
 repère vaut celui de l'état, elle ne fait rien ; dès qu'il diffère, elle recharge
-(`ui/index.html:1894`). Le rechargement passe par `rechargerTri()` et non `load()` : la
+(`ui/index.html:1956`). Le rechargement passe par `rechargerTri()` et non `load()` : la
 **sélection** se garde — c'est une cible de suppression, et un rechargement de fond n'a pas le
 droit de la déplacer — et une recherche en cours reste une recherche.
 
@@ -1097,11 +1097,11 @@ de la **durée d'une analyse**, comme R14.
 > analyse en cours ne la couvre pas : son instantané a été pris avant qu'elle existe.
 
 **Le correctif.** Chaque analyse demandée reçoit un ticket monotone par volume : `start_scan`
-(`src/main.rs:643`) le rend dans la réponse HTTP, et `/api/state` publie `scan_requested` et
+(`src/main.rs:647`) le rend dans la réponse HTTP, et `/api/state` publie `scan_requested` et
 `scan_completed`. Le client peut ainsi attendre le ticket de SA demande sans manquer une analyse
 courte ni confondre la fin du scan courant avec celle du scan demandé. Les demandes répétées sont
-coalescées dans la file (`demande_couverte`, `src/main.rs:627`, et `en_attente.push(letter)`,
-`src/main.rs:638`) : dix demandes pendant le même scan demandent une seule analyse supplémentaire,
+coalescées dans la file (`demande_couverte`, `src/main.rs:631`, et `en_attente.push(letter)`,
+`src/main.rs:642`) : dix demandes pendant le même scan demandent une seule analyse supplémentaire,
 pas dix. L'analyse déjà en cours n'est jamais créditée pour une demande qu'elle précède.
 
 La fin est publiée seulement avec l'instantané complet. L'ordre des verrous est conservé
@@ -1168,9 +1168,9 @@ drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais
 - `POST /api/scan` répond `{ok, ticket}`, et chaque client attend **son** ticket :
   `attendreTicket` (`tests/sondes/config.mjs:456`) boucle sur `scan_completed >= ticket` et ne
   consulte jamais `!scanning` pour conclure ;
-- l'interface note le ticket rendu (`ui/index.html:681`) et `poll()` s'arrête sur sa publication
-  (`ui/index.html:699`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
-  l'exécution (`ui/index.html:1575`) ;
+- l'interface note le ticket rendu (`ui/index.html:683`) et `poll()` s'arrête sur sa publication
+  (`ui/index.html:701`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
+  l'exécution (`ui/index.html:1634`) ;
 - `generation` demande son analyse et attend son ticket (`tests/sondes/sonde-generation.mjs:71`)
   — l'attente par le fait, plus bas, reste sa preuve d'existence ;
 - la sonde `tickets` (`tests/sondes/sonde-tickets.mjs:62`) éprouve le contrat du point de vue
@@ -1260,7 +1260,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **La cible est figée à l'aperçu.** `Montre` porte le chemin résolu ; `execute` ne résout
   plus rien. C'est la bonne architecture : la seule façon de supprimer reste de décider ce
   qu'on supprime.
-- **Une seule réponse peint** (`ui/index.html:733`). Une requête périmée rend la main sans
+- **Une seule réponse peint** (`ui/index.html:735`). Une requête périmée rend la main sans
   toucher l'état, et son erreur non plus n'est pas dite — R11. Le même refus que pour la cible :
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
@@ -1294,16 +1294,16 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   voir. Mesuré : un dossier créé, la demande répondue `ok`, et `/api/search` qui le déclare
   introuvable tout en répondant `exact=true, tronque=false` sur 356 résultats. Ce qui couvre une
   demande, c'est une analyse **postérieure** à elle — donc la file, et jamais l'analyse en cours
-  (`src/main.rs:643`) — R15.
+  (`src/main.rs:647`) — R15.
 - **L'écran se recharge quand le disque a bougé depuis qu'il a été peint.** La veille de fond
   suivait l'état d'un volume analysé ailleurs, jamais l'arbre : le rechargement n'existait que
   dans `poll()`, qui ne démarre que sur un geste local et s'éteint après un tour. Une analyse
   étrangère laissait donc l'écran afficher un instantané que le serveur ne servait plus, sans un
   mot — et un geste de l'utilisateur survenu **pendant** l'analyse était perdu sans bruit,
   mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
-  chaque peinture (`ui/index.html:427`), comparé par la veille (`ui/index.html:1889`) — R14.
+  chaque peinture (`ui/index.html:429`), comparé par la veille (`ui/index.html:1951`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
-  (`src/main.rs:212`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
+  (`src/main.rs:215`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
   tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
   de celui qui a lancé le programme est une intrusion, même sans intention — R13.
@@ -1317,7 +1317,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
   (`tests/sondes/lancer.mjs:1456`) : `rm -rf` y serait un bug, et le code le dit.
-- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1203`). Un
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1208`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
   serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
@@ -1465,8 +1465,8 @@ L'argument est juste et la décision a produit exactement ce qu'elle annonçait 
 le rapport n'a jamais été consulté. Les quatre gardes sont restées nues.
 
 Il y a plus grave que la garde. Ces quatre entrées — « lettre manquante »
-(`src/main.rs:1000`), « id invalide » (`src/main.rs:1083`), « chemin invalide »
-(`src/main.rs:1059`), « route inconnue » (`src/main.rs:1107`) — sont les
+(`src/main.rs:1004`), « id invalide » (`src/main.rs:1088`), « chemin invalide »
+(`src/main.rs:1064`), « route inconnue » (`src/main.rs:1112`) — sont les
 validations du routeur, et **aucune requête ne les atteint jamais**. Un serveur
 qui refuse tout les produirait, aussi bien que le bon. C'est la définition
 d'une preuve absente, et elle était écrite en clair dans un fichier vert.
@@ -1476,14 +1476,14 @@ Trois changements, dont deux mesurés :
 **1. Le contrôle exige au lieu de signaler.** `PLANCHER_SANS_REGARD` vaut 0, et
 une garde sans regard fait désormais rouge la chaîne. *Mesuré le 29/09 : une
 garde renommée en un libellé que personne ne cite fait passer le contrôle de
-6/6 à 5/6, et nomme `src/main.rs:1107`.* Le plancher est une arme, pas une
+6/6 à 5/6, et nomme `src/main.rs:1112`.* Le plancher est une arme, pas une
 déclaration.
 
 **2. Le contrôle a lui-même une embuscade.** Un contrôle qui n'a jamais rougi ne
 sait pas rougir, et « 0/0 muettes » est indiscernable d'une règle cassée qui
 n'en verrait aucune. Le script fabrique donc une garde muette et exige qu'elle
 soit vue, et une garde réellement citée qu'il ne range pas parmi les muettes
-(`tests/sondes/verifier-libelles.mjs:217`). Un contrôle qui ne sait dire ni
+(`tests/sondes/verifier-libelles.mjs:220`). Un contrôle qui ne sait dire ni
 « vu » ni « pas vu » ne sait rien.
 
 *L'embuscade a rougi le premier jour, pour une raison qui n'était pas un défaut
@@ -2624,7 +2624,7 @@ sur ce contrôle. Le format tient : il mérite les prochains contrôles jeunes.
 
 Le pour/contre des deux options (précondition mesurée côté sonde, garde
 applicative côté serveur) a été posé, puis **le code a tranché avant l'avis** :
-la garde que « B » devait créer existe déjà — [src/main.rs:1005] répond
+la garde que « B » devait créer existe déjà — [src/main.rs:1009] répond
 `404 « volume inconnu »` à tout POST `/api/scan/<lettre>` hors catalogue,
 **avant** tout démarrage d'analyse. Ce qui manquait n'était pas la garde,
 c'était son épreuve.
@@ -2662,7 +2662,7 @@ branche jamais jouée tourne sans faux rouge ni faux vert.
 18 (local normal), 15 (local normal **et** corbeille absente).
 
 **Consigné sans correction** : `/api/open` sur une lettre inconnue répond
-`409 « volume pas encore analysé »` [src/main.rs:1126] — le message trompe (le
+`409 « volume pas encore analysé »` [src/main.rs:1131] — le message trompe (le
 volume n'est pas « pas encore analysé », il n'existe pas) ; un 404 aligné sur
 la garde du scan serait plus honnête, au prix d'un choix d'affichage. Et le
 ligne de sonde affiche `vert` **avant** que la perte de plancher ne force le
@@ -2690,8 +2690,8 @@ se compte : **7 − 6 = 1** — il restait exactement un `409 Conflict`, celui
 du helper, et les autres 409 du fichier (arrêt en cours, jeton expiré,
 arrêt refusé) portent d'autres sémantiques, non touchées.
 
-**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1189`) dit « analyse
-en cours, on peut insister » ; sa branche 404 (`ui/index.html:775`) remonte au
+**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1248`) dit « analyse
+en cours, on peut insister » ; sa branche 404 (`ui/index.html:777`) remonte au
 dossier parent. Les flux 404 de navigation ne peuvent pas rencontrer une
 lettre hors catalogue (le catalogue ne liste que des volumes montés), donc
 le changement ne crée aucun faux « dossier disparu ».

@@ -1,0 +1,70 @@
+[opencode-audit] Trying model: kilo/baidu/ernie-5.5-flash-preview:free ...
+[opencode-audit] Success on kilo/baidu/ernie-5.5-flash-preview:free (6 text events)
+
+--- AUDIT RESULT (Model: kilo/baidu/ernie-5.5-flash-preview:free) ---
+I audited every `src/main.rs` and `ui/index.html` line reference in both docs against the current sources. Below are the stale ones only (references verified as still accurate are omitted). Line numbers after the doc name are the line in the doc where the reference appears.
+
+## SECURITY.md
+
+```
+FINDING: SECURITY.md:91 | src/main.rs:1686 -> src/main.rs:1691
+FINDING: SECURITY.md:92 | src/main.rs:110 -> src/main.rs:111
+FINDING: SECURITY.md:251 | src/main.rs:2242 -> src/main.rs:1905
+FINDING: SECURITY.md:254 | src/main.rs:1450 -> src/main.rs:1455
+FINDING: SECURITY.md:299 | src/main.rs:1907 -> src/main.rs:1911
+FINDING: SECURITY.md:310 | src/main.rs:984 -> src/main.rs:988
+FINDING: SECURITY.md:315 | src/main.rs:1549 -> src/main.rs:1554
+FINDING: SECURITY.md:347 | ui/index.html:1116 -> ui/index.html:1428
+FINDING: SECURITY.md:352 | ui/index.html:1164 -> ui/index.html:1403
+FINDING: SECURITY.md:357 | src/main.rs:1549 -> src/main.rs:1554
+FINDING: SECURITY.md:502 | src/main.rs:2962 -> src/main.rs:2967
+FINDING: SECURITY.md:527 | src/main.rs:1827 -> src/main.rs:1839
+FINDING: SECURITY.md:528 | src/main.rs:1833 -> src/main.rs:1838
+FINDING: SECURITY.md:528 | src/main.rs:1878 -> src/main.rs:1872
+FINDING: SECURITY.md:531 | src/main.rs:1829 -> src/main.rs:1834
+FINDING: SECURITY.md:600 | src/main.rs:2164 -> src/main.rs:2169
+FINDING: SECURITY.md:686 | ui/index.html:733 -> ui/index.html:761
+FINDING: SECURITY.md:925 | src/main.rs:212 -> src/main.rs:215
+FINDING: SECURITY.md:926 | src/main.rs:340 -> src/main.rs:343
+FINDING: SECURITY.md:933 | src/main.rs:345 -> src/main.rs:348
+FINDING: SECURITY.md:983 | src/main.rs:125 -> src/main.rs:126
+FINDING: SECURITY.md:1100 | src/main.rs:643 -> src/main.rs:647
+FINDING: SECURITY.md:1103 | src/main.rs:627 -> src/main.rs:631
+FINDING: SECURITY.md:1104 | src/main.rs:638 -> src/main.rs:642
+FINDING: SECURITY.md:1171 | ui/index.html:681 -> ui/index.html:683
+FINDING: SECURITY.md:1172 | ui/index.html:699 -> ui/index.html:701
+FINDING: SECURITY.md:1173 | ui/index.html:1575 -> ui/index.html:1634
+FINDING: SECURITY.md:1263 | ui/index.html:733 -> ui/index.html:761
+FINDING: SECURITY.md:1297 | src/main.rs:643 -> src/main.rs:647
+FINDING: SECURITY.md:1304 | ui/index.html:427 -> ui/index.html:429
+FINDING: SECURITY.md:1304 | ui/index.html:1889 -> ui/index.html:1951
+FINDING: SECURITY.md:1306 | src/main.rs:212 -> src/main.rs:215
+FINDING: SECURITY.md:1320 | src/main.rs:1203 -> src/main.rs:1208
+FINDING: SECURITY.md:1468 | src/main.rs:1000 -> src/main.rs:1004
+FINDING: SECURITY.md:1468 | src/main.rs:1083 -> src/main.rs:1088
+FINDING: SECURITY.md:1469 | src/main.rs:1059 -> src/main.rs:1064
+FINDING: SECURITY.md:1469 | src/main.rs:1107 -> src/main.rs:1112
+FINDING: SECURITY.md:1479 | src/main.rs:1107 -> src/main.rs:1112
+FINDING: SECURITY.md:2627 | src/main.rs:1005 -> src/main.rs:1009
+FINDING: SECURITY.md:2665 | src/main.rs:1126 -> src/main.rs:1131
+FINDING: SECURITY.md:2693 | ui/index.html:1189 -> ui/index.html:1248
+FINDING: SECURITY.md:2694 | ui/index.html:775 -> ui/index.html:777
+```
+
+## README.md
+
+```
+FINDING: README.md:1169 | src/main.rs:643 -> src/main.rs:647
+FINDING: README.md:1172 | src/main.rs:627 -> src/main.rs:631
+FINDING: README.md:1172 | src/main.rs:638 -> src/main.rs:642
+FINDING: README.md:1235 | ui/index.html:681 -> ui/index.html:683
+FINDING: README.md:1236 | ui/index.html:699 -> ui/index.html:701
+FINDING: README.md:1237 | ui/index.html:1575 -> ui/index.html:1634
+```
+
+Total: 48 stale references (42 in SECURITY.md, 6 in README.md).
+
+Notes on the verification:
+- References confirmed still accurate (not reported): `src/main.rs:910` (`hote_local`), `ui/index.html:617-618`, `ui/index.html:771`, `ui/index.html:794`, `ui/index.html:988`, `ui/index.html:429`, `ui/index.html:1951`, `ui/index.html:1956` (and the README repeats of 429/1951/1956).
+- The two `ui/index.html:733` occurrences and the two `src/main.rs:212` occurrences are separate findings because each doc line is a distinct stale reference.
+- Nothing was modified.
