@@ -1034,14 +1034,13 @@ fn route(
                 .and_then(|s| s.chars().next())
                 .ok_or(("400 Bad Request", "drive manquant".into()))?
                 .to_ascii_uppercase();
-            let id: Option<u32> = match q.get("id") {
-                Some(s) => Some(
-                    s.parse()
-                        .map_err(|_| ("400 Bad Request", "id invalide".into()))?,
-                ),
-                None => None,
-            };
             let kind = q.get("kind").cloned().unwrap_or_else(|| "dir".into());
+            if kind != "file" && kind != "dir" {
+                return Err((
+                    "400 Bad Request",
+                    "kind invalide : file ou dir attendu".into(),
+                ));
+            }
             let snap = snap_de(app, letter)?;
             // Un chemin venu du client n'est ouvert que s'il est dans l'index,
             // et c'est le chemin de l'INDEX qui part vers l'explorateur : la
@@ -1054,7 +1053,8 @@ fn route(
             // dérive, dans une fenêtre que l'utilisateur voit.
             let p = if let Some(c) = q.get("chemin") {
                 let (dossier, nom) = if kind == "file" {
-                    let (d, n) = c
+                    let normalise = c.replace('/', "\\");
+                    let (d, n) = normalise
                         .rsplit_once('\\')
                         .ok_or(("400 Bad Request", "chemin invalide".into()))?;
                     (d.to_string(), n.to_string())
@@ -1076,7 +1076,11 @@ fn route(
                     snap.dir_path(did)
                 }
             } else {
-                let id = id.ok_or(("400 Bad Request", "id ou chemin manquant".into()))?;
+                let id: u32 = q
+                    .get("id")
+                    .ok_or(("400 Bad Request", "id ou chemin manquant".into()))?
+                    .parse()
+                    .map_err(|_| ("400 Bad Request", "id invalide".into()))?;
                 if kind == "file" {
                     if (id as usize) >= snap.n_files() {
                         return Err(("400 Bad Request", "fichier hors bornes".into()));
