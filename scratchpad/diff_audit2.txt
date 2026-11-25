@@ -1,0 +1,271 @@
+diff --git a/src/doublons.rs b/src/doublons.rs
+index 6e81d5d..6aafc88 100644
+--- a/src/doublons.rs
++++ b/src/doublons.rs
+@@ -4,7 +4,7 @@
+ // jamais plus que le budget. Le coût est donc borné par le budget, pas par
+ // le volume.
+ 
+-use crate::scan::{sel, trier_lignes, Row, Snapshot, Tri};
++use crate::scan::Snapshot;
+ use sha2::{Digest, Sha256};
+ use std::fs::File;
+ use std::io::{BufReader, Read};
+@@ -84,7 +84,15 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
+         let taille = *taille;
+         let g = g.clone();
+         let sous = if taille <= PREFIXE {
+-            hacher(snap, &g, taille, &mut budget_restant, &mut tampon, &mut res)
++            hacher(
++                snap,
++                &g,
++                taille,
++                &mut budget_restant,
++                &mut tampon,
++                &mut res,
++                o.stopping,
++            )
+         } else {
+             let tete = hacher(
+                 snap,
+@@ -93,6 +101,7 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
+                 &mut budget_restant,
+                 &mut tampon,
+                 &mut res,
++                o.stopping,
+             );
+             let restants: Vec<u32> = tete.into_values().flatten().collect();
+             if restants.is_empty() {
+@@ -107,6 +116,7 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
+                 &mut budget_restant,
+                 &mut tampon,
+                 &mut res,
++                o.stopping,
+             )
+         };
+         for (empreinte, fichiers) in sous {
+@@ -136,77 +146,24 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
+ 
+     // 6. Fabrication des lignes et coupe.
+     // On ne coupe pas un groupe en deux : on rend les groupes entiers.
+-    let mut lignes: Vec<Row> = Vec::new();
+-    let mut groupes_rendus = 0usize;
+-    let mut groupes_total = res.groupes.len();
+-    let mut gain_total = res.gain_total;
+-    let mut gain_rendu = 0u64;
++    // On compte les lignes pour vérifier la limite.
++    let mut nb_lignes = 0usize;
+ 
+     for g in &res.groupes {
+-        let gain_g = g.taille * (g.fichiers.len() as u64 - 1);
+-        if lignes.len() + g.fichiers.len() > o.limit && !lignes.is_empty() {
++        if nb_lignes + g.fichiers.len() > o.limit && nb_lignes > 0 {
+             break;
+         }
+-        for &idx in &g.fichiers {
+-            let f = &snap.files[idx as usize];
+-            lignes.push(Row {
+-                id: idx,
+-                sel: sel(idx, false),
+-                name: f.name.to_string(),
+-                size: f.size,
+-                count: 1,
+-                mtime: f.mtime,
+-                is_dir: false,
+-                path: snap.file_path(idx).to_string_lossy().into_owned(),
+-            });
+-        }
+-        groupes_rendus += 1;
+-        gain_rendu += gain_g;
++        nb_lignes += g.fichiers.len();
+     }
+ 
+     // Recalculer groupes_total et gain_total sur TOUS les groupes (pas seulement rendus).
+-    groupes_total = res.groupes.len();
+-    gain_total = res
++    let groupes_total = res.groupes.len();
++    let gain_total: u64 = res
+         .groupes
+         .iter()
+         .map(|g| g.taille * (g.fichiers.len() as u64 - 1))
+         .sum();
+ 
+-    // Marquer le groupe dans les lignes via un champ sérialisé à part.
+-    // On utilise un Vec parallèle pour stocker le numéro de groupe et l'empreinte.
+-    // Mais Row n'a pas ces champs. On les sérialise via DupRow dans main.rs.
+-    // Ici on stocke dans un champ auxiliaire... on utilise un hack : on ne stocke
+-    // pas dans Row, on laisse main.rs reconstruire. Pour simplifier, on stocke
+-    // le groupe et l'empreinte dans des champs séparés via un wrapper.
+-
+-    // En fait, on doit retourner les lignes avec leur groupe. On utilise une
+-    // structure intermédiaire. Mais le contrat dit Row. On va stocker le groupe
+-    // dans un Vec parallèle accessible via un champ de Resultat.
+-    // Pour l'instant, on met le groupe dans le champ `count` (inutilisé ici, count=1)
+-    // NON. On garde Row tel quel et on ajoute les infos dans Resultat.
+-
+-    // On stocke les infos de groupe dans Resultat pour que main.rs les utilise.
+-    // Mais Resultat n'a pas de champ pour les lignes. On ajoute un champ.
+-    // Pour éviter de changer la signature, on stocke dans un champ `lignes` de
+-    // Resultat. Mais Resultat n'a pas de champ `lignes`. On l'ajoute.
+-
+-    // Simplification : on ajoute un champ `lignes: Vec<Row>` et `groupes_info: Vec<(u32, String)>`
+-    // à Resultat. Mais Resultat est déjà défini. On le modifie.
+-
+-    // En réalité, on va stocker les lignes rendues dans res, et les infos de
+-    // groupe dans un champ auxiliaire. On modifie Resultat pour ajouter ces champs.
+-    // Mais Resultat est déjà défini ci-dessus. On ne peut pas le modifier ici.
+-    // On va plutôt retourner les lignes via un champ qu'on ajoute maintenant.
+-
+-    // On ajoute les champs à Resultat en les initialisant ici.
+-    // Mais Resultat est déjà construit. On ne peut pas ajouter de champs dynamiquement.
+-    // Solution : on modifie la définition de Resultat ci-dessus pour inclure
+-    // `lignes: Vec<Row>` et `groupes_info: Vec<(u32, String)>`.
+-
+-    // Pour l'instant, on retourne res avec les groupes. main.rs reconstruira
+-    // les lignes à partir de res.groupes. C'est plus simple et évite de modifier
+-    // Resultat.
+-
+     res.groupes_total = groupes_total;
+     res.gain_total = gain_total;
+     res.exact = res.exact && budget_restant > 0;
+@@ -219,16 +176,20 @@ fn sous_arbres(snap: &Snapshot, base: u32) -> Vec<bool> {
+     let n = snap.dirs.len();
+     let mut dedans = vec![false; n];
+     if base == 0 {
+-        for d in &dedans {
+-            let _ = d;
+-        }
+         for i in 0..n {
+             dedans[i] = true;
+         }
+         return dedans;
+     }
+-    // Marquer le sous-arbre de base.
+-    // On utilise une DFS depuis base.
++    // Construire l'index parent -> enfants pour éviter O(n²).
++    let mut enfants: Vec<Vec<u32>> = vec![Vec::new(); n];
++    for dir in &snap.dirs {
++        let p = dir.parent as usize;
++        if p < n {
++            enfants[p].push(dir.id);
++        }
++    }
++    // Marquer le sous-arbre de base par DFS.
+     let mut stack = vec![base];
+     while let Some(d) = stack.pop() {
+         let di = d as usize;
+@@ -236,32 +197,16 @@ fn sous_arbres(snap: &Snapshot, base: u32) -> Vec<bool> {
+             continue;
+         }
+         dedans[di] = true;
+-        // Trouver les enfants.
+-        // On parcourt tous les dirs pour trouver ceux dont parent == d.
+-        for dir in &snap.dirs {
+-            if dir.parent == d && !dedans[dir.id as usize] {
+-                stack.push(dir.id);
++        for &child in &enfants[di] {
++            if !dedans[child as usize] {
++                stack.push(child);
+             }
+         }
+     }
+     dedans
+ }
+ 
+-pub fn groupes_de_taille(v: &[(u64, u32)]) -> Vec<(u64, Vec<u32>)> {
+-    let mut out = Vec::new();
+-    let mut i = 0;
+-    while i < v.len() {
+-        let mut j = i + 1;
+-        while j < v.len() && v[j].0 == v[i].0 {
+-            j += 1;
+-        }
+-        if j - i >= 2 {
+-            out.push((v[i].0, v[i..j].iter().map(|&(_, k)| k).collect()));
+-        }
+-        i = j;
+-    }
+-    out
+-}
++// Removed dead code: groupes_de_taille (never called in production)
+ 
+ fn hacher(
+     snap: &Snapshot,
+@@ -270,10 +215,17 @@ fn hacher(
+     budget: &mut u64,
+     tampon: &mut [u8],
+     res: &mut Resultat,
++    stopping: &AtomicBool,
+ ) -> std::collections::HashMap<String, Vec<u32>> {
+     use std::collections::HashMap;
+     let mut groupes: HashMap<String, Vec<u32>> = HashMap::new();
+     for &idx in fichiers {
++        // Vérifier l'arrêt.
++        if stopping.load(Ordering::Relaxed) {
++            res.arret = true;
++            res.exact = false;
++            break;
++        }
+         let f = &snap.files[idx as usize];
+         let path = snap.file_path(idx);
+         // Vérifier que le fichier n'a pas changé depuis le scan.
+@@ -354,10 +306,14 @@ fn hex_encode(bytes: &[u8]) -> String {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn hex_encode_ok() {
++        assert_eq!(hex_encode(&[0xab, 0xcd]), "abcd");
++    }
++
+     #[test]
+     fn budget_refus_exact() {
+         // Budget::prend refuse si n > reste.
+-        // On teste la logique inline.
+         let mut reste = 100u64;
+         let n = 101u64;
+         assert!(n > reste);
+@@ -369,31 +325,4 @@ mod tests {
+         }
+         assert_eq!(reste, 100);
+     }
+-
+-    #[test]
+-    fn groupes_de_taille_paires() {
+-        let v = vec![(10u64, 1u32), (10u64, 2u32), (20u64, 3u32)];
+-        let g = groupes_de_taille(&v);
+-        assert_eq!(g.len(), 1);
+-        assert_eq!(g[0].0, 10);
+-        assert_eq!(g[0].1, vec![1, 2]);
+-    }
+-
+-    #[test]
+-    fn groupes_de_taille_trie() {
+-        let v = vec![(10u64, 1u32), (10u64, 2u32), (10u64, 3u32)];
+-        let g = groupes_de_taille(&v);
+-        assert_eq!(g.len(), 1);
+-        assert_eq!(g[0].1, vec![1, 2, 3]);
+-    }
+-
+-    #[test]
+-    fn hex_encode_ok() {
+-        assert_eq!(hex_encode(&[0xab, 0xcd]), "abcd");
+-    }
+-}
+-#[cfg(test)]
+-mod tests_empreinte {
+-    // empreinte() testée via hacher() en mémoire (pas possible sans Snapshot).
+-    // On teste hex_encode et la logique de groupement.
+ }
+diff --git a/src/main.rs b/src/main.rs
+index f8af395..4e59bbf 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -3159,7 +3159,6 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
+ 
+     // Coupe aux frontières de groupe : on ne montre jamais la moitié d'un groupe.
+     // On trouve les indices de coupe.
+-    let mut groupes_rendus = 0usize;
+     let mut coupe_idx = lignes.len();
+     // On parcourt les groupes dans l'ordre des lignes pour trouver la coupe.
+     // Simplification : on coupe à limit si possible, sinon on rend le groupe entier.
