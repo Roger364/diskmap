@@ -871,7 +871,7 @@ function renderRows() {
       <td class="num" style="color:var(--muted)">${r.is_dir ? nf.format(r.count) : ''}</td>
       <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span>
           <span style="color:var(--muted);font-size:11.5px"> · ${hage(r.mtime)}</span></td>
-      <td class="act"><button title="Ouvrir dans l'explorateur">📂</button></td>`;
+      <td class="act"><button title="Ouvrir dans l'explorateur">${r.is_dir ? '📂' : '📄'}</button></td>`;
     if (r.is_dir) tr.querySelector('.nm').onclick = () => aller(r.path);
     tr.querySelector('.act button').onclick = () =>
       fetch(`/api/open?drive=${cur.drive}&chemin=${encodeURIComponent(r.path)}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });
@@ -1027,7 +1027,7 @@ async function search() {
       <td class="num"></td>
       <td class="num" style="color:var(--muted)">${r.is_dir ? nf.format(r.count) : ''}</td>
       <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span></td>
-      <td class="act"><button title="Ouvrir dans l'explorateur">📂</button></td>`;
+      <td class="act"><button title="Ouvrir dans l'explorateur">${r.is_dir ? '📂' : '📄'}</button></td>`;
     if (r.is_dir) tr.querySelector('.nm').onclick = () => { $('#q').value = ''; aller(r.path); };
     tr.querySelector('.act button').onclick = () =>
       fetch(`/api/open?drive=${cur.drive}&chemin=${encodeURIComponent(r.path)}&kind=${r.is_dir ? 'dir' : 'file'}`, { method: 'POST', headers: ENTETE_ACTION });

@@ -50,7 +50,7 @@ const ATTENDU = {
     'src/main.rs:110': 'struct Montre',
     'src/main.rs:906': 'fn hote_local',
     'src/main.rs:984': 'X-Diskmap absent',
-    'src/main.rs:1199': 'fn dossier_de',
+    'src/main.rs:1203': 'fn dossier_de',
     'src/main.rs:212': 'fn decider_le_navigateur',
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'tests/sondes/sonde-ui-suppression.mjs:101': "zztaille-z.txt', 'x'.repeat(2000)",
@@ -61,15 +61,15 @@ const ATTENDU = {
     'src/main.rs:643': 'fn start_scan',
     'src/main.rs:345': 'Navigateur  : non ouvert',
     'tests/sondes/lancer.mjs:1213': "'--port', String(port), '--no-browser'",
-    'src/main.rs:1545': 'fn blocked_reason',
-    'src/main.rs:1682': 'gen_vue != snap.gen',
-    'src/main.rs:1823': 'app.pending.lock().unwrap(); // aperçu',
-    'src/main.rs:1825': 'retiré ICI aussi',
-    'src/main.rs:1829': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
-    'src/main.rs:1874': 'app.pending.lock().unwrap(); // exécution : lecture',
-    'src/main.rs:2160': 'let rescan = scan_ticket.is_some()',
+    'src/main.rs:1549': 'fn blocked_reason',
+    'src/main.rs:1686': 'gen_vue != snap.gen',
+    'src/main.rs:1827': 'app.pending.lock().unwrap(); // aperçu',
+    'src/main.rs:1829': 'retiré ICI aussi',
+    'src/main.rs:1833': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
+    'src/main.rs:1878': 'app.pending.lock().unwrap(); // exécution : lecture',
+    'src/main.rs:2164': 'let rescan = scan_ticket.is_some()',
     'src/main.rs:125': 'scanning: Mutex<Option<char>>',
-    'src/main.rs:2958': 'fn journal',
+    'src/main.rs:2962': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',
     'src/scan.rs:503': 'pub fn dir_path',
@@ -111,9 +111,9 @@ const ATTENDU = {
     // sont les GARDES elles-memes — le libelle doit s y trouver, pas un
     // commentaire voisin : c est ce que la reference doit designer.
     'src/main.rs:1000': 'lettre manquante',
-    'src/main.rs:1040': 'id invalide',
+    'src/main.rs:1083': 'id invalide',
     'src/main.rs:1059': 'chemin invalide',
-    'src/main.rs:1103': 'route inconnue',
+    'src/main.rs:1107': 'route inconnue',
     'tests/sondes/verifier-libelles.mjs:217': "const leurre = 'zzcontrolejamaisvu'",
     // Section 7/29 : l ecoute du reseau que les quatre sondes a navigateur
     // n avaient pas. Le symbole designe l export qu elles importent — sans
@@ -149,14 +149,14 @@ const ATTENDU = {
     // le mot de la suppression definitive malgre le mode « corbeille ».
     'src/win32.rs:478': 'pub fn corbeille_nuke',
     'src/win32.rs:503': 'pub fn corbeille_reversible',
-    'src/main.rs:1446': 'corbeille_inerte: Option<bool>,',
-    'src/main.rs:2238': 'fn mots_exiges',
+    'src/main.rs:1450': 'corbeille_inerte: Option<bool>,',
+    'src/main.rs:2242': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
     // motif de refus que la sonde lisait mal : elle designe le `format!` qui
     // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
     // qui compte, et une reference qui designerait la ligne voisine garderait un
     // texte, pas la cause.
-    'src/main.rs:1903': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
+    'src/main.rs:1907': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
     // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
     // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
     'tests/sondes/config.mjs:377': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
@@ -168,7 +168,7 @@ const ATTENDU = {
     // en 1088 — c'est la ligne que la phrase annonce, et le controle des
     // references existe precisement pour refuser un commentaire voisin.
     'src/main.rs:1005': 'return Err(("404 Not Found", "volume inconnu"',
-    'src/main.rs:1122': '("409 Conflict", "volume pas encore analysé"',
+    'src/main.rs:1126': '("409 Conflict", "volume pas encore analysé"',
     'ui/index.html:1189': 'if (!force && e.status === 409) {',
     'ui/index.html:775': 'if (e.status === 404) {',
   },
