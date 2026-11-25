@@ -103,7 +103,11 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
                 &mut res,
                 o.stopping,
             );
-            let restants: Vec<u32> = tete.into_values().flatten().collect();
+            let restants: Vec<u32> = tete
+                .into_values()
+                .filter(|v| v.len() >= 2)
+                .flatten()
+                .collect();
             if restants.is_empty() {
                 // Tous les fichiers ont une empreinte de préfixe distincte :
                 // pas de doublon possible, on passe au groupe suivant.
@@ -166,7 +170,7 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
 
     res.groupes_total = groupes_total;
     res.gain_total = gain_total;
-    res.exact = res.exact && budget_restant > 0;
+    res.exact = res.exact && !res.arret;
     res.octets_lus = o.budget - budget_restant;
 
     res
@@ -262,6 +266,12 @@ fn hacher(
         let mut lu_total = 0u64;
         let mut ok = true;
         while lu_total < a_lire {
+            // Vérifier l'arrêt pendant la lecture.
+            if stopping.load(Ordering::Relaxed) {
+                res.arret = true;
+                res.exact = false;
+                return groupes;
+            }
             let a_lire_ce_tour = (a_lire - lu_total).min(tampon.len() as u64) as usize;
             match reader.read(&mut tampon[..a_lire_ce_tour]) {
                 Ok(0) => break,
