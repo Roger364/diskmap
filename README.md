@@ -35,6 +35,8 @@ next section describes, on Windows, and it has been measured on one machine.
 - Sort by size, last activity, name or file count.
 - Case-insensitive global search across the whole volume — searching
   `node_modules` returns every occurrence with its size and path.
+- **Duplicates** detection: files with identical content, grouped by size then
+  SHA-256 (read budget 2 GiB, prefix-first to skip files that differ early).
 - **Map** view (treemap) alongside the table.
 - Open any entry in Windows Explorer.
 - **Delete** selected entries — see below.
