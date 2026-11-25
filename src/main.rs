@@ -3159,7 +3159,6 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
 
     // Coupe aux frontières de groupe : on ne montre jamais la moitié d'un groupe.
     // On trouve les indices de coupe.
-    let mut groupes_rendus = 0usize;
     let mut coupe_idx = lignes.len();
     // On parcourt les groupes dans l'ordre des lignes pour trouver la coupe.
     // Simplification : on coupe à limit si possible, sinon on rend le groupe entier.
