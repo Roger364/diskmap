@@ -235,8 +235,8 @@ dossier `$RECYCLE.BIN` existe alors toujours. `corbeille_disponible` répondait 
 à la corbeille **si possible** » — faisait détruire le fichier sur place.
 
 `corbeille_disponible` ne posait pas la bonne question : elle dit si le dossier
-existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:594`) est la question
-qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:569`) en est la
+existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:595`) est la question
+qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:570`) en est la
 mesure. La clé se lit dans `HKEY_CURRENT_USER`, comme `MaxCapacity` : aucune
 élévation requise.
 
@@ -248,7 +248,7 @@ Trois choix valent d'être écrits, parce qu'ils décident du geste :
   `MaxCapacity` et pour `NeedToPurge` : une valeur non mesurée n'est pas une valeur
   nulle, et un avertissement qui se déclenche sans mesure ne veut plus rien dire.
 - **Le mode « corbeille » n'obtient plus une confirmation moins chère.** `execute`
-  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2301`) : un
+  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2311`) : un
   volume à corbeille inerte exige le même mot que la suppression définitive. La
   confirmation suit le geste réel, pas le mode affiché.
 - **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1482`) est exposé au même
@@ -279,7 +279,7 @@ cran qui rend le silence impossible à remettre — supprimer la déclaration ra
 sonde à neuf verdicts, et le plancher la rougit au lieu de la laisser muette.
 
 **La garde a une preuve de morsure, depuis le 11/10/2026.** `epreuve.mjs` neutralise
-`corbeille_reversible` (`src/win32.rs:594`) en `false`, et `sonde-reversibilite.mjs`
+`corbeille_reversible` (`src/win32.rs:595`) en `false`, et `sonde-reversibilite.mjs`
 sort **5/10, code 1** — le premier verdict rouge nommant la cause : *HTTP 400 —
 confirmation attendue : « EFFACER »*. Restaurée, la sonde revient à **10/10**. La
 garde est donc éprouvée dans le sens qui compte : `corbeille_reversible` répond à la
@@ -327,7 +327,7 @@ portée :
 ${d.fs ? `<span class="fs">${escapeHtml(d.fs)}</span>` : ''}
 ```
 
-`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:868`) : le nom de
+`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:869`) : le nom de
 volume est une **donnée externe**, contrôlable par quiconque formate une clé USB, monte une
 image disque ou renomme un partage. Avant correctif, ils étaient interpolés dans un `innerHTML` **sans
 `escapeHtml`**, alors que tous les autres noms venus du disque (tableau, carte, recherche,
@@ -499,7 +499,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:3021`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:3031`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -575,7 +575,7 @@ point final). Le risque annoncé : l'aperçu afficherait `foo ` et l'effacement 
 - l'aperçu affiche `V:\_r9\piege.txt ` **avec son espace**, et le déclare
   `blocked=true`, `deletable=0`, motif « introuvable sur le disque ».
 
-Le refus vient de `delete_path` (`src/win32.rs:341`), qui interdit le préfixe `\\?\` —
+Le refus vient de `delete_path` (`src/win32.rs:342`), qui interdit le préfixe `\\?\` —
 justement parce qu'il court-circuite la corbeille. Un nom qui n'est adressable qu'en
 verbatim est donc **visible mais jamais effaçable** : il ne peut pas viser un autre fichier,
 il ne peut rien viser du tout. La classe de bug est fermée par une règle déjà en place,
@@ -597,7 +597,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2223`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2233`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -1265,13 +1265,13 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
   `/api/search`, exigée par `dry`. Un identifiant périmé est refusé, pas réinterprété.
-- **Jeton** : `BCryptGenRandom` (`src/win32.rs:313`), usage unique, dix minutes, lié au
+- **Jeton** : `BCryptGenRandom` (`src/win32.rs:314`), usage unique, dix minutes, lié au
   volume, avec repli qui ne dérive jamais d'une constante.
 - **CSRF** : `X-Diskmap` sur tous les POST, `Host` local sur toutes les routes, lectures
   comprises. Le raisonnement sur le rebinding (l'en-tête `X-Diskmap` est posable librement
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
-  (`src/win32.rs:391`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
+  (`src/win32.rs:392`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
 - **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:829`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
   (`tests/sondes/lancer.mjs:828`, motif `tests/sondes/lancer.mjs:1877`) : « je n'avais rien à
@@ -1307,7 +1307,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
   tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
   de celui qui a lancé le programme est une intrusion, même sans intention — R13.
-- **`\\?\` interdit à l'effacement** (`src/win32.rs:341`) : ce préfixe court-circuite la
+- **`\\?\` interdit à l'effacement** (`src/win32.rs:342`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
 - **La réversibilité se constate**, elle ne se déduit pas du code de retour : les fiches `$I`
   sont lues une fois après la boucle, filtrées par date, et l'issue est journalisée comme

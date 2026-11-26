@@ -1862,8 +1862,8 @@ fn dry(
     let reversible = win32::corbeille_reversible(letter);
     let nuke = win32::corbeille_nuke(letter);
     let (mots_recycle, mots_permanent) = (
-        mots_avec_raison(total, true, reversible, nuke, app.eleve),
-        mots_avec_raison(total, false, false, None, app.eleve),
+        mots_avec_raison(taille_du_lot(&montres), true, reversible, nuke, app.eleve),
+        mots_avec_raison(taille_du_lot(&montres), false, false, None, app.eleve),
     );
 
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
@@ -1991,7 +1991,15 @@ fn execute(
     let mut done = 0usize;
     let mut failed = 0usize;
     let mut freed = 0u64;
-    let mut freed_inodes: HashSet<u64> = HashSet::new();
+    let mut inode_success: HashMap<u64, usize> = HashMap::new();
+    let mut inode_total: HashMap<u64, usize> = HashMap::new();
+    let mut inode_size: HashMap<u64, u64> = HashMap::new();
+    for m in &pending.items {
+        if let Some(i) = m.inode {
+            *inode_total.entry(i).or_insert(0) += 1;
+            inode_size.entry(i).or_insert(m.size);
+        }
+    }
     // TOUT ce que le lot a touché, y compris ce qu'il n'a pas supprimé. Un
     // journal qui n'écrit que les succès laisse le même vide que l'incident : on
     // y voit des suppressions, mais pas les cibles refusées entre les deux —
@@ -2099,15 +2107,8 @@ fn execute(
         match win32::delete_path(&ps, to_trash) {
             Ok(()) => {
                 done += 1;
-                // Un lien dur ne libère le fichier physique qu'une seule fois :
-                // on ne compte `freed` qu'une fois par inode.
                 if let Some(i) = m.inode {
-                    if freed_inodes.contains(&i) {
-                        // déjà compté
-                    } else {
-                        freed += size;
-                        freed_inodes.insert(i);
-                    }
+                    *inode_success.entry(i).or_insert(0) += 1;
                 } else {
                     freed += size;
                 }
@@ -2220,6 +2221,15 @@ fn execute(
     } else {
         None
     };
+    // Les liens durs ne libèrent le fichier physique que si tous leurs noms
+    // dans le lot ont été supprimés avec succès.
+    for (i, n) in &inode_total {
+        if inode_success.get(i).copied().unwrap_or(0) == *n {
+            if let Some(sz) = inode_size.get(i) {
+                freed += *sz;
+            }
+        }
+    }
     let rescan = scan_ticket.is_some();
 
     // `to_trash` répond à la question utile : « l'opération était-elle

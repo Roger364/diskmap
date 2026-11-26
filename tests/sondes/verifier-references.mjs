@@ -67,9 +67,9 @@ const ATTENDU = {
     'src/main.rs:1880': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
     'src/main.rs:1874': 'app.pending.lock().unwrap(); // aperçu',
     'src/main.rs:1925': 'app.pending.lock().unwrap(); // exécution : lecture',
-    'src/main.rs:2223': 'let rescan = scan_ticket.is_some()',
+    'src/main.rs:2233': 'let rescan = scan_ticket.is_some()',
     'src/main.rs:131': 'scanning: Mutex<Option<char>>',
-    'src/main.rs:3021': 'fn journal',
+    'src/main.rs:3031': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',
     'src/scan.rs:503': 'pub fn dir_path',
@@ -137,20 +137,20 @@ const ATTENDU = {
     // trois premieres sont les DECLARATIONS des fonctions citees — une
     // reference qui designerait un commentaire voisin garderait un texte, pas
     // une regle.
-    'src/win32.rs:313': 'pub fn alea_u64',
-    'src/win32.rs:341': 'pub fn delete_path',
-    'src/win32.rs:391': 'pub fn is_reparse_point',
+    'src/win32.rs:314': 'pub fn alea_u64',
+    'src/win32.rs:342': 'pub fn delete_path',
+    'src/win32.rs:392': 'pub fn is_reparse_point',
     // `:471` designait encore `GetVolumeInformationW` dans la prose, et depuis
     // longtemps plus rien de tel dans le fichier. Recalee sur la FONCTION qui
     // rend `label` et `fs` : c est elle que la phrase annonce.
-    'src/win32.rs:868': 'fn volume_info',
+    'src/win32.rs:869': 'fn volume_info',
     // Section 3.8 : le contrat `corbeille_inerte` expose par l apercu, et la
     // fonction qui recoit la reversibilite MESUREE — c est elle qui fait exiger
     // le mot de la suppression definitive malgre le mode « corbeille ».
-    'src/win32.rs:569': 'pub fn corbeille_nuke',
-    'src/win32.rs:594': 'pub fn corbeille_reversible',
+    'src/win32.rs:570': 'pub fn corbeille_nuke',
+    'src/win32.rs:595': 'pub fn corbeille_reversible',
     'src/main.rs:1482': 'corbeille_inerte: Option<bool>,',
-    'src/main.rs:2301': 'fn mots_exiges',
+    'src/main.rs:2311': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
     // motif de refus que la sonde lisait mal : elle designe le `format!` qui
     // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
