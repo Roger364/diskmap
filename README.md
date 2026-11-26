@@ -1166,10 +1166,10 @@ window to open. Like R14, the defect depends on the **duration of a scan**, not 
 > cover it: its snapshot was taken before the request existed.
 
 Each accepted scan request now gets a monotone per-volume ticket. `start_scan`
-(`src/main.rs:647`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
+(`src/main.rs:657`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
 so a client can wait for **its** scan without missing a short run or mistaking the current scan's
 completion for the requested one. Repeated requests coalesce in the queue (`demande_couverte`,
-`src/main.rs:631`, and `en_attente.push(letter)`, `src/main.rs:642`): ten requests during one
+`src/main.rs:641`, and `en_attente.push(letter)`, `src/main.rs:652`): ten requests during one
 scan request just one additional pass, not ten. A scan already in progress never satisfies a
 request made after it began.
 

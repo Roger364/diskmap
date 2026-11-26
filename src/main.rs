@@ -135,6 +135,14 @@ struct App {
     stopping: AtomicBool,
     /// Une seule détection de doublons à la fois.
     dup: AtomicBool,
+    /// Drapeau d'annulation de la détection EN COURS. `None` quand aucune
+    /// détection ne tourne : `/api/duplicates/cancel` peut alors répondre sans
+    /// inventer un arrêt qui n'aurait rien à arrêter.
+    dup_cancel: Mutex<Option<Arc<AtomicBool>>>,
+    /// Empreintes déjà calculées, indexées par `(drive, snap.gen)`. Changer de
+    /// filtre, de catégorie ou de tri réutilise ces empreintes sans relire le
+    /// disque.
+    dup_cache: Mutex<doublons::CacheEmpreintes>,
 }
 
 #[derive(serde::Serialize)]
@@ -393,6 +401,8 @@ fn main() {
         eleve: win32::est_eleve(),
         stopping: AtomicBool::new(false),
         dup: AtomicBool::new(false),
+        dup_cancel: Mutex::new(None),
+        dup_cache: Mutex::new(doublons::CacheEmpreintes::new()),
     });
 
     // Les volumes sans cache sont mis en file : ils seront analysés les uns après
@@ -1025,6 +1035,7 @@ fn route(
         ("GET", "/api/tree") => tree(app, q),
         ("GET", "/api/search") => search(app, q),
         ("GET", "/api/duplicates") => duplicates(app, q),
+        ("POST", "/api/duplicates/cancel") => duplicates_cancel(app),
         ("GET", "/api/unreadable") => unreadable(app, q),
 
         ("POST", "/api/reveal") => reveal(app, body),
@@ -3058,6 +3069,33 @@ struct DupRow {
     row: Row,
     groupe: u32,
     empreinte: String,
+    /// Gain récupérable du groupe entier (taille × (copies − 1)).
+    groupe_gain: u64,
+    /// Nombre de copies du groupe.
+    groupe_count: usize,
+    /// Score « Smart » : plus il est haut, plus le fichier est un bon original.
+    smart_score: i32,
+    /// Exactement un fichier par groupe porte ce drapeau.
+    garder_recommande: bool,
+    categorie: &'static str,
+    /// Renseigné au Lot 3 (hardlinks NTFS). Toujours faux ici.
+    hardlink: bool,
+}
+
+/// Demande l'arrêt de la détection de doublons en cours.
+///
+/// Répond toujours 200 : « rien à annuler » n'est pas une faute du client, et
+/// une nouvelle réponse d'erreur devrait être citée par une sonde
+/// (`tests/sondes/verifier-libelles.mjs`).
+fn duplicates_cancel(app: &Arc<App>) -> Result<Resp, (&'static str, String)> {
+    let drapeau = app.dup_cancel.lock().unwrap().clone();
+    match drapeau {
+        Some(d) => {
+            d.store(true, Ordering::Relaxed);
+            Ok(Resp::Json("{\"ok\":true,\"en_cours\":true}".to_string()))
+        }
+        None => Ok(Resp::Json("{\"ok\":false,\"en_cours\":false}".to_string())),
+    }
 }
 
 fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
@@ -3093,6 +3131,9 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     } else {
         0
     };
+    // Un filtre inconnu vaut « tout » : il ne doit pas vider la liste.
+    let categorie =
+        doublons::Categorie::depuis(q.get("category").map(|s| s.as_str()).unwrap_or("all"));
 
     // Une seule détection à la fois.
     if app.dup.swap(true, Ordering::AcqRel) {
@@ -3101,105 +3142,130 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             "détection de doublons déjà en cours".into(),
         ));
     }
-    let _garde = DupGuard(&app.dup);
+    let annulation = Arc::new(AtomicBool::new(false));
+    *app.dup_cancel.lock().unwrap() = Some(annulation.clone());
+    let _garde = DupGuard {
+        dup: &app.dup,
+        cancel: &app.dup_cancel,
+    };
 
-    let tri = Tri::depuis(q.get("sort").map(|s| s.as_str()).unwrap_or("size"));
+    let tri = doublons::TriGroupe::depuis(q.get("sort").map(|s| s.as_str()).unwrap_or("gain"));
     let decroissant = q.get("order").map(|s| s != "asc").unwrap_or(true);
 
-    let stopping = AtomicBool::new(false);
     let o = doublons::Options {
         base,
         min,
         max,
         budget,
-        limit,
-        stopping: &stopping,
+        categorie,
+        stopping: &annulation,
+        drive: letter,
+        gen: snap.gen,
+        cache: &app.dup_cache,
     };
     let r = doublons::chercher(&snap, &o);
 
-    // Fabriquer les lignes avec leur groupe.
-    let mut lignes: Vec<DupRow> = Vec::new();
-    for (gi, g) in r.groupes.iter().enumerate() {
-        for &idx in &g.fichiers {
-            let f = &snap.files[idx as usize];
-            lignes.push(DupRow {
-                row: Row {
-                    id: idx,
-                    sel: sel(idx, false),
-                    name: f.name.to_string(),
-                    size: f.size,
-                    count: 1,
-                    mtime: f.mtime,
-                    is_dir: false,
+    // Construire les groupes AVANT de les trier : le tri porte sur les
+    // groupes, jamais sur des lignes aplaties.
+    let mut groupes: Vec<(doublons::CleGroupe, Vec<DupRow>)> = Vec::with_capacity(r.groupes.len());
+    for g in &r.groupes {
+        let candidats: Vec<doublons::Candidat> = g
+            .fichiers
+            .iter()
+            .map(|&idx| {
+                let f = &snap.files[idx as usize];
+                doublons::Candidat {
+                    idx,
                     path: snap.file_path(idx).to_string_lossy().into_owned(),
-                },
-                groupe: (gi + 1) as u32,
-                empreinte: g.empreinte.clone(),
-            });
-        }
+                    mtime: f.mtime,
+                }
+            })
+            .collect();
+        let oldest = candidats
+            .iter()
+            .filter(|c| c.mtime > 0)
+            .map(|c| c.mtime)
+            .min()
+            .unwrap_or(0);
+        let original = doublons::choisir_original(&candidats).map(|pos| candidats[pos].idx);
+
+        let mut rows: Vec<DupRow> = candidats
+            .iter()
+            .map(|c| {
+                let f = &snap.files[c.idx as usize];
+                DupRow {
+                    row: Row {
+                        id: c.idx,
+                        sel: sel(c.idx, false),
+                        name: f.name.to_string(),
+                        size: f.size,
+                        count: 1,
+                        mtime: f.mtime,
+                        is_dir: false,
+                        path: c.path.clone(),
+                    },
+                    groupe: 0,
+                    empreinte: g.empreinte.clone(),
+                    groupe_gain: doublons::gain_groupe(g.taille, g.fichiers.len()),
+                    groupe_count: g.fichiers.len(),
+                    smart_score: doublons::score_smart(&c.path, c.mtime, oldest),
+                    garder_recommande: Some(c.idx) == original,
+                    categorie: doublons::categorie(&f.name),
+                    hardlink: false,
+                }
+            })
+            .collect();
+        // L'original recommandé en tête, puis les chemins croissants.
+        rows.sort_by(|a, b| {
+            b.garder_recommande
+                .cmp(&a.garder_recommande)
+                .then_with(|| a.row.path.cmp(&b.row.path))
+        });
+
+        let nom = rows
+            .iter()
+            .find(|r| r.garder_recommande)
+            .map(|r| r.row.name.clone())
+            .unwrap_or_default();
+        let mtime_max = g
+            .fichiers
+            .iter()
+            .map(|&i| snap.files[i as usize].mtime)
+            .max()
+            .unwrap_or(0);
+        let cle = doublons::CleGroupe {
+            gain: doublons::gain_groupe(g.taille, g.fichiers.len()),
+            taille: g.taille,
+            mtime: mtime_max,
+            count: g.fichiers.len(),
+            nom,
+        };
+        groupes.push((cle, rows));
     }
 
-    // Trier les lignes (stable, par path d'abord puis trier_lignes).
-    // On trie par path d'abord pour que trier_lignes (stable, départage par name) donne un ordre total.
-    lignes.sort_by(|a, b| a.row.path.cmp(&b.row.path));
-    let mut rows_only: Vec<Row> = lignes.iter().map(|d| d.row.clone()).collect();
-    trier_lignes(&mut rows_only, tri, decroissant);
-    // Reconstruire DupRow dans le nouvel ordre.
-    // On utilise un map path->DupRow pour retrouver.
-    let mut map: HashMap<String, DupRow> = lignes
-        .into_iter()
-        .map(|d| (d.row.path.clone(), d))
-        .collect();
-    let mut lignes: Vec<DupRow> = Vec::with_capacity(rows_only.len());
-    for r in &rows_only {
-        if let Some(d) = map.remove(&r.path) {
-            lignes.push(d);
-        }
-    }
+    // LE tri corrigé : les groupes entre eux. `trier_par_cle` déplace des
+    // groupes ENTIERS, donc aucun fichier ne peut changer de groupe.
+    doublons::trier_par_cle(&mut groupes, tri, decroissant);
 
-    // Coupe aux frontières de groupe : on ne montre jamais la moitié d'un groupe.
-    // On trouve les indices de coupe.
-    let mut coupe_idx = lignes.len();
-    // On parcourt les groupes dans l'ordre des lignes pour trouver la coupe.
-    // Simplification : on coupe à limit si possible, sinon on rend le groupe entier.
-    if lignes.len() > limit {
-        // Trouver la frontière de groupe la plus proche <= limit.
-        let mut acc = 0usize;
-        let mut last_boundary = 0usize;
-        let mut current_groupe = 0u32;
-        for (i, d) in lignes.iter().enumerate() {
-            if d.groupe != current_groupe {
-                last_boundary = i;
-                current_groupe = d.groupe;
-            }
-            acc += 1;
-            if acc >= limit {
-                coupe_idx = if last_boundary > 0 {
-                    last_boundary
-                } else {
-                    i + 1
-                };
-                break;
-            }
-        }
-        if coupe_idx == lignes.len() {
-            coupe_idx = lignes.len();
-        }
-    }
-    lignes.truncate(coupe_idx);
-
-    // Compte des groupes rendus.
+    // Aplatir en respectant les frontières de groupe et la limite : on ne
+    // coupe jamais un groupe en deux.
+    let mut lignes: Vec<DupRow> = Vec::new();
     let mut groupes_rendus = 0u32;
-    let mut current_groupe = 0u32;
-    for d in &lignes {
-        if d.groupe != current_groupe {
-            groupes_rendus += 1;
-            current_groupe = d.groupe;
+    let mut gain_rendu = 0u64;
+    for (cle, rows) in groupes.iter_mut() {
+        if !lignes.is_empty() && lignes.len() + rows.len() > limit {
+            break;
+        }
+        groupes_rendus += 1;
+        gain_rendu += cle.gain;
+        for mut r in rows.drain(..) {
+            r.groupe = groupes_rendus;
+            lignes.push(r);
         }
     }
 
     let total_fichiers: usize = r.groupes.iter().map(|g| g.fichiers.len()).sum();
-    let tronque = r.groupes_total > 0 && lignes.len() < total_fichiers;
+    let tronque = lignes.len() < total_fichiers;
 
     Ok(Resp::Json(
         serde_json::to_string(&serde_json::json!({
@@ -3208,10 +3274,11 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             "groupes_total": r.groupes_total,
             "fichiers": lignes.len(),
             "fichiers_total": total_fichiers,
-            "gain": r.gain_total,
+            "gain": gain_rendu,
             "gain_total": r.gain_total,
             "truncated": tronque,
             "exact": r.exact,
+            "arret": r.arret,
             "budget": budget,
             "octets_lus": r.octets_lus,
             "modifies": r.modifies,
@@ -3222,10 +3289,17 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     ))
 }
 
-struct DupGuard<'a>(&'a AtomicBool);
+struct DupGuard<'a> {
+    dup: &'a AtomicBool,
+    cancel: &'a Mutex<Option<Arc<AtomicBool>>>,
+}
 impl Drop for DupGuard<'_> {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::Relaxed);
+        // Retirer le drapeau AVANT de rendre `dup` : sinon une détection
+        // suivante pourrait s'installer entre les deux instructions, et ce
+        // `None` effacerait son drapeau d'annulation.
+        *self.cancel.lock().unwrap() = None;
+        self.dup.store(false, Ordering::Relaxed);
     }
 }
 
