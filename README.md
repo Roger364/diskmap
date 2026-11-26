@@ -1025,8 +1025,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:429`). The watch compares (`ui/index.html:1951`) and reloads
-(`ui/index.html:1956`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:502`). The watch compares (`ui/index.html:2240`) and reloads
+(`ui/index.html:2245`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1100,8 +1100,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:429`). The watch compares (`ui/index.html:1951`) and reloads
-(`ui/index.html:1956`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:502`). The watch compares (`ui/index.html:2240`) and reloads
+(`ui/index.html:2245`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1232,9 +1232,9 @@ between two scans. Now:
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
   `attendreTicket` (`tests/sondes/config.mjs:456`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
-- the UI records the returned ticket (`ui/index.html:683`) and `poll()` stops on its publication
-  (`ui/index.html:701`); the rescan after a deletion waits on the `scan_ticket` returned by the
-  execution (`ui/index.html:1634`);
+- the UI records the returned ticket (`ui/index.html:756`) and `poll()` stops on its publication
+  (`ui/index.html:774`); the rescan after a deletion waits on the `scan_ticket` returned by the
+  execution (`ui/index.html:1905`);
 - `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
   — the fact-based wait below remains its proof of existence;
 - the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the

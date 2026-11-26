@@ -320,7 +320,7 @@ portée :
 
 ### R1 — XSS stockée via le nom de volume → effacement arbitraire · **Haute** · *corrigé*
 
-`ui/index.html:526-527` :
+`ui/index.html:599-600` :
 
 ```js
 <span class="lbl">${d.label || ''}</span>
@@ -344,12 +344,12 @@ aucun nœud texte cassé.
 
 ### R2 — L'aperçu montre 25 chemins, l'exécution en supprime N · **Haute** · *corrigé*
 
-`ui/index.html:1175` : `for (const it of d.items.slice(0, 25))`, suivi de
+`ui/index.html:1433` : `for (const it of d.items.slice(0, 25))`, suivi de
 `… et ${d.items.length - 25} autre(s)`. Rien n'empêche l'exécution de traiter les N.
 
 « Tout sélectionner » dans un dossier de 200 entrées affiche donc 175 chemins que
 l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
-(`ui/index.html:1164`) est lui aussi purement client, et ne couvre pas le *nombre*.
+(`ui/index.html:1422`) est lui aussi purement client, et ne couvre pas le *nombre*.
 
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
@@ -683,11 +683,11 @@ arrivée**.
 > Une seule réponse a le droit de peindre : la dernière demandée. Une réponse périmée ne touche
 > même pas l'état — sinon la suivante hérite d'un état déjà mêlé.
 
-**Le correctif.** Un jeton par requête (`ui/index.html:735`), incrémenté au départ de `load()` et
-de `search()`, comparé à l'arrivée (`ui/index.html:771` et `ui/index.html:988`). La réponse
+**Le correctif.** Un jeton par requête (`ui/index.html:808`), incrémenté au départ de `load()` et
+de `search()`, comparé à l'arrivée (`ui/index.html:848` et `ui/index.html:1065`). La réponse
 périmée rend la main sans rien écrire. Son **erreur** non plus n'est pas dite : la parler ferait
 remonter d'un cran un dossier qui n'a pas disparu, puisque le chemin à remonter serait celui de la
-requête périmée (`ui/index.html:794`).
+requête périmée (`ui/index.html:871`).
 
 **Épreuves, les deux sens.** Jeton retiré, 2 s de latence injectée sur `/api/tree` : deux verdicts
 rougissent, et le nouveau — « l'ordre demandé n'a jamais été contredit à l'écran » — nomme la
@@ -1021,9 +1021,9 @@ qui n'existait pas — et un écran « corrigé » qui resterait faux.
 > l'utilisateur a été perdu en route.
 
 **Le correctif.** Un repère unique : l'écran note, à chaque peinture, le `finished_ms` du volume
-qu'il montre (`ui/index.html:429`). La veille compare (`ui/index.html:1951`) : tant que le
+qu'il montre (`ui/index.html:502`). La veille compare (`ui/index.html:2240`) : tant que le
 repère vaut celui de l'état, elle ne fait rien ; dès qu'il diffère, elle recharge
-(`ui/index.html:1956`). Le rechargement passe par `rechargerTri()` et non `load()` : la
+(`ui/index.html:2245`). Le rechargement passe par `rechargerTri()` et non `load()` : la
 **sélection** se garde — c'est une cible de suppression, et un rechargement de fond n'a pas le
 droit de la déplacer — et une recherche en cours reste une recherche.
 
@@ -1168,9 +1168,9 @@ drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais
 - `POST /api/scan` répond `{ok, ticket}`, et chaque client attend **son** ticket :
   `attendreTicket` (`tests/sondes/config.mjs:456`) boucle sur `scan_completed >= ticket` et ne
   consulte jamais `!scanning` pour conclure ;
-- l'interface note le ticket rendu (`ui/index.html:683`) et `poll()` s'arrête sur sa publication
-  (`ui/index.html:701`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
-  l'exécution (`ui/index.html:1634`) ;
+- l'interface note le ticket rendu (`ui/index.html:756`) et `poll()` s'arrête sur sa publication
+  (`ui/index.html:774`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
+  l'exécution (`ui/index.html:1905`) ;
 - `generation` demande son analyse et attend son ticket (`tests/sondes/sonde-generation.mjs:71`)
   — l'attente par le fait, plus bas, reste sa preuve d'existence ;
 - la sonde `tickets` (`tests/sondes/sonde-tickets.mjs:62`) éprouve le contrat du point de vue
@@ -1260,7 +1260,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **La cible est figée à l'aperçu.** `Montre` porte le chemin résolu ; `execute` ne résout
   plus rien. C'est la bonne architecture : la seule façon de supprimer reste de décider ce
   qu'on supprime.
-- **Une seule réponse peint** (`ui/index.html:735`). Une requête périmée rend la main sans
+- **Une seule réponse peint** (`ui/index.html:808`). Une requête périmée rend la main sans
   toucher l'état, et son erreur non plus n'est pas dite — R11. Le même refus que pour la cible :
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
@@ -1301,7 +1301,7 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   étrangère laissait donc l'écran afficher un instantané que le serveur ne servait plus, sans un
   mot — et un geste de l'utilisateur survenu **pendant** l'analyse était perdu sans bruit,
   mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
-  chaque peinture (`ui/index.html:429`), comparé par la veille (`ui/index.html:1951`) — R14.
+  chaque peinture (`ui/index.html:502`), comparé par la veille (`ui/index.html:2240`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
   (`src/main.rs:223`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
@@ -2690,8 +2690,8 @@ se compte : **7 − 6 = 1** — il restait exactement un `409 Conflict`, celui
 du helper, et les autres 409 du fichier (arrêt en cours, jeton expiré,
 arrêt refusé) portent d'autres sémantiques, non touchées.
 
-**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1248`) dit « analyse
-en cours, on peut insister » ; sa branche 404 (`ui/index.html:777`) remonte au
+**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1506`) dit « analyse
+en cours, on peut insister » ; sa branche 404 (`ui/index.html:854`) remonte au
 dossier parent. Les flux 404 de navigation ne peuvent pas rencontrer une
 lettre hors catalogue (le catalogue ne liste que des volumes montés), donc
 le changement ne crée aucun faux « dossier disparu ».
