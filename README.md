@@ -1025,8 +1025,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:541`). The watch compares (`ui/index.html:2425`) and reloads
-(`ui/index.html:2430`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:541`). The watch compares (`ui/index.html:2424`) and reloads
+(`ui/index.html:2429`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1100,8 +1100,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:541`). The watch compares (`ui/index.html:2425`) and reloads
-(`ui/index.html:2430`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:541`). The watch compares (`ui/index.html:2424`) and reloads
+(`ui/index.html:2429`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1234,7 +1234,7 @@ between two scans. Now:
   consults `!scanning` to conclude;
 - the UI records the returned ticket (`ui/index.html:795`) and `poll()` stops on its publication
   (`ui/index.html:813`); the rescan after a deletion waits on the `scan_ticket` returned by the
-  execution (`ui/index.html:2087`);
+  execution (`ui/index.html:2086`);
 - `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
   — the fact-based wait below remains its proof of existence;
 - the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the

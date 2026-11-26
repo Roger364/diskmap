@@ -3183,6 +3183,10 @@ struct DupRow {
     /// lignes de même `inode` ne libèrent leur octet qu'une fois, et seulement
     /// si TOUTES les deux sont sélectionnées.
     inode: u32,
+    /// Nombre de noms du groupe partageant cet `inode` (1 si pas de lien dur).
+    /// Sert à la barre de sélection pour ne compter un inode que si tous ses
+    /// noms sont cochés, y compris ceux filtrés hors de la vue.
+    inode_count: usize,
 }
 
 /// Demande l'arrêt de la détection de doublons en cours.
@@ -3405,6 +3409,13 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             .unwrap_or(0);
         let original = doublons::choisir_original(&candidats).map(|pos| candidats[pos].idx);
 
+        let mut inode_counts: std::collections::HashMap<u32, usize> =
+            std::collections::HashMap::new();
+        for c in &candidats {
+            let canon = g.canoniques.get(&c.idx).copied().unwrap_or(c.idx);
+            *inode_counts.entry(canon).or_insert(0) += 1;
+        }
+
         let mut rows: Vec<DupRow> = candidats
             .iter()
             .map(|c| {
@@ -3429,6 +3440,9 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
                     categorie: doublons::categorie(&f.name),
                     hardlink: g.hardlinks.binary_search(&c.idx).is_ok(),
                     inode: g.canoniques.get(&c.idx).copied().unwrap_or(c.idx),
+                    inode_count: *inode_counts
+                        .get(&g.canoniques.get(&c.idx).copied().unwrap_or(c.idx))
+                        .unwrap_or(&1),
                 }
             })
             .collect();
