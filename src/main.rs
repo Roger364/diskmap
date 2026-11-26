@@ -3089,8 +3089,13 @@ struct DupRow {
     /// Exactement un fichier par groupe porte ce drapeau.
     garder_recommande: bool,
     categorie: &'static str,
-    /// Renseigné au Lot 3 (hardlinks NTFS). Toujours faux ici.
+    /// Ce nom est un lien dur vers un autre nom du même groupe : le supprimer
+    /// ne libère rien. `inode` dit vers quelle copie physique il pointe.
     hardlink: bool,
+    /// Identité physique de la ligne : l'`id` de la copie canonique. Deux
+    /// lignes de même `inode` ne libèrent leur octet qu'une fois, et seulement
+    /// si TOUTES les deux sont sélectionnées.
+    inode: u32,
 }
 
 /// Demande l'arrêt de la détection de doublons en cours.
@@ -3330,6 +3335,7 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
                     garder_recommande: Some(c.idx) == original,
                     categorie: doublons::categorie(&f.name),
                     hardlink: g.hardlinks.binary_search(&c.idx).is_ok(),
+                    inode: g.canoniques.get(&c.idx).copied().unwrap_or(c.idx),
                 }
             })
             .collect();

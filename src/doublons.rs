@@ -196,6 +196,9 @@ pub struct Groupe {
     /// Copies qui partagent déjà l'inode d'une autre entrée du groupe :
     /// supprimer leur NOM ne libère rien. Triées, pour une recherche binaire.
     pub hardlinks: Vec<u32>,
+    /// lien -> copie canonique du même inode. Sert aux paires de dossiers :
+    /// deux noms du même inode dans le MÊME dossier ne sont qu'un contenu.
+    pub canoniques: HashMap<u32, u32>,
     /// Copies PHYSIQUES distinctes (`fichiers.len() - hardlinks.len()`). C'est
     /// ce nombre, et non le nombre de chemins, qui décide du gain.
     pub physiques: usize,
@@ -428,9 +431,10 @@ fn marquer_hardlinks(
     snap: &Snapshot,
     fichiers: &[u32],
     cache: &Mutex<CacheEmpreintes>,
-) -> (Vec<u32>, usize) {
+) -> (Vec<u32>, HashMap<u32, u32>, usize) {
     let mut vus: HashMap<(u32, u64), u32> = HashMap::new();
     let mut liens: Vec<u32> = Vec::new();
+    let mut canoniques: HashMap<u32, u32> = HashMap::new();
     for &idx in fichiers {
         let f = &snap.files[idx as usize];
         let connu = cache
@@ -449,14 +453,20 @@ fn marquer_hardlinks(
             }
         };
         if let Some(id) = id {
-            if vus.insert(id, idx).is_some() {
-                liens.push(idx);
+            match vus.get(&id) {
+                Some(&premier) => {
+                    liens.push(idx);
+                    canoniques.insert(idx, premier);
+                }
+                None => {
+                    vus.insert(id, idx);
+                }
             }
         }
     }
     liens.sort_unstable();
     let physiques = fichiers.len().saturating_sub(liens.len());
-    (liens, physiques)
+    (liens, canoniques, physiques)
 }
 
 /// Agrège les paires de dossiers qui partagent des contenus identiques.
@@ -471,17 +481,25 @@ fn marquer_hardlinks(
 fn paires_dossiers(snap: &Snapshot, groupes: &[Groupe]) -> Vec<PaireDossiers> {
     let mut agg: HashMap<(u32, u32), (u64, u64)> = HashMap::new();
     for g in groupes {
-        let mut par_dir: HashMap<u32, u32> = HashMap::new();
+        // Un INODE par dossier, pas un chemin : deux noms du même inode dans
+        // le même dossier ne sont qu'un contenu. L'ancien comptage excluait le
+        // lien dur globalement — et si le seul nom du dossier A était justement
+        // ce lien, A disparaissait de la paire alors que son contenu y était.
+        let mut par_dir: HashMap<u32, std::collections::HashSet<u32>> = HashMap::new();
         for &idx in &g.fichiers {
-            if g.hardlinks.binary_search(&idx).is_ok() {
-                continue;
-            }
-            *par_dir.entry(snap.files[idx as usize].parent).or_insert(0) += 1;
+            let canonique = g.canoniques.get(&idx).copied().unwrap_or(idx);
+            par_dir
+                .entry(snap.files[idx as usize].parent)
+                .or_default()
+                .insert(canonique);
         }
         if par_dir.len() < 2 || par_dir.len() > 512 {
             continue;
         }
-        let mut ds: Vec<(u32, u32)> = par_dir.into_iter().collect();
+        let mut ds: Vec<(u32, u32)> = par_dir
+            .into_iter()
+            .map(|(d, inodes)| (d, inodes.len() as u32))
+            .collect();
         ds.sort_unstable();
         for i in 0..ds.len() {
             for j in (i + 1)..ds.len() {
@@ -716,12 +734,13 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
             continue;
         }
         fichiers.sort_unstable();
-        let (hardlinks, physiques) = marquer_hardlinks(snap, &fichiers, o.cache);
+        let (hardlinks, canoniques, physiques) = marquer_hardlinks(snap, &fichiers, o.cache);
         groupes.push(Groupe {
             empreinte: hex_encode(&h),
             taille: snap.files[fichiers[0] as usize].size,
             fichiers,
             hardlinks,
+            canoniques,
             physiques,
         });
     }

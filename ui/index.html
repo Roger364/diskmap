@@ -1020,9 +1020,28 @@ function toggleSel(r, on) {
   updateSelBar();
 }
 
+// Ce qu'un lot libère vraiment : par INODE, pas par chemin. Un lien dur ne
+// libère rien tant qu'un autre nom du même inode survit ; un inode dont tous
+// les noms sont cochés ne libère son octet qu'une fois. Les lignes ordinaires
+// n'ont pas d'`inode` : chacune est alors son propre inode, et le calcul
+// redonne exactement la somme des tailles.
+function gainSelection() {
+  const parInode = new Map();
+  for (const r of cur.rows) {
+    const k = r.inode ?? r.id;
+    const e = parInode.get(k) || { taille: r.size, noms: 0, choisis: 0 };
+    e.noms++;
+    if (cur.sel.has(selKey(r))) e.choisis++;
+    parInode.set(k, e);
+  }
+  let n = 0;
+  for (const e of parInode.values()) if (e.noms === e.choisis) n += e.taille;
+  return n;
+}
+
 function updateSelBar() {
   const rows = selectedRows();
-  const total = rows.reduce((s, r) => s + r.size, 0);
+  const total = gainSelection();
   $('#selbar').classList.toggle('hidden', rows.length === 0);
   $('#delbtn').classList.toggle('hidden', rows.length === 0);
   if (rows.length) {
@@ -1220,7 +1239,7 @@ function majDupBar() {
   $('#dupcat').value = d.category;
   $('#dupbudget').value = String(d.budget);
   const sel = selectedRows();
-  const libere = sel.reduce((s, r) => s + r.size, 0);
+  const libere = gainSelection();
   const note = cur.dupExact === false
     ? (cur.dupArret ? ' · <span class="mi">annulé</span>' : ' · <span class="mi">budget de lecture atteint</span>')
     : '';
