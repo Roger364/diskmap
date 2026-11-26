@@ -88,7 +88,7 @@ chaque suppression** et **au démarrage pour les volumes sans cache**, la fenêt
 l'application en supprimait un autre, sans un mot.
 
 Correction actuelle : `dry` exige la `gen` du client et refuse (409) si l'index a bougé
-(`src/main.rs:1691`) ; `execute` ne résout plus rien et ne supprime que les chemins
+(`src/main.rs:1713`) ; `execute` ne résout plus rien et ne supprime que les chemins
 figés par l'aperçu (`struct Montre`, `src/main.rs:111`).
 
 **La moitié navigation est restée ouverte jusqu'au 27/09/2026 — voir R10.** Le correctif
@@ -235,8 +235,8 @@ dossier `$RECYCLE.BIN` existe alors toujours. `corbeille_disponible` répondait 
 à la corbeille **si possible** » — faisait détruire le fichier sur place.
 
 `corbeille_disponible` ne posait pas la bonne question : elle dit si le dossier
-existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:503`) est la question
-qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:478`) en est la
+existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:594`) est la question
+qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:569`) en est la
 mesure. La clé se lit dans `HKEY_CURRENT_USER`, comme `MaxCapacity` : aucune
 élévation requise.
 
@@ -248,10 +248,10 @@ Trois choix valent d'être écrits, parce qu'ils décident du geste :
   `MaxCapacity` et pour `NeedToPurge` : une valeur non mesurée n'est pas une valeur
   nulle, et un avertissement qui se déclenche sans mesure ne veut plus rien dire.
 - **Le mode « corbeille » n'obtient plus une confirmation moins chère.** `execute`
-  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2247`) : un
+  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2269`) : un
   volume à corbeille inerte exige le même mot que la suppression définitive. La
   confirmation suit le geste réel, pas le mode affiché.
-- **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1455`) est exposé au même
+- **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1477`) est exposé au même
   titre que `corbeille`, et le motif du mot nomme la cause — « ce volume détruit
   sans corbeille (NukeOnDelete=1) » — au lieu de laisser lire « iront dans la
   corbeille ».
@@ -279,7 +279,7 @@ cran qui rend le silence impossible à remettre — supprimer la déclaration ra
 sonde à neuf verdicts, et le plancher la rougit au lieu de la laisser muette.
 
 **La garde a une preuve de morsure, depuis le 11/10/2026.** `epreuve.mjs` neutralise
-`corbeille_reversible` (`src/win32.rs:503`) en `false`, et `sonde-reversibilite.mjs`
+`corbeille_reversible` (`src/win32.rs:594`) en `false`, et `sonde-reversibilite.mjs`
 sort **5/10, code 1** — le premier verdict rouge nommant la cause : *HTTP 400 —
 confirmation attendue : « EFFACER »*. Restaurée, la sonde revient à **10/10**. La
 garde est donc éprouvée dans le sens qui compte : `corbeille_reversible` répond à la
@@ -296,7 +296,7 @@ portée :
   que « ne mord pas » sur une machine élevée ne se lise pas comme un défaut du code.
 - **Elle a demandé de réparer la sonde.** Le `JSON.parse` du corps de `/api/delete`
   n'avait pas de filet, alors que le refus d'une confirmation est du **texte brut**
-  (`src/main.rs:1912`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
+  (`src/main.rs:1934`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
   sans décompte, et le harnais lisait « SANS SYNTHESE » là où il y avait une cause
   nommée — la sonde mesurait sa propre fragilité au lieu du produit. Les quatre
   corps de ce fichier passent désormais par `lireCorps`
@@ -307,12 +307,12 @@ portée :
 
 | Acteur | Ce qu'il peut faire aujourd'hui |
 |---|---|
-| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:988`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:910`) |
+| Page web tierce | Rien. `X-Diskmap` sur tous les POST (`src/main.rs:1008`), `Host` local sur **toutes** les routes, lectures comprises (`src/main.rs:930`) |
 | DNS rebinding | Rien, pour la même raison |
 | Processus local, même utilisateur | Tout : il peut supprimer directement. Le serveur n'est pas une frontière |
 | **Volume au nom hostile** | **Effacer n'importe quel fichier, sans l'interface** — voir R1 |
 | Utilisateur, usage normal | Effacer un fichier qu'il n'a pas coché, au-delà de 25 éléments — voir R2 |
-| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1554`) — voir R5 |
+| Utilisateur, app élevée | Tout hors les 7 noms réservés (`src/main.rs:1576`) — voir R5 |
 
 ---
 
@@ -320,16 +320,16 @@ portée :
 
 ### R1 — XSS stockée via le nom de volume → effacement arbitraire · **Haute** · *corrigé*
 
-`ui/index.html:526-527` :
+`ui/index.html:729-730` (après correctif) :
 
 ```js
-<span class="lbl">${d.label || ''}</span>
-${d.fs ? `<span class="fs">${d.fs}</span>` : ''}
+<span class="lbl">${escapeHtml(d.label || '')}</span>
+${d.fs ? `<span class="fs">${escapeHtml(d.fs)}</span>` : ''}
 ```
 
-`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:777`) : le nom de
+`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:868`) : le nom de
 volume est une **donnée externe**, contrôlable par quiconque formate une clé USB, monte une
-image disque ou renomme un partage. Elle est interpolée dans un `innerHTML` **sans
+image disque ou renomme un partage. Avant correctif, ils étaient interpolés dans un `innerHTML` **sans
 `escapeHtml`**, alors que tous les autres noms venus du disque (tableau, carte, recherche,
 illisibles, aperçus) passent par `escapeHtml`.
 
@@ -344,17 +344,17 @@ aucun nœud texte cassé.
 
 ### R2 — L'aperçu montre 25 chemins, l'exécution en supprime N · **Haute** · *corrigé*
 
-`ui/index.html:1175` : `for (const it of d.items.slice(0, 25))`, suivi de
+`ui/index.html:1615` : `for (const it of d.items.slice(0, 25))`, suivi de
 `… et ${d.items.length - 25} autre(s)`. Rien n'empêche l'exécution de traiter les N.
 
 « Tout sélectionner » dans un dossier de 200 entrées affiche donc 175 chemins que
 l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
-(`ui/index.html:1164`) est lui aussi purement client, et ne couvre pas le *nombre*.
+(`ui/index.html:1856`) est lui aussi purement client, et ne couvre pas le *nombre*.
 
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
 de 25 éléments.** C'est aujourd'hui le principal residual : c'est lui qui protège les
-documents personnels, puisque `blocked_reason` (`src/main.rs:1554`) ne refuse que
+documents personnels, puisque `blocked_reason` (`src/main.rs:1576`) ne refuse que
 `C:\Users\<profil>` et non son contenu (`C:\Users\Ro\Documents` est effaçable).
 
 **Correctif proposé :** afficher la liste complète dans une zone défilante, et faire refuser
@@ -499,7 +499,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:2967`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:2989`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -524,11 +524,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1832` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1838`) n'était
-appelé que dans `execute` (`src/main.rs:1883`). Des aperçus répétés sans confirmation
+`src/main.rs:1854` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1860`) n'était
+appelé que dans `execute` (`src/main.rs:1905`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1834`).
+endroit (`src/main.rs:1856`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -575,7 +575,7 @@ point final). Le risque annoncé : l'aperçu afficherait `foo ` et l'effacement 
 - l'aperçu affiche `V:\_r9\piege.txt ` **avec son espace**, et le déclare
   `blocked=true`, `deletable=0`, motif « introuvable sur le disque ».
 
-Le refus vient de `delete_path` (`src/win32.rs:250`), qui interdit le préfixe `\\?\` —
+Le refus vient de `delete_path` (`src/win32.rs:341`), qui interdit le préfixe `\\?\` —
 justement parce qu'il court-circuite la corbeille. Un nom qui n'est adressable qu'en
 verbatim est donc **visible mais jamais effaçable** : il ne peut pas viser un autre fichier,
 il ne peut rien viser du tout. La classe de bug est fermée par une règle déjà en place,
@@ -597,7 +597,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2169`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2191`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou
@@ -683,11 +683,11 @@ arrivée**.
 > Une seule réponse a le droit de peindre : la dernière demandée. Une réponse périmée ne touche
 > même pas l'état — sinon la suivante hérite d'un état déjà mêlé.
 
-**Le correctif.** Un jeton par requête (`ui/index.html:735`), incrémenté au départ de `load()` et
-de `search()`, comparé à l'arrivée (`ui/index.html:771` et `ui/index.html:988`). La réponse
+**Le correctif.** Un jeton par requête (`ui/index.html:847`), incrémenté au départ de `load()` et
+de `search()`, comparé à l'arrivée (`ui/index.html:910` et `ui/index.html:1123`). La réponse
 périmée rend la main sans rien écrire. Son **erreur** non plus n'est pas dite : la parler ferait
 remonter d'un cran un dossier qui n'a pas disparu, puisque le chemin à remonter serait celui de la
-requête périmée (`ui/index.html:794`).
+requête périmée (`ui/index.html:887`).
 
 **Épreuves, les deux sens.** Jeton retiré, 2 s de latence injectée sur `/api/tree` : deux verdicts
 rougissent, et le nouveau — « l'ordre demandé n'a jamais été contredit à l'écran » — nomme la
@@ -743,7 +743,7 @@ faisait échouer, donc rien ne pouvait être corrigé.
 (`tests/sondes/sonde-generation.mjs:37`) qui tient le décompte et écrit la dernière ligne
 (`tests/sondes/sonde-generation.mjs:167`) ; c'est la forme des dix-neuf autres, qui n'avait jamais
 été appliquée ici. Le harnais, lui, refuse le silence : sans `compte`, le code est forcé à `1`
-(`tests/sondes/lancer.mjs:820`) et le motif est écrit (`tests/sondes/lancer.mjs:1872`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:819`, motif `tests/sondes/lancer.mjs:1868`. Sans ce
+(`tests/sondes/lancer.mjs:829`) et le motif est écrit (`tests/sondes/lancer.mjs:1881`). Un résumé de zéro a sa propre porte : `tests/sondes/lancer.mjs:828`, motif `tests/sondes/lancer.mjs:1877`. Sans ce
 second morceau, le premier n'aurait rien empêché : une prochaine sonde sans résumé serait repassée
 verte.
 
@@ -759,8 +759,8 @@ croyait la sonde sur parole.
 > laisse passer l'autre moitié du mensonge.
 
 Le harnais compte donc les lignes de verdict réellement écrites et compare
-(`tests/sondes/lancer.mjs:826`) ; l'écart est nommé avec les deux mesures
-(`tests/sondes/lancer.mjs:1879`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
+(`tests/sondes/lancer.mjs:835`) ; l'écart est nommé avec les deux mesures
+(`tests/sondes/lancer.mjs:1888`). Un seul terme n'aurait pas suffi : un résumé écrit d'avance
 donne « 5/5 » juste tant que tout passe. C'est le numérateur qui révèle qu'un verdict a
 rougi après coup, et le dénominateur qu'une vérification a été ajoutée sans être comptée.
 
@@ -799,9 +799,9 @@ n'atteignait jamais le journal. Non pas rare : impossible à voir.
 > Une note existe pour dire ce qu'un vert ne prouve pas. Si elle n'apparaît que sur les runs rouges,
 > elle ne sert à rien — et pire, on ne peut même pas mesurer combien il y en a.
 
-Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1800`) et les imprime
+Le harnais les relève donc dans **chaque** verdict (`tests/sondes/lancer.mjs:1809`) et les imprime
 au résumé du run avec leur **texte**, pas seulement leur nombre
-(`tests/sondes/lancer.mjs:1927`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
+(`tests/sondes/lancer.mjs:1936`) : un compte sans dire de quoi n'apprend rien, et un diagnostic jeté
 par l'outil censé l'afficher est un diagnostic absent.
 
 **Mesuré à la première ligne qui compte : huit notes par run, sur quatre sondes, invisibles depuis
@@ -906,7 +906,7 @@ l'autre extrémité du binaire, celle qu'aucune sonde ne surveille — parce qu'
 
 **Mesuré, sur le poste de l'auteur de ces lignes, le 28/09/2026.** Une fenêtre `Espace disque —
 Brave` apparaissait sur le bureau. Ce n'étaient ni les sondes ni le harnais : `lancer.mjs` passe
-`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1213`). C'étaient les lancements manuels,
+`--no-browser` depuis le début (`tests/sondes/lancer.mjs:1222`). C'étaient les lancements manuels,
 et ceux d'un agent — `diskmap --port 8990` — dont **personne ne se rappelait le drapeau**.
 `open_in_browser` n'écoutait que `--no-browser`, donc tout ce qui ne le passait pas ouvrait une
 fenêtre. Le harnais était discret par une convention qu'il était le seul à connaître.
@@ -922,15 +922,15 @@ drapeau recommence. Ici l'absence de fenêtre est le défaut, et l'ouverture est
 qu'il faut demander. Ouvrir une fenêtre qu'on n'a pas demandée est une intrusion, quelle que soit
 l'innocence du code.
 
-**Le correctif.** Une fonction pure et testable (`src/main.rs:215`), alimentée par le signal réel
-(`src/main.rs:343`). Les deux drapeaux restent, et **priment sur le signal** : `--browser` pour
+**Le correctif.** Une fonction pure et testable (`src/main.rs:223`), alimentée par le signal réel
+(`src/main.rs:351`). Les deux drapeaux restent, et **priment sur le signal** : `--browser` pour
 forcer, `--no-browser` pour interdire. Un comportement qu'on ne peut ni forcer ni interdire n'est
 pas une règle, c'est une pente. Quand les deux sont présents, l'interdit l'emporte — l'ordre des
 deux lignes décidait de l'issue, et une règle dont l'issue tient à l'ordre de deux lignes n'en
 est pas une.
 
 **Et il le dit.** Sans console, le serveur affiche pourquoi il n'ouvre rien
-(`src/main.rs:348`). Un serveur qui se tait laisse croire à un défaut ; celui qui n'explique pas sa
+(`src/main.rs:356`). Un serveur qui se tait laisse croire à un défaut ; celui qui n'explique pas sa
 décision ne la méritait pas.
 
 **Épreuves, les deux sens.** Lancement sans drapeau, sans console, fenêtres comptées avant et
@@ -1021,9 +1021,9 @@ qui n'existait pas — et un écran « corrigé » qui resterait faux.
 > l'utilisateur a été perdu en route.
 
 **Le correctif.** Un repère unique : l'écran note, à chaque peinture, le `finished_ms` du volume
-qu'il montre (`ui/index.html:429`). La veille compare (`ui/index.html:1951`) : tant que le
+qu'il montre (`ui/index.html:541`). La veille compare (`ui/index.html:2425`) : tant que le
 repère vaut celui de l'état, elle ne fait rien ; dès qu'il diffère, elle recharge
-(`ui/index.html:1956`). Le rechargement passe par `rechargerTri()` et non `load()` : la
+(`ui/index.html:2430`). Le rechargement passe par `rechargerTri()` et non `load()` : la
 **sélection** se garde — c'est une cible de suppression, et un rechargement de fond n'a pas le
 droit de la déplacer — et une recherche en cours reste une recherche.
 
@@ -1097,11 +1097,11 @@ de la **durée d'une analyse**, comme R14.
 > analyse en cours ne la couvre pas : son instantané a été pris avant qu'elle existe.
 
 **Le correctif.** Chaque analyse demandée reçoit un ticket monotone par volume : `start_scan`
-(`src/main.rs:647`) le rend dans la réponse HTTP, et `/api/state` publie `scan_requested` et
+(`src/main.rs:657`) le rend dans la réponse HTTP, et `/api/state` publie `scan_requested` et
 `scan_completed`. Le client peut ainsi attendre le ticket de SA demande sans manquer une analyse
 courte ni confondre la fin du scan courant avec celle du scan demandé. Les demandes répétées sont
-coalescées dans la file (`demande_couverte`, `src/main.rs:631`, et `en_attente.push(letter)`,
-`src/main.rs:642`) : dix demandes pendant le même scan demandent une seule analyse supplémentaire,
+coalescées dans la file (`demande_couverte`, `src/main.rs:641`, et `en_attente.push(letter)`,
+`src/main.rs:652`) : dix demandes pendant le même scan demandent une seule analyse supplémentaire,
 pas dix. L'analyse déjà en cours n'est jamais créditée pour une demande qu'elle précède.
 
 La fin est publiée seulement avec l'instantané complet. L'ordre des verrous est conservé
@@ -1168,9 +1168,9 @@ drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais
 - `POST /api/scan` répond `{ok, ticket}`, et chaque client attend **son** ticket :
   `attendreTicket` (`tests/sondes/config.mjs:456`) boucle sur `scan_completed >= ticket` et ne
   consulte jamais `!scanning` pour conclure ;
-- l'interface note le ticket rendu (`ui/index.html:683`) et `poll()` s'arrête sur sa publication
-  (`ui/index.html:701`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
-  l'exécution (`ui/index.html:1634`) ;
+- l'interface note le ticket rendu (`ui/index.html:795`) et `poll()` s'arrête sur sa publication
+  (`ui/index.html:813`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
+  l'exécution (`ui/index.html:2087`) ;
 - `generation` demande son analyse et attend son ticket (`tests/sondes/sonde-generation.mjs:71`)
   — l'attente par le fait, plus bas, reste sa preuve d'existence ;
 - la sonde `tickets` (`tests/sondes/sonde-tickets.mjs:62`) éprouve le contrat du point de vue
@@ -1260,21 +1260,21 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
 - **La cible est figée à l'aperçu.** `Montre` porte le chemin résolu ; `execute` ne résout
   plus rien. C'est la bonne architecture : la seule façon de supprimer reste de décider ce
   qu'on supprime.
-- **Une seule réponse peint** (`ui/index.html:735`). Une requête périmée rend la main sans
+- **Une seule réponse peint** (`ui/index.html:847`). Une requête périmée rend la main sans
   toucher l'état, et son erreur non plus n'est pas dite — R11. Le même refus que pour la cible :
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
   `/api/search`, exigée par `dry`. Un identifiant périmé est refusé, pas réinterprété.
-- **Jeton** : `BCryptGenRandom` (`src/win32.rs:222`), usage unique, dix minutes, lié au
+- **Jeton** : `BCryptGenRandom` (`src/win32.rs:313`), usage unique, dix minutes, lié au
   volume, avec repli qui ne dérive jamais d'une constante.
 - **CSRF** : `X-Diskmap` sur tous les POST, `Host` local sur toutes les routes, lectures
   comprises. Le raisonnement sur le rebinding (l'en-tête `X-Diskmap` est posable librement
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
-  (`src/win32.rs:300`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
-- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:820`), pas verte par défaut : le
+  (`src/win32.rs:391`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
+- **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:829`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
-  (`tests/sondes/lancer.mjs:819`, motif `tests/sondes/lancer.mjs:1868`) : « je n'avais rien à
+  (`tests/sondes/lancer.mjs:828`, motif `tests/sondes/lancer.mjs:1877`) : « je n'avais rien à
   tester » n'est pas une mesure, c'est une sonde dont le jeu de cas est vide. C'est le seul
   garde-fou qui couvre la sonde elle-même — R12. Les vingt sondes en tiennent un, et aucune
   n'annonce `0` : mesuré sur trois runs complets avant d'écrire la règle.
@@ -1294,20 +1294,20 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   voir. Mesuré : un dossier créé, la demande répondue `ok`, et `/api/search` qui le déclare
   introuvable tout en répondant `exact=true, tronque=false` sur 356 résultats. Ce qui couvre une
   demande, c'est une analyse **postérieure** à elle — donc la file, et jamais l'analyse en cours
-  (`src/main.rs:647`) — R15.
+  (`src/main.rs:657`) — R15.
 - **L'écran se recharge quand le disque a bougé depuis qu'il a été peint.** La veille de fond
   suivait l'état d'un volume analysé ailleurs, jamais l'arbre : le rechargement n'existait que
   dans `poll()`, qui ne démarre que sur un geste local et s'éteint après un tour. Une analyse
   étrangère laissait donc l'écran afficher un instantané que le serveur ne servait plus, sans un
   mot — et un geste de l'utilisateur survenu **pendant** l'analyse était perdu sans bruit,
   mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
-  chaque peinture (`ui/index.html:429`), comparé par la veille (`ui/index.html:1951`) — R14.
+  chaque peinture (`ui/index.html:541`), comparé par la veille (`ui/index.html:2425`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
-  (`src/main.rs:215`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
+  (`src/main.rs:223`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
   tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
   de celui qui a lancé le programme est une intrusion, même sans intention — R13.
-- **`\\?\` interdit à l'effacement** (`src/win32.rs:250`) : ce préfixe court-circuite la
+- **`\\?\` interdit à l'effacement** (`src/win32.rs:341`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
 - **La réversibilité se constate**, elle ne se déduit pas du code de retour : les fiches `$I`
   sont lues une fois après la boucle, filtrées par date, et l'issue est journalisée comme
@@ -1316,8 +1316,8 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   en-têtes 32 Ko, 64 connexions, timeouts. Un `Content-Length: 999999999999` ne tue plus le
   processus.
 - **Le harnais de sondes** ne nettoie que des noms connus sous une racine dédiée
-  (`tests/sondes/lancer.mjs:1456`) : `rm -rf` y serait un bug, et le code le dit.
-- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1208`). Un
+  (`tests/sondes/lancer.mjs:1465`) : `rm -rf` y serait un bug, et le code le dit.
+- **Une cible s'adresse par son chemin** (`dossier_de`, `src/main.rs:1230`). Un
   identifiant reste une position et ne sert plus qu'à l'intérieur d'un instantané ; la
   navigation, la sélection et l'ouverture dans l'explorateur passent par le chemin, et le
   serveur ne renvoie jamais le chemin qu'il a reçu mais celui qu'il a reconstruit. C'est la
@@ -1465,8 +1465,8 @@ L'argument est juste et la décision a produit exactement ce qu'elle annonçait 
 le rapport n'a jamais été consulté. Les quatre gardes sont restées nues.
 
 Il y a plus grave que la garde. Ces quatre entrées — « lettre manquante »
-(`src/main.rs:1004`), « id invalide » (`src/main.rs:1088`), « chemin invalide »
-(`src/main.rs:1064`), « route inconnue » (`src/main.rs:1112`) — sont les
+(`src/main.rs:1024`), « id invalide » (`src/main.rs:1110`), « chemin invalide »
+(`src/main.rs:1086`), « route inconnue » (`src/main.rs:1134`) — sont les
 validations du routeur, et **aucune requête ne les atteint jamais**. Un serveur
 qui refuse tout les produirait, aussi bien que le bon. C'est la définition
 d'une preuve absente, et elle était écrite en clair dans un fichier vert.
@@ -1476,7 +1476,7 @@ Trois changements, dont deux mesurés :
 **1. Le contrôle exige au lieu de signaler.** `PLANCHER_SANS_REGARD` vaut 0, et
 une garde sans regard fait désormais rouge la chaîne. *Mesuré le 29/09 : une
 garde renommée en un libellé que personne ne cite fait passer le contrôle de
-6/6 à 5/6, et nomme `src/main.rs:1112`.* Le plancher est une arme, pas une
+6/6 à 5/6, et nomme `src/main.rs:1134`.* Le plancher est une arme, pas une
 déclaration.
 
 **2. Le contrôle a lui-même une embuscade.** Un contrôle qui n'a jamais rougi ne
@@ -1659,7 +1659,7 @@ quelque part elle devient une **assertion** — distinction que rien n'exigeait.
 
 Trois instruments, tous mesurés.
 
-**Le plancher des comptes** (`tests/sondes/lancer.mjs:415`). Vingt-quatre
+**Le plancher des comptes** (`tests/sondes/lancer.mjs:424`). Vingt-quatre
 valeurs, prises comme le **plus petit** compte observé sur les logs du 29 et du
 30/09, jamais le plus grand : un plancher pris sur un run chanceux devient rouge
 le jour où la machine change. Deux sondes varient et le tableau le dit —
@@ -1681,7 +1681,7 @@ verification(s), son plancher est 400 » et le run sort en 1 ; un plancher
 sortent en 1, et les deux fichiers ont été restaurés puis comparés par
 empreinte.*
 
-**Le registre des aveux** (`tests/sondes/lancer.mjs:503`). Un aveu doit se
+**Le registre des aveux** (`tests/sondes/lancer.mjs:512`). Un aveu doit se
 justifier, et la justification se **vérifie** :
 
 - `couvert par <fichier> : <nom de vérification>` — une autre sonde affirme la
@@ -1875,7 +1875,7 @@ du dépôt dit déjà que le défaut n'est pas le trou, c'est l'excuse.
 **Ce qui change, et pourquoi ce n'est pas un plancher plus permissif.**
 
 Le champ `couts` entre au registre `AVEURS_STRUCTURELS`
-(`tests/sondes/lancer.mjs:540`) : un trou structurel ne se contente plus de se
+(`tests/sondes/lancer.mjs:549`) : un trou structurel ne se contente plus de se
 nommer, il **déclare** ce qu'il coûte en verdicts. Le plancher se relâche
 d'autant — et d'autant seulement, parce qu'un aveu nu ne détend rien.
 
@@ -2624,7 +2624,7 @@ sur ce contrôle. Le format tient : il mérite les prochains contrôles jeunes.
 
 Le pour/contre des deux options (précondition mesurée côté sonde, garde
 applicative côté serveur) a été posé, puis **le code a tranché avant l'avis** :
-la garde que « B » devait créer existe déjà — [src/main.rs:1009] répond
+la garde que « B » devait créer existe déjà — [src/main.rs:1029] répond
 `404 « volume inconnu »` à tout POST `/api/scan/<lettre>` hors catalogue,
 **avant** tout démarrage d'analyse. Ce qui manquait n'était pas la garde,
 c'était son épreuve.
@@ -2662,7 +2662,7 @@ branche jamais jouée tourne sans faux rouge ni faux vert.
 18 (local normal), 15 (local normal **et** corbeille absente).
 
 **Consigné sans correction** : `/api/open` sur une lettre inconnue répond
-`409 « volume pas encore analysé »` [src/main.rs:1131] — le message trompe (le
+`409 « volume pas encore analysé »` [src/main.rs:1153] — le message trompe (le
 volume n'est pas « pas encore analysé », il n'existe pas) ; un 404 aligné sur
 la garde du scan serait plus honnête, au prix d'un choix d'affichage. Et le
 ligne de sonde affiche `vert` **avant** que la perte de plancher ne force le
@@ -2690,8 +2690,8 @@ se compte : **7 − 6 = 1** — il restait exactement un `409 Conflict`, celui
 du helper, et les autres 409 du fichier (arrêt en cours, jeton expiré,
 arrêt refusé) portent d'autres sémantiques, non touchées.
 
-**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1248`) dit « analyse
-en cours, on peut insister » ; sa branche 404 (`ui/index.html:777`) remonte au
+**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1688`) dit « analyse
+en cours, on peut insister » ; sa branche 404 (`ui/index.html:893`) remonte au
 dossier parent. Les flux 404 de navigation ne peuvent pas rencontrer une
 lettre hors catalogue (le catalogue ne liste que des volumes montés), donc
 le changement ne crée aucun faux « dossier disparu ».

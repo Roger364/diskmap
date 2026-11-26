@@ -103,6 +103,15 @@ const SONDES = [
     quoi: 'Les quatre gardes d’entree du routeur, chacune avec le temoin qui prouve qu elle a parle',
   },
   {
+    // L'aperçu rend des OCTETS d'un fichier designe par l'index. C'est la seule
+    // route qui puisse montrer un contenu qu'on n'a pas demande si `gen`
+    // n'etait pas verifiee : trois gardes (400 id, 400 gen, 409 perime) et un
+    // 404 hors index, avec un texte reel comme temoin positif.
+    nom: 'preview', fichier: 'sonde-preview.mjs', args: (c) => [c.url, c.volume], ci: true,
+    detruit: 'rien',
+    quoi: 'L apercu valide generation, index, chemin protege et extension, avec nosniff',
+  },
+  {
     nom: 'suppression', fichier: 'sonde-suppression.mjs', args: (c) => [c.url], ci: true, detruit: 'rien',
     quoi: 'En-tete exige, chemins proteges refuses, jeton — le tout en simulation',
   },

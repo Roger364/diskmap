@@ -10,6 +10,19 @@ const REPARSE_POINT: u32 = 0x0000_0400;
 #[link(name = "kernel32")]
 extern "system" {
     fn GetLogicalDrives() -> u32;
+    fn CreateFileW(
+        name: *const u16,
+        access: u32,
+        share: u32,
+        sa: *mut std::ffi::c_void,
+        disposition: u32,
+        flags: u32,
+        template: *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
+    fn GetFileInformationByHandle(
+        file: *mut std::ffi::c_void,
+        info: *mut ByHandleFileInformation,
+    ) -> i32;
     fn GetDriveTypeW(root: *const u16) -> u32;
     fn GetDiskFreeSpaceExW(
         dir: *const u16,
@@ -99,6 +112,84 @@ pub const DRIVE_REMOVABLE: u32 = 2;
 pub const DRIVE_FIXED: u32 = 3;
 pub const DRIVE_REMOTE: u32 = 4;
 pub const DRIVE_RAMDISK: u32 = 6;
+
+/// `BY_HANDLE_FILE_INFORMATION`. Seuls deux champs servent ici, mais la
+/// disposition doit être EXACTE : un champ oublié décale tout ce qui suit, et
+/// l'identité lue serait celle d'un autre fichier — sans aucune erreur.
+#[repr(C)]
+#[derive(Default)]
+struct ByHandleFileInformation {
+    attributes: u32,
+    creation: [u32; 2],
+    access: [u32; 2],
+    write: [u32; 2],
+    volume_serial: u32,
+    size_high: u32,
+    size_low: u32,
+    links: u32,
+    index_high: u32,
+    index_low: u32,
+}
+
+/// Identité d'un fichier sur son volume : `(serial, index)`.
+///
+/// Deux chemins qui rendent la même paire désignent le MÊME contenu physique —
+/// un lien dur NTFS. Sans cela, un dossier sauvegardé par liens durs était
+/// compté comme autant de copies et annonçait un gain qui n'existe pas :
+/// supprimer l'un des noms ne libère aucun octet.
+///
+/// `dwDesiredAccess = 0` suffit pour `GetFileInformationByHandle` : on ne lit
+/// pas le contenu, seulement l'identité. Les trois partages sont demandés pour
+/// ne pas échouer sur un fichier ouvert par un autre programme.
+///
+/// `None` couvre l'absence, un refus, un volume non NTFS, ou un POINT D'ANALYSE
+/// (lien symbolique, jonction) : un lien n'a pas d'identité de contenu, ses
+/// octets sont ceux de sa cible, et deux liens vers la même cible ne sont pas
+/// des copies. L'appelant doit le lire comme « identité inconnue », jamais comme
+/// « même fichier » : deux inconnus ne se dédupliquent pas, sinon deux copies
+/// réelles perdraient leur gain.
+pub fn file_id(path: &std::path::Path) -> Option<(u32, u64)> {
+    use std::ffi::OsStr;
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+    const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+    const OPEN_EXISTING: u32 = 3;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    const INVALID_HANDLE_VALUE: *mut std::ffi::c_void = -1isize as *mut std::ffi::c_void;
+
+    let wide: Vec<u16> = OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let h = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            std::ptr::null_mut(),
+        )
+    };
+    if h.is_null() || h == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let mut info = ByHandleFileInformation::default();
+    let ok = unsafe { GetFileInformationByHandle(h, &mut info) };
+    unsafe { CloseHandle(h) };
+    if ok == 0 {
+        return None;
+    }
+    if info.attributes & REPARSE_POINT != 0 {
+        return None;
+    }
+    Some((
+        info.volume_serial,
+        (u64::from(info.index_high) << 32) | u64::from(info.index_low),
+    ))
+}
 
 fn to_wide(s: &str) -> Vec<u16> {
     use std::ffi::OsStr;
@@ -894,6 +985,89 @@ mod tests {
 
     /// Le débordement ne peut pas s'inverser par saturation : un lot absurdement
     /// grand plus une occupation au bord ne doit pas revenir « ça tient ».
+    #[test]
+    fn un_fichier_absent_n_a_pas_d_identite() {
+        let p = std::env::temp_dir().join("diskmap-absent-identite.bin");
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(super::file_id(&p), None);
+    }
+
+    #[test]
+    fn deux_noms_d_un_lien_dur_ont_la_meme_identite() {
+        let a = std::env::temp_dir().join(format!("diskmap-lien-a-{}.bin", std::process::id()));
+        let b = std::env::temp_dir().join(format!("diskmap-lien-b-{}.bin", std::process::id()));
+        std::fs::write(&a, b"lien").unwrap();
+        let _ = std::fs::remove_file(&b);
+        std::fs::hard_link(&a, &b).unwrap();
+        let ia = super::file_id(&a);
+        let ib = super::file_id(&b);
+        let _ = std::fs::remove_file(&a);
+        let _ = std::fs::remove_file(&b);
+        assert!(ia.is_some());
+        assert_eq!(
+            ia, ib,
+            "deux noms d'un même inode doivent rendre la même identité"
+        );
+    }
+
+    #[test]
+    fn la_meme_fiche_rend_la_meme_identite() {
+        let p = std::env::temp_dir().join(format!("diskmap-identite-{}.bin", std::process::id()));
+        std::fs::write(&p, b"x").unwrap();
+        let a = super::file_id(&p);
+        let b = super::file_id(&p);
+        let _ = std::fs::remove_file(&p);
+        assert!(a.is_some(), "un fichier lisible doit avoir une identité");
+        assert_eq!(a, b, "deux lectures du même chemin doivent coïncider");
+    }
+
+    /// Un point d'analyse n'a pas d'identité de contenu : il ne doit jamais
+    /// être marqué comme lien dur, ni servir de canonique. Un lien symbolique
+    /// demande un privilège (absent sur ce poste) ; on retombe alors sur une
+    /// JONCTION, qui est aussi un point d'analyse et que `mklink /J` crée sans
+    /// élévation. Si les deux sont refusés, le test se saute.
+    #[test]
+    fn un_point_d_analyse_n_a_pas_d_identite() {
+        let base = std::env::temp_dir().join(format!("diskmap-reparse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let cible = base.join("cible.bin");
+        let lien = base.join("lien.bin");
+        std::fs::write(&cible, b"cible").unwrap();
+        if std::os::windows::fs::symlink_file(&cible, &lien).is_ok() {
+            assert_eq!(
+                super::file_id(&lien),
+                None,
+                "un lien symbolique doit rester sans identité"
+            );
+            assert!(super::file_id(&cible).is_some(), "la cible, elle, en a une");
+            let _ = std::fs::remove_file(&lien);
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        let jonction = base.join("jonction");
+        let cible_dir = base.join("cible-dir");
+        std::fs::create_dir_all(&cible_dir).unwrap();
+        let ok = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&jonction)
+            .arg(&cible_dir)
+            .output()
+            .map(|s| s.status.success())
+            .unwrap_or(false);
+        if !ok {
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        println!("jonction utilisée : lien symbolique refusé (privilège absent)");
+        assert_eq!(
+            super::file_id(&jonction),
+            None,
+            "une jonction doit rester sans identité"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn la_saturation_ne_retourne_pas_la_vraie() {
         let e = EtatCorbeille {

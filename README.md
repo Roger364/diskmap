@@ -494,7 +494,7 @@ both printed a dash. The word reported; nothing failed; so nothing could ever be
 The fix has to be in two places, or it does not hold. The probe keeps a count
 (`tests/sondes/sonde-generation.mjs:37`, summary at `tests/sondes/sonde-generation.mjs:167`).
 The harness refuses the silence: no count means the exit code is forced to `1`
-(`tests/sondes/lancer.mjs:820`) and the reason is printed (`tests/sondes/lancer.mjs:1872`). A zero summary has its own door: `tests/sondes/lancer.mjs:819`, reason `tests/sondes/lancer.mjs:1868`.
+(`tests/sondes/lancer.mjs:829`) and the reason is printed (`tests/sondes/lancer.mjs:1881`). A zero summary has its own door: `tests/sondes/lancer.mjs:828`, reason `tests/sondes/lancer.mjs:1877`.
 Without the second half, the first would have prevented nothing — the next summary-less probe
 would have gone green again.
 
@@ -516,7 +516,7 @@ re-reads the log.
 
 So two instruments, both with a floor and both counter-proved on the real harness:
 
-- **A floor per probe** (`tests/sondes/lancer.mjs:415`). Twenty-four values, each the *smallest* count
+- **A floor per probe** (`tests/sondes/lancer.mjs:424`). Twenty-four values, each the *smallest* count
   observed across the 29 and 30/09 runs, never the largest: a floor taken on a lucky run turns
   red the day the machine changes. Two probes vary and the table says so — `tickets` is 9 or 10
   depending on whether a scan was caught in flight, `elevation` is 18 here and 19 on the runner,
@@ -525,7 +525,7 @@ So two instruments, both with a floor and both counter-proved on the real harnes
   come with it, one of them free: a floor higher than what the probe wrote, a floor whose probe
   **no longer exists** (a rename, leaving a guard that can never fire again), and a printed count
   of how many green probes have *no* floor — a choice, and an invisible choice is not one.
-- **An admission register** (`tests/sondes/lancer.mjs:503`). An admission must justify itself, and the
+- **An admission register** (`tests/sondes/lancer.mjs:512`). An admission must justify itself, and the
   justification is verified. `couvert par <file> : <verification name>` means another probe
   *asserts* the same thing: the file must be in the catalogue and its source must contain a
   `verifier(` carrying that name — which is the answer to a third hole, *cited is not exercised*:
@@ -622,7 +622,7 @@ itself as the opposite.
 
 **What changed.** `AVEURS_STRUCTURELS` gained a `couts` field: a structural hole
 no longer merely names itself, it **declares what it costs in verdicts**, and the floor relaxes by
-exactly that (`tests/sondes/lancer.mjs:782`) — and by nothing else, because an unjustified
+exactly that (`tests/sondes/lancer.mjs:791`) — and by nothing else, because an unjustified
 admission relaxes nothing at all. The number is not guessed; it is read from one place and
 recounted every run (`PLANCHERS RELACHES`). A
 probe cannot buy its floor: it can only declare, once, in writing, the hole it just named. And if
@@ -887,8 +887,8 @@ was there, correct, and wrong. The harness recounted nothing — it took the pro
 > half of the lie through.
 
 So the harness counts the verdict lines actually written and compares
-(`tests/sondes/lancer.mjs:826`); the gap is named with both measurements
-(`tests/sondes/lancer.mjs:1879`). One term would not have been enough: a count written in
+(`tests/sondes/lancer.mjs:835`); the gap is named with both measurements
+(`tests/sondes/lancer.mjs:1888`). One term would not have been enough: a count written in
 advance reads `5/5` and is right for as long as everything passes. It is the numerator that
 shows a verdict went red afterwards, and the denominator that shows a check was added without
 being counted.
@@ -1025,8 +1025,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:429`). The watch compares (`ui/index.html:1951`) and reloads
-(`ui/index.html:1956`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:541`). The watch compares (`ui/index.html:2425`) and reloads
+(`ui/index.html:2430`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1100,8 +1100,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:429`). The watch compares (`ui/index.html:1951`) and reloads
-(`ui/index.html:1956`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:541`). The watch compares (`ui/index.html:2425`) and reloads
+(`ui/index.html:2430`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1166,10 +1166,10 @@ window to open. Like R14, the defect depends on the **duration of a scan**, not 
 > cover it: its snapshot was taken before the request existed.
 
 Each accepted scan request now gets a monotone per-volume ticket. `start_scan`
-(`src/main.rs:647`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
+(`src/main.rs:657`) returns it, and `/api/state` exposes `scan_requested` and `scan_completed`,
 so a client can wait for **its** scan without missing a short run or mistaking the current scan's
 completion for the requested one. Repeated requests coalesce in the queue (`demande_couverte`,
-`src/main.rs:631`, and `en_attente.push(letter)`, `src/main.rs:642`): ten requests during one
+`src/main.rs:641`, and `en_attente.push(letter)`, `src/main.rs:652`): ten requests during one
 scan request just one additional pass, not ten. A scan already in progress never satisfies a
 request made after it began.
 
@@ -1232,9 +1232,9 @@ between two scans. Now:
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
   `attendreTicket` (`tests/sondes/config.mjs:456`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
-- the UI records the returned ticket (`ui/index.html:683`) and `poll()` stops on its publication
-  (`ui/index.html:701`); the rescan after a deletion waits on the `scan_ticket` returned by the
-  execution (`ui/index.html:1634`);
+- the UI records the returned ticket (`ui/index.html:795`) and `poll()` stops on its publication
+  (`ui/index.html:813`); the rescan after a deletion waits on the `scan_ticket` returned by the
+  execution (`ui/index.html:2087`);
 - `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
   — the fact-based wait below remains its proof of existence;
 - the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the
@@ -1353,9 +1353,9 @@ A probe stating that its own green proves nothing — and nobody could read that
 same shape as the silence guard, seen from the other end: the thing that reported could not fail,
 so nothing could act on it.
 
-So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1800`) and
+So the harness now reads the notes out of **every** verdict (`tests/sondes/lancer.mjs:1809`) and
 prints them at the end of the run **with their text**, not just a count
-(`tests/sondes/lancer.mjs:1927`). A count that does not say what it counts teaches nothing.
+(`tests/sondes/lancer.mjs:1936`). A count that does not say what it counts teaches nothing.
 
 Then the signal had to be cleaned, or it would have gone quiet on its own. Of those eight notes,
 **five were progress**, not warnings — *corbeille: 1 readable SID folder*, *generation 32 -> 33*,
