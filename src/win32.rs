@@ -142,10 +142,12 @@ struct ByHandleFileInformation {
 /// pas le contenu, seulement l'identité. Les trois partages sont demandés pour
 /// ne pas échouer sur un fichier ouvert par un autre programme.
 ///
-/// `None` couvre l'absence, un refus, ou un volume non NTFS. L'appelant doit le
-/// lire comme « identité inconnue », jamais comme « même fichier » : deux
-/// inconnus ne se dédupliquent pas, sinon deux copies réelles perdraient leur
-/// gain.
+/// `None` couvre l'absence, un refus, un volume non NTFS, ou un POINT D'ANALYSE
+/// (lien symbolique, jonction) : un lien n'a pas d'identité de contenu, ses
+/// octets sont ceux de sa cible, et deux liens vers la même cible ne sont pas
+/// des copies. L'appelant doit le lire comme « identité inconnue », jamais comme
+/// « même fichier » : deux inconnus ne se dédupliquent pas, sinon deux copies
+/// réelles perdraient leur gain.
 pub fn file_id(path: &std::path::Path) -> Option<(u32, u64)> {
     use std::ffi::OsStr;
     const FILE_SHARE_READ: u32 = 0x0000_0001;
@@ -153,6 +155,7 @@ pub fn file_id(path: &std::path::Path) -> Option<(u32, u64)> {
     const FILE_SHARE_DELETE: u32 = 0x0000_0004;
     const OPEN_EXISTING: u32 = 3;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const INVALID_HANDLE_VALUE: *mut std::ffi::c_void = -1isize as *mut std::ffi::c_void;
 
     let wide: Vec<u16> = OsStr::new(path)
@@ -166,7 +169,7 @@ pub fn file_id(path: &std::path::Path) -> Option<(u32, u64)> {
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             std::ptr::null_mut(),
             OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
             std::ptr::null_mut(),
         )
     };
@@ -177,6 +180,9 @@ pub fn file_id(path: &std::path::Path) -> Option<(u32, u64)> {
     let ok = unsafe { GetFileInformationByHandle(h, &mut info) };
     unsafe { CloseHandle(h) };
     if ok == 0 {
+        return None;
+    }
+    if info.attributes & REPARSE_POINT != 0 {
         return None;
     }
     Some((
@@ -1013,6 +1019,53 @@ mod tests {
         let _ = std::fs::remove_file(&p);
         assert!(a.is_some(), "un fichier lisible doit avoir une identité");
         assert_eq!(a, b, "deux lectures du même chemin doivent coïncider");
+    }
+
+    /// Un point d'analyse n'a pas d'identité de contenu : il ne doit jamais
+    /// être marqué comme lien dur, ni servir de canonique. Un lien symbolique
+    /// demande un privilège (absent sur ce poste) ; on retombe alors sur une
+    /// JONCTION, qui est aussi un point d'analyse et que `mklink /J` crée sans
+    /// élévation. Si les deux sont refusés, le test se saute.
+    #[test]
+    fn un_point_d_analyse_n_a_pas_d_identite() {
+        let base = std::env::temp_dir().join(format!("diskmap-reparse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let cible = base.join("cible.bin");
+        let lien = base.join("lien.bin");
+        std::fs::write(&cible, b"cible").unwrap();
+        if std::os::windows::fs::symlink_file(&cible, &lien).is_ok() {
+            assert_eq!(
+                super::file_id(&lien),
+                None,
+                "un lien symbolique doit rester sans identité"
+            );
+            assert!(super::file_id(&cible).is_some(), "la cible, elle, en a une");
+            let _ = std::fs::remove_file(&lien);
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        let jonction = base.join("jonction");
+        let cible_dir = base.join("cible-dir");
+        std::fs::create_dir_all(&cible_dir).unwrap();
+        let ok = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&jonction)
+            .arg(&cible_dir)
+            .output()
+            .map(|s| s.status.success())
+            .unwrap_or(false);
+        if !ok {
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        println!("jonction utilisée : lien symbolique refusé (privilège absent)");
+        assert_eq!(
+            super::file_id(&jonction),
+            None,
+            "une jonction doit rester sans identité"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

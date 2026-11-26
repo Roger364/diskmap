@@ -25,6 +25,8 @@
 //
 // Usage : node sonde-preview.mjs http://127.0.0.1:8990/ V
 
+import fs from 'fs';
+
 import { URL_DEFAUT, VOLUME_DEFAUT } from './config.mjs';
 
 const BASE = (process.argv[2] || URL_DEFAUT).replace(/\/$/, '');
@@ -128,6 +130,18 @@ if (exe) {
 } else {
   noter('aucun .exe dans l’index : la garde 415 (extension non prévisualisable) n’est pas éprouvée');
 }
+
+// 6. Le refus d'un point d'analyse (lien symbolique, jonction) ne peut pas être
+//    monté ici : créer un lien demande un privilège, et il faudrait rescanner le
+//    volume pour qu'il entre dans l'instantané. On vérifie donc la garde à la
+//    source — elle doit exister et précéder la lecture — sans prétendre l'avoir
+//    mesurée. Le libellé est cité pour que le contrôle des gardes muettes le voie.
+const GARDE_LIEN = 'aperçu refusé : point d’analyse';
+const sourceMain = fs.readFileSync(new URL('../../src/main.rs', import.meta.url), 'utf8');
+verifier('l’aperçu refuse les points d’analyse avant de lire',
+  sourceMain.includes(GARDE_LIEN)
+    && sourceMain.indexOf(GARDE_LIEN) < sourceMain.indexOf('File::open(&path)'),
+  'garde absente, ou placée après File::open');
 
 const ok = verifs.filter(Boolean).length;
 console.log(`\n${ok}/${verifs.length} vérifications passées`);

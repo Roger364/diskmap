@@ -235,8 +235,8 @@ dossier `$RECYCLE.BIN` existe alors toujours. `corbeille_disponible` répondait 
 à la corbeille **si possible** » — faisait détruire le fichier sur place.
 
 `corbeille_disponible` ne posait pas la bonne question : elle dit si le dossier
-existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:588`) est la question
-qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:563`) en est la
+existe, pas s'il garde. `corbeille_reversible` (`src/win32.rs:594`) est la question
+qui compte pour l'avertissement ; `corbeille_nuke` (`src/win32.rs:569`) en est la
 mesure. La clé se lit dans `HKEY_CURRENT_USER`, comme `MaxCapacity` : aucune
 élévation requise.
 
@@ -279,7 +279,7 @@ cran qui rend le silence impossible à remettre — supprimer la déclaration ra
 sonde à neuf verdicts, et le plancher la rougit au lieu de la laisser muette.
 
 **La garde a une preuve de morsure, depuis le 11/10/2026.** `epreuve.mjs` neutralise
-`corbeille_reversible` (`src/win32.rs:588`) en `false`, et `sonde-reversibilite.mjs`
+`corbeille_reversible` (`src/win32.rs:594`) en `false`, et `sonde-reversibilite.mjs`
 sort **5/10, code 1** — le premier verdict rouge nommant la cause : *HTTP 400 —
 confirmation attendue : « EFFACER »*. Restaurée, la sonde revient à **10/10**. La
 garde est donc éprouvée dans le sens qui compte : `corbeille_reversible` répond à la
@@ -327,7 +327,7 @@ portée :
 ${d.fs ? `<span class="fs">${escapeHtml(d.fs)}</span>` : ''}
 ```
 
-`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:862`) : le nom de
+`d.label` et `d.fs` proviennent de `GetVolumeInformationW` (`src/win32.rs:868`) : le nom de
 volume est une **donnée externe**, contrôlable par quiconque formate une clé USB, monte une
 image disque ou renomme un partage. Avant correctif, ils étaient interpolés dans un `innerHTML` **sans
 `escapeHtml`**, alors que tous les autres noms venus du disque (tableau, carte, recherche,
@@ -344,12 +344,12 @@ aucun nœud texte cassé.
 
 ### R2 — L'aperçu montre 25 chemins, l'exécution en supprime N · **Haute** · *corrigé*
 
-`ui/index.html:1598` : `for (const it of d.items.slice(0, 25))`, suivi de
+`ui/index.html:1615` : `for (const it of d.items.slice(0, 25))`, suivi de
 `… et ${d.items.length - 25} autre(s)`. Rien n'empêche l'exécution de traiter les N.
 
 « Tout sélectionner » dans un dossier de 200 entrées affiche donc 175 chemins que
 l'utilisateur n'a jamais vus, puis un clic les supprime. Le garde-fou au 20 Go
-(`ui/index.html:1839`) est lui aussi purement client, et ne couvre pas le *nombre*.
+(`ui/index.html:1856`) est lui aussi purement client, et ne couvre pas le *nombre*.
 
 Le README affirme : « *it is impossible to delete something that was not shown first, or on
 the strength of a stale list* ». **La seconde moitié est vraie ; la première est fausse au-delà
@@ -575,7 +575,7 @@ point final). Le risque annoncé : l'aperçu afficherait `foo ` et l'effacement 
 - l'aperçu affiche `V:\_r9\piege.txt ` **avec son espace**, et le déclare
   `blocked=true`, `deletable=0`, motif « introuvable sur le disque ».
 
-Le refus vient de `delete_path` (`src/win32.rs:335`), qui interdit le préfixe `\\?\` —
+Le refus vient de `delete_path` (`src/win32.rs:341`), qui interdit le préfixe `\\?\` —
 justement parce qu'il court-circuite la corbeille. Un nom qui n'est adressable qu'en
 verbatim est donc **visible mais jamais effaçable** : il ne peut pas viser un autre fichier,
 il ne peut rien viser du tout. La classe de bug est fermée par une règle déjà en place,
@@ -1021,9 +1021,9 @@ qui n'existait pas — et un écran « corrigé » qui resterait faux.
 > l'utilisateur a été perdu en route.
 
 **Le correctif.** Un repère unique : l'écran note, à chaque peinture, le `finished_ms` du volume
-qu'il montre (`ui/index.html:541`). La veille compare (`ui/index.html:2408`) : tant que le
+qu'il montre (`ui/index.html:541`). La veille compare (`ui/index.html:2425`) : tant que le
 repère vaut celui de l'état, elle ne fait rien ; dès qu'il diffère, elle recharge
-(`ui/index.html:2413`). Le rechargement passe par `rechargerTri()` et non `load()` : la
+(`ui/index.html:2430`). Le rechargement passe par `rechargerTri()` et non `load()` : la
 **sélection** se garde — c'est une cible de suppression, et un rechargement de fond n'a pas le
 droit de la déplacer — et une recherche en cours reste une recherche.
 
@@ -1170,7 +1170,7 @@ drapeau global, dont la mesure montre qu'il ment entre deux analyses. Désormais
   consulte jamais `!scanning` pour conclure ;
 - l'interface note le ticket rendu (`ui/index.html:795`) et `poll()` s'arrête sur sa publication
   (`ui/index.html:813`) ; la réanalyse après suppression attend le `scan_ticket` rendu par
-  l'exécution (`ui/index.html:2070`) ;
+  l'exécution (`ui/index.html:2087`) ;
 - `generation` demande son analyse et attend son ticket (`tests/sondes/sonde-generation.mjs:71`)
   — l'attente par le fait, plus bas, reste sa preuve d'existence ;
 - la sonde `tickets` (`tests/sondes/sonde-tickets.mjs:62`) éprouve le contrat du point de vue
@@ -1265,13 +1265,13 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   l'écran ne montre jamais autre chose que ce que l'interface déclare.
 - **Une génération par instantané** (`src/scan.rs:386,455`), servie par `/api/tree` et
   `/api/search`, exigée par `dry`. Un identifiant périmé est refusé, pas réinterprété.
-- **Jeton** : `BCryptGenRandom` (`src/win32.rs:307`), usage unique, dix minutes, lié au
+- **Jeton** : `BCryptGenRandom` (`src/win32.rs:313`), usage unique, dix minutes, lié au
   volume, avec repli qui ne dérive jamais d'une constante.
 - **CSRF** : `X-Diskmap` sur tous les POST, `Host` local sur toutes les routes, lectures
   comprises. Le raisonnement sur le rebinding (l'en-tête `X-Diskmap` est posable librement
   en same-origin, seul le nom de `Host` trahit l'attaque) est exact.
 - **Points d'analyse** refusés au scan (`src/scan.rs:1004`) *et* à l'exécution
-  (`src/win32.rs:385`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
+  (`src/win32.rs:391`), avec `symlink_metadata` pour inspecter l'entrée et non sa cible.
 - **Une sonde muette est rouge** (`tests/sondes/lancer.mjs:829`), pas verte par défaut : le
   harnais exige un décompte écrit. Et un décompte de **`0/0`** est rouge aussi
   (`tests/sondes/lancer.mjs:828`, motif `tests/sondes/lancer.mjs:1877`) : « je n'avais rien à
@@ -1301,13 +1301,13 @@ Le travail de durcissement est de bon niveau ; ces points ne doivent pas être p
   étrangère laissait donc l'écran afficher un instantané que le serveur ne servait plus, sans un
   mot — et un geste de l'utilisateur survenu **pendant** l'analyse était perdu sans bruit,
   mesuré par un compteur de requêtes qui ne bougeait pas. Le repère est le `finished_ms` noté à
-  chaque peinture (`ui/index.html:541`), comparé par la veille (`ui/index.html:2408`) — R14.
+  chaque peinture (`ui/index.html:541`), comparé par la veille (`ui/index.html:2425`) — R14.
 - **Le navigateur ne s'ouvre que pour un lancement interactif**
   (`src/main.rs:223`). Au double-clic il y a une console, donc il s'ouvre ; depuis un
   script, non — et le serveur **dit** pourquoi. `--browser` et `--no-browser` priment
   tous deux sur ce signal, l'interdit en cas de conflit. Ouvrir une fenêtre sur le bureau
   de celui qui a lancé le programme est une intrusion, même sans intention — R13.
-- **`\\?\` interdit à l'effacement** (`src/win32.rs:335`) : ce préfixe court-circuite la
+- **`\\?\` interdit à l'effacement** (`src/win32.rs:341`) : ce préfixe court-circuite la
   corbeille. Le commentaire explique pourquoi le scan s'en sert et la suppression non.
 - **La réversibilité se constate**, elle ne se déduit pas du code de retour : les fiches `$I`
   sont lues une fois après la boucle, filtrées par date, et l'issue est journalisée comme
@@ -2690,7 +2690,7 @@ se compte : **7 − 6 = 1** — il restait exactement un `409 Conflict`, celui
 du helper, et les autres 409 du fichier (arrêt en cours, jeton expiré,
 arrêt refusé) portent d'autres sémantiques, non touchées.
 
-**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1671`) dit « analyse
+**L'UI était déjà prête.** Sa branche 409 (`ui/index.html:1688`) dit « analyse
 en cours, on peut insister » ; sa branche 404 (`ui/index.html:893`) remonte au
 dossier parent. Les flux 404 de navigation ne peuvent pas rencontrer une
 lettre hors catalogue (le catalogue ne liste que des volumes montés), donc

@@ -471,9 +471,11 @@ fn marquer_hardlinks(
 
 /// Agrège les paires de dossiers qui partagent des contenus identiques.
 ///
-/// Pour chaque groupe, on compte les copies par dossier parent, puis chaque
-/// paire de dossiers reçoit `min(copies_a, copies_b)` fichiers partagés : c'est
-/// le nombre de contenus qu'on peut supprimer d'un côté en gardant l'autre.
+/// Pour chaque groupe, on compte les copies PHYSIQUES par dossier parent, puis
+/// chaque paire reçoit le nombre de copies exclusives au côté le plus fourni :
+/// c'est ce qu'un nettoyage de ce côté libère en gardant l'autre. Un inode
+/// présent des deux côtés est le MÊME fichier (lien dur inter-dossiers) : il ne
+/// compte pas, sinon la paire annoncerait un gain qui n'existe pas.
 /// Le coût par groupe est O(d²) où `d` est le nombre de dossiers DISTINCTS —
 /// presque toujours 2 ou 3. Au-delà de 512 dossiers, la paire n'est pas
 /// calculée : mieux vaut une liste incomplète assumée qu'un calcul en O(n²)
@@ -496,17 +498,23 @@ fn paires_dossiers(snap: &Snapshot, groupes: &[Groupe]) -> Vec<PaireDossiers> {
         if par_dir.len() < 2 || par_dir.len() > 512 {
             continue;
         }
-        let mut ds: Vec<(u32, u32)> = par_dir
-            .into_iter()
-            .map(|(d, inodes)| (d, inodes.len() as u32))
-            .collect();
-        ds.sort_unstable();
+        let mut ds: Vec<(u32, std::collections::HashSet<u32>)> = par_dir.into_iter().collect();
+        ds.sort_unstable_by_key(|(d, _)| *d);
         for i in 0..ds.len() {
             for j in (i + 1)..ds.len() {
-                let (a, ca) = ds[i];
-                let (b, cb) = ds[j];
-                let n = u64::from(ca.min(cb));
-                let e = agg.entry((a, b)).or_insert((0, 0));
+                let (a, sa) = &ds[i];
+                let (b, sb) = &ds[j];
+                // Seules les copies PHYSIQUES exclusives à un côté peuvent
+                // être libérées : un inode commun aux deux dossiers survit
+                // dans l'autre, quel que soit le nombre de noms supprimés.
+                // Le côté le plus fourni donne le gain du meilleur nettoyage.
+                let seulement_a = sa.difference(sb).count() as u64;
+                let seulement_b = sb.difference(sa).count() as u64;
+                let n = seulement_a.max(seulement_b);
+                if n == 0 {
+                    continue;
+                }
+                let e = agg.entry((*a, *b)).or_insert((0, 0));
                 e.0 += n;
                 e.1 = e.1.saturating_add(g.taille.saturating_mul(n));
             }

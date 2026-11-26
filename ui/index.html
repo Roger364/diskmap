@@ -1028,7 +1028,7 @@ function toggleSel(r, on) {
 function gainSelection() {
   const parInode = new Map();
   for (const r of cur.rows) {
-    const k = r.inode ?? r.id;
+    const k = r.inode != null ? 'i:' + r.inode : selKey(r);
     const e = parInode.get(k) || { taille: r.size, noms: 0, choisis: 0 };
     e.noms++;
     if (cur.sel.has(selKey(r))) e.choisis++;
@@ -1389,14 +1389,20 @@ function selectionnerDossier(dir) {
   for (const r of cur.rows) {
     if (String(parentDe(r.path)).toLowerCase() === d) { cur.sel.add(selKey(r)); n++; }
   }
+  updateSelBar();
   majDupBar();
   if (!n) $('#count').textContent = `Aucun doublon affiché dans ${dir}`;
 }
 
 // ---------- aperçu ----------
 let pvUrl = null;
+// Jeton de requête : deux clics rapides lancent deux fetch, et le plus lent
+// peut revenir en dernier. Sans ce compteur, le tiroir afficherait le contenu
+// du premier clic sous le nom du second.
+let pvReq = 0;
 
 async function ouvrirApercu(r) {
+  const req = ++pvReq;
   const pan = $('#preview');
   pan.classList.remove('hidden');
   $('#pvname').textContent = r.name;
@@ -1407,9 +1413,15 @@ async function ouvrirApercu(r) {
   const u = `/api/preview?drive=${cur.drive}&id=${r.id}&gen=${cur.gen}`;
   let rep;
   try { rep = await fetch(u); }
-  catch (e) { body.innerHTML = `<div class="warn">${escapeHtml(String(e.message || e))}</div>`; return; }
+  catch (e) {
+    if (req !== pvReq) return;
+    body.innerHTML = `<div class="warn">${escapeHtml(String(e.message || e))}</div>`;
+    return;
+  }
+  if (req !== pvReq) return;
   if (!rep.ok) {
     const t = await rep.text();
+    if (req !== pvReq) return;
     body.innerHTML = `<div class="warn">${escapeHtml(t)}</div>`;
     return;
   }
@@ -1420,7 +1432,9 @@ async function ouvrirApercu(r) {
   chemin.textContent = r.path;
   body.appendChild(chemin);
   if (ct.startsWith('image/')) {
-    pvUrl = URL.createObjectURL(await rep.blob());
+    const blob = await rep.blob();
+    if (req !== pvReq) return;
+    pvUrl = URL.createObjectURL(blob);
     const img = document.createElement('img');
     img.src = pvUrl;
     img.alt = r.name;
@@ -1428,7 +1442,9 @@ async function ouvrirApercu(r) {
     return;
   }
   const pre = document.createElement('pre');
-  pre.textContent = await rep.text();
+  const txt = await rep.text();
+  if (req !== pvReq) return;
+  pre.textContent = txt;
   body.appendChild(pre);
   if (r.size > 32768) {
     const n = document.createElement('p');
@@ -1439,6 +1455,7 @@ async function ouvrirApercu(r) {
 }
 
 function fermerApercu() {
+  pvReq++;
   $('#preview').classList.add('hidden');
   if (pvUrl) { URL.revokeObjectURL(pvUrl); pvUrl = null; }
   $('#pvbody').innerHTML = '';

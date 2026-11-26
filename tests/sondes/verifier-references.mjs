@@ -78,14 +78,14 @@ const ATTENDU = {
     'ui/index.html:729': 'escapeHtml(d.label',
     'ui/index.html:730': 'escapeHtml(d.fs)',
     'ui/index.html:541': 'let peintMs = null;',
-    'ui/index.html:2408': 'peintMs === null || (d.finished_ms || 0) === peintMs',
-    'ui/index.html:2413': 'rechargerTri();',
+    'ui/index.html:2425': 'peintMs === null || (d.finished_ms || 0) === peintMs',
+    'ui/index.html:2430': 'rechargerTri();',
     'ui/index.html:847': 'let requete = 0',
     'ui/index.html:910': 'if (mien !== requete) return;',
     'ui/index.html:887': 'if (mien !== requete) return;',
     'ui/index.html:1123': 'if (mien !== requete) return;',
-    'ui/index.html:1839': 'if (d.total_size > 20e9) {',
-    'ui/index.html:1598': 'const cause = dr ?',
+    'ui/index.html:1856': 'if (d.total_size > 20e9) {',
+    'ui/index.html:1615': 'const cause = dr ?',
     'tests/sondes/lancer.mjs:1465': 'const connus',
     'tests/sondes/lancer.mjs:829': 'const muette = !compte',
     'tests/sondes/lancer.mjs:828': 'const vide = !!compte',
@@ -102,7 +102,7 @@ const ATTENDU = {
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
     'ui/index.html:795': 'cur.ticket = rep && typeof rep.ticket',
     'ui/index.html:813': 'd.scan_completed >= cur.ticket',
-    'ui/index.html:2070': 'cur.ticket = typeof res.scan_ticket',
+    'ui/index.html:2087': 'cur.ticket = typeof res.scan_ticket',
     'tests/sondes/sonde-ui-suppression.mjs:537': 'const armerPeints',
     'tests/sondes/sonde-ui-suppression.mjs:560': 'const attendreEcranStable',
     'tests/sondes/sonde-ui-suppression.mjs:819': 'jamais été contredit',
@@ -137,18 +137,18 @@ const ATTENDU = {
     // trois premieres sont les DECLARATIONS des fonctions citees — une
     // reference qui designerait un commentaire voisin garderait un texte, pas
     // une regle.
-    'src/win32.rs:307': 'pub fn alea_u64',
-    'src/win32.rs:335': 'pub fn delete_path',
-    'src/win32.rs:385': 'pub fn is_reparse_point',
+    'src/win32.rs:313': 'pub fn alea_u64',
+    'src/win32.rs:341': 'pub fn delete_path',
+    'src/win32.rs:391': 'pub fn is_reparse_point',
     // `:471` designait encore `GetVolumeInformationW` dans la prose, et depuis
     // longtemps plus rien de tel dans le fichier. Recalee sur la FONCTION qui
     // rend `label` et `fs` : c est elle que la phrase annonce.
-    'src/win32.rs:862': 'fn volume_info',
+    'src/win32.rs:868': 'fn volume_info',
     // Section 3.8 : le contrat `corbeille_inerte` expose par l apercu, et la
     // fonction qui recoit la reversibilite MESUREE — c est elle qui fait exiger
     // le mot de la suppression definitive malgre le mode « corbeille ».
-    'src/win32.rs:563': 'pub fn corbeille_nuke',
-    'src/win32.rs:588': 'pub fn corbeille_reversible',
+    'src/win32.rs:569': 'pub fn corbeille_nuke',
+    'src/win32.rs:594': 'pub fn corbeille_reversible',
     'src/main.rs:1477': 'corbeille_inerte: Option<bool>,',
     'src/main.rs:2269': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
@@ -169,7 +169,7 @@ const ATTENDU = {
     // references existe precisement pour refuser un commentaire voisin.
     'src/main.rs:1029': 'return Err(("404 Not Found", "volume inconnu"',
     'src/main.rs:1153': '("409 Conflict", "volume pas encore analysé"',
-    'ui/index.html:1671': 'if (!force && e.status === 409) {',
+    'ui/index.html:1688': 'if (!force && e.status === 409) {',
     'ui/index.html:893': 'if (e.status === 404) {',
   },
   'README.md': {
@@ -183,7 +183,7 @@ const ATTENDU = {
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
     'ui/index.html:795': 'cur.ticket = rep && typeof rep.ticket',
     'ui/index.html:813': 'd.scan_completed >= cur.ticket',
-    'ui/index.html:2070': 'cur.ticket = typeof res.scan_ticket',
+    'ui/index.html:2087': 'cur.ticket = typeof res.scan_ticket',
     'tests/sondes/lancer.mjs:829': 'const muette = !compte',
     'tests/sondes/lancer.mjs:828': 'const vide = !!compte',
     'tests/sondes/lancer.mjs:1877': 'resume vide : la sonde annonce',
@@ -193,8 +193,8 @@ const ATTENDU = {
     'tests/sondes/lancer.mjs:1809': 'const mention = notes.length',
     'tests/sondes/lancer.mjs:1936': 'note(s) de',
     'ui/index.html:541': 'let peintMs = null;',
-    'ui/index.html:2408': 'peintMs === null || (d.finished_ms || 0) === peintMs',
-    'ui/index.html:2413': 'rechargerTri();',
+    'ui/index.html:2425': 'peintMs === null || (d.finished_ms || 0) === peintMs',
+    'ui/index.html:2430': 'rechargerTri();',
     'src/main.rs:641': 'fn demande_couverte',
     'src/main.rs:652': 'en_attente.push(letter);',
     'src/main.rs:657': 'fn start_scan',

@@ -3161,6 +3161,12 @@ fn preview(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     if blocked_reason(&path).is_some() {
         return Err(("403 Forbidden", "aperçu refusé : chemin protégé".into()));
     }
+    // Même refus pour un point d'analyse : `blocked_reason` ne juge que le
+    // chemin indexé, et `File::open` suivrait le lien vers une cible que
+    // personne n'a vérifiée.
+    if matches!(win32::is_reparse_point(&path), Ok(true)) {
+        return Err(("403 Forbidden", "aperçu refusé : point d’analyse".into()));
+    }
 
     let ext = path
         .extension()
@@ -3407,8 +3413,10 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
                 "dir_b": snap.dir_path(p.dir_b).to_string_lossy(),
                 "shared_files": p.fichiers,
                 "shared_bytes": p.octets,
-                "ratio_a": p.octets as f64 / sa as f64,
-                "ratio_b": p.octets as f64 / sb as f64,
+                // Un côté peut porter plus de copies que l'autre n'a de
+                // fichiers : le ratio reste une part, donc borné à 100 %.
+                "ratio_a": (p.octets as f64 / sa as f64).min(1.0),
+                "ratio_b": (p.octets as f64 / sb as f64).min(1.0),
             })
         })
         .collect();
