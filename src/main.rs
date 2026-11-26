@@ -9,7 +9,7 @@ mod scan;
 mod win32;
 
 use scan::{sel, trier_lignes, Progress, Row, Snapshot, Tri};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -116,6 +116,11 @@ struct Montre {
     is_dir: bool,
     size: u64,
     count: u64,
+    /// Inode canonique (identité NTFS) du fichier, s'il est connu. Permet de
+    /// ne compter `total`/`freed` qu'une fois par fichier physique en présence
+    /// de liens durs. `None` pour les dossiers et les fichiers dont l'identité
+    /// n'a pas pu être lue (volume non NTFS, refus, etc.).
+    inode: Option<u64>,
 }
 
 struct App {
@@ -1759,6 +1764,7 @@ fn dry(
     // Ce qu'on retient pour l'exécution : le chemin résolu, figé ici. C'est la
     // seule liste que `execute` consultera.
     let mut montres: Vec<Montre> = Vec::new();
+    let mut seen_inodes: HashSet<u64> = HashSet::new();
 
     for it in &items {
         // Un identifiant irrésoluble ne doit pas DISPARAÎTRE. Le client en
@@ -1781,7 +1787,20 @@ fn dry(
             blocked += 1;
         } else {
             deletable += 1;
-            total += size;
+            // Un lien dur ne libère rien de plus qu'un seul de ses noms :
+            // on ne compte `total` qu'une fois par inode. Un fichier sans
+            // identité connue (volume non NTFS, refus) est traité comme unique.
+            let inode = if e.is_dir {
+                None
+            } else {
+                win32::file_id(&path).map(|(_, idx)| idx)
+            };
+            if inode.is_none() || !seen_inodes.contains(&inode.unwrap()) {
+                total += size;
+                if let Some(i) = inode {
+                    seen_inodes.insert(i);
+                }
+            }
             // Le sélecteur est figé avec le chemin : c'est lui qui permet au
             // journal de nommer ce que le client AVAIT demandé, à côté de ce
             // qui a été traité. Voir `LigneJournal`.
@@ -1791,6 +1810,7 @@ fn dry(
                 is_dir: e.is_dir,
                 size,
                 count,
+                inode,
             });
         }
         out.push(PreviewItem {
@@ -1971,6 +1991,7 @@ fn execute(
     let mut done = 0usize;
     let mut failed = 0usize;
     let mut freed = 0u64;
+    let mut freed_inodes: HashSet<u64> = HashSet::new();
     // TOUT ce que le lot a touché, y compris ce qu'il n'a pas supprimé. Un
     // journal qui n'écrit que les succès laisse le même vide que l'incident : on
     // y voit des suppressions, mais pas les cibles refusées entre les deux —
@@ -2078,7 +2099,18 @@ fn execute(
         match win32::delete_path(&ps, to_trash) {
             Ok(()) => {
                 done += 1;
-                freed += size;
+                // Un lien dur ne libère le fichier physique qu'une seule fois :
+                // on ne compte `freed` qu'une fois par inode.
+                if let Some(i) = m.inode {
+                    if freed_inodes.contains(&i) {
+                        // déjà compté
+                    } else {
+                        freed += size;
+                        freed_inodes.insert(i);
+                    }
+                } else {
+                    freed += size;
+                }
                 // La réversibilité se CONSTATE, et elle se lit dans la corbeille
                 // — mais les fiches des fichiers qu'on vient de lui envoyer n'y
                 // sont qu'APRÈS l'opération. On note donc l'élément tel quel, et

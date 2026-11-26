@@ -48,28 +48,28 @@ const DOCS = ['SECURITY.md', 'README.md'];
 const ATTENDU = {
   'SECURITY.md': {
     'src/main.rs:111': 'struct Montre',
-    'src/main.rs:930': 'fn hote_local',
-    'src/main.rs:1008': 'X-Diskmap absent',
-    'src/main.rs:1230': 'fn dossier_de',
-    'src/main.rs:223': 'fn decider_le_navigateur',
+    'src/main.rs:935': 'fn hote_local',
+    'src/main.rs:1013': 'X-Diskmap absent',
+    'src/main.rs:1235': 'fn dossier_de',
+    'src/main.rs:228': 'fn decider_le_navigateur',
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'tests/sondes/sonde-ui-suppression.mjs:101': "zztaille-z.txt', 'x'.repeat(2000)",
     'tests/sondes/sonde-ui-suppression.mjs:757': 'taille égale, l’écran range',
-    'src/main.rs:351': 'decider_le_navigateur(&args, std::io::stdin().is_terminal())',
-    'src/main.rs:641': 'fn demande_couverte',
-    'src/main.rs:652': 'en_attente.push(letter);',
-    'src/main.rs:657': 'fn start_scan',
-    'src/main.rs:356': 'Navigateur  : non ouvert',
+    'src/main.rs:356': 'decider_le_navigateur(&args, std::io::stdin().is_terminal())',
+    'src/main.rs:646': 'fn demande_couverte',
+    'src/main.rs:657': 'en_attente.push(letter);',
+    'src/main.rs:662': 'fn start_scan',
+    'src/main.rs:361': 'Navigateur  : non ouvert',
     'tests/sondes/lancer.mjs:1222': "'--port', String(port), '--no-browser'",
-    'src/main.rs:1576': 'fn blocked_reason',
-    'src/main.rs:1713': 'gen_vue != snap.gen',
-    'src/main.rs:1856': 'retiré ICI aussi',
-    'src/main.rs:1860': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
-    'src/main.rs:1854': 'app.pending.lock().unwrap(); // aperçu',
-    'src/main.rs:1905': 'app.pending.lock().unwrap(); // exécution : lecture',
-    'src/main.rs:2191': 'let rescan = scan_ticket.is_some()',
-    'src/main.rs:126': 'scanning: Mutex<Option<char>>',
-    'src/main.rs:2989': 'fn journal',
+    'src/main.rs:1581': 'fn blocked_reason',
+    'src/main.rs:1718': 'gen_vue != snap.gen',
+    'src/main.rs:1876': 'retiré ICI aussi',
+    'src/main.rs:1880': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
+    'src/main.rs:1874': 'app.pending.lock().unwrap(); // aperçu',
+    'src/main.rs:1925': 'app.pending.lock().unwrap(); // exécution : lecture',
+    'src/main.rs:2223': 'let rescan = scan_ticket.is_some()',
+    'src/main.rs:131': 'scanning: Mutex<Option<char>>',
+    'src/main.rs:3021': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',
     'src/scan.rs:503': 'pub fn dir_path',
@@ -110,10 +110,10 @@ const ATTENDU = {
     // l embuscade du controle qui les cherche. Les quatre lignes de `src/main.rs`
     // sont les GARDES elles-memes — le libelle doit s y trouver, pas un
     // commentaire voisin : c est ce que la reference doit designer.
-    'src/main.rs:1024': 'lettre manquante',
-    'src/main.rs:1110': 'id invalide',
-    'src/main.rs:1086': 'chemin invalide',
-    'src/main.rs:1134': 'route inconnue',
+    'src/main.rs:1029': 'lettre manquante',
+    'src/main.rs:1115': 'id invalide',
+    'src/main.rs:1091': 'chemin invalide',
+    'src/main.rs:1139': 'route inconnue',
     'tests/sondes/verifier-libelles.mjs:220': "const leurre = 'zzcontrolejamaisvu'",
     // Section 7/29 : l ecoute du reseau que les quatre sondes a navigateur
     // n avaient pas. Le symbole designe l export qu elles importent — sans
@@ -149,14 +149,14 @@ const ATTENDU = {
     // le mot de la suppression definitive malgre le mode « corbeille ».
     'src/win32.rs:569': 'pub fn corbeille_nuke',
     'src/win32.rs:594': 'pub fn corbeille_reversible',
-    'src/main.rs:1477': 'corbeille_inerte: Option<bool>,',
-    'src/main.rs:2269': 'fn mots_exiges',
+    'src/main.rs:1482': 'corbeille_inerte: Option<bool>,',
+    'src/main.rs:2301': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
     // motif de refus que la sonde lisait mal : elle designe le `format!` qui
     // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
     // qui compte, et une reference qui designerait la ligne voisine garderait un
     // texte, pas la cause.
-    'src/main.rs:1934': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
+    'src/main.rs:1954': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
     // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
     // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
     'tests/sondes/config.mjs:377': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
@@ -167,8 +167,8 @@ const ATTENDU = {
     // toujours. `:1017` pointait un COMMENTAIRE : la garde qui produit ce 409 est
     // en 1088 — c'est la ligne que la phrase annonce, et le controle des
     // references existe precisement pour refuser un commentaire voisin.
-    'src/main.rs:1029': 'return Err(("404 Not Found", "volume inconnu"',
-    'src/main.rs:1153': '("409 Conflict", "volume pas encore analysé"',
+    'src/main.rs:1034': 'return Err(("404 Not Found", "volume inconnu"',
+    'src/main.rs:1158': '("409 Conflict", "volume pas encore analysé"',
     'ui/index.html:1688': 'if (!force && e.status === 409) {',
     'ui/index.html:893': 'if (e.status === 404) {',
   },
@@ -195,9 +195,9 @@ const ATTENDU = {
     'ui/index.html:541': 'let peintMs = null;',
     'ui/index.html:2425': 'peintMs === null || (d.finished_ms || 0) === peintMs',
     'ui/index.html:2430': 'rechargerTri();',
-    'src/main.rs:641': 'fn demande_couverte',
-    'src/main.rs:652': 'en_attente.push(letter);',
-    'src/main.rs:657': 'fn start_scan',
+    'src/main.rs:646': 'fn demande_couverte',
+    'src/main.rs:657': 'en_attente.push(letter);',
+    'src/main.rs:662': 'fn start_scan',
     // Les quatre references du README qui etaient ecrites en NOM NU. Deux
     // pointaient un commentaire : le plancher se declare en 384, le registre des
     // aveux en 451 — pas en 381 et 432, ou il n'y a que la prose qui les
