@@ -1029,8 +1029,7 @@ function gainSelection() {
   const parInode = new Map();
   for (const r of cur.rows) {
     const k = r.inode != null ? 'i:' + r.inode : selKey(r);
-    const e = parInode.get(k) || { taille: r.size, noms: 0, choisis: 0 };
-    e.noms++;
+    const e = parInode.get(k) || { taille: r.size, noms: (r.inode_count || 1), choisis: 0 };
     if (cur.sel.has(selKey(r))) e.choisis++;
     parInode.set(k, e);
   }

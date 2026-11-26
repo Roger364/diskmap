@@ -185,10 +185,11 @@ pub fn file_id(path: &std::path::Path) -> Option<(u32, u64)> {
     if info.attributes & REPARSE_POINT != 0 {
         return None;
     }
-    Some((
-        info.volume_serial,
-        (u64::from(info.index_high) << 32) | u64::from(info.index_low),
-    ))
+    let index = (u64::from(info.index_high) << 32) | u64::from(info.index_low);
+    if index == 0 {
+        return None;
+    }
+    Some((info.volume_serial, index))
 }
 
 fn to_wide(s: &str) -> Vec<u16> {

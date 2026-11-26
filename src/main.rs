@@ -9,7 +9,7 @@ mod scan;
 mod win32;
 
 use scan::{sel, trier_lignes, Progress, Row, Snapshot, Tri};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -116,6 +116,11 @@ struct Montre {
     is_dir: bool,
     size: u64,
     count: u64,
+    /// Inode canonique (identité NTFS) du fichier, s'il est connu. Permet de
+    /// ne compter `total`/`freed` qu'une fois par fichier physique en présence
+    /// de liens durs. `None` pour les dossiers et les fichiers dont l'identité
+    /// n'a pas pu être lue (volume non NTFS, refus, etc.).
+    inode: Option<u64>,
 }
 
 struct App {
@@ -1737,7 +1742,6 @@ fn dry(
     items: Vec<DeleteItem>,
 ) -> Result<Resp, (&'static str, String)> {
     let mut out: Vec<PreviewItem> = Vec::new();
-    let mut total = 0u64;
     let mut deletable = 0usize;
     let mut blocked = 0usize;
 
@@ -1781,7 +1785,18 @@ fn dry(
             blocked += 1;
         } else {
             deletable += 1;
-            total += size;
+            // Un lien dur ne libère rien de plus qu'un seul de ses noms :
+            // on ne compte `total` qu'une fois par inode. Un fichier sans
+            // identité connue (volume non NTFS, refus) est traité comme unique.
+            // Un lot = un instantané = un volume (`dry(letter, snap)`). L'identité
+            // physique est donc l'index seul ; le numéro de série du volume n'est pas
+            // stocké, mais l'invariant tient tant qu'un lot ne franchit pas deux
+            // volumes.
+            let inode = if e.is_dir {
+                None
+            } else {
+                win32::file_id(&path).map(|(_, idx)| idx)
+            };
             // Le sélecteur est figé avec le chemin : c'est lui qui permet au
             // journal de nommer ce que le client AVAIT demandé, à côté de ce
             // qui a été traité. Voir `LigneJournal`.
@@ -1791,6 +1806,7 @@ fn dry(
                 is_dir: e.is_dir,
                 size,
                 count,
+                inode,
             });
         }
         out.push(PreviewItem {
@@ -1828,6 +1844,7 @@ fn dry(
     // L'état de la corbeille, mesuré UNE fois et figé avec l'aperçu : c'est
     // l'état AVANT qui décide, et le relever à l'exécution serait déjà faux.
     let etat = win32::etat_corbeille(letter);
+    let total = total_par_inode(&montres);
     let deborde = etat.deborde(total);
 
     // Le mot exigé est décidé ICI, dans la simulation, et figé avec elle : à
@@ -1842,8 +1859,8 @@ fn dry(
     let reversible = win32::corbeille_reversible(letter);
     let nuke = win32::corbeille_nuke(letter);
     let (mots_recycle, mots_permanent) = (
-        mots_avec_raison(total, true, reversible, nuke, app.eleve),
-        mots_avec_raison(total, false, false, None, app.eleve),
+        mots_avec_raison(taille_du_lot(&montres), true, reversible, nuke, app.eleve),
+        mots_avec_raison(taille_du_lot(&montres), false, false, None, app.eleve),
     );
 
     // L'horodatage sert à dater et à distinguer deux jetons ; il n'a jamais eu à
@@ -1971,6 +1988,15 @@ fn execute(
     let mut done = 0usize;
     let mut failed = 0usize;
     let mut freed = 0u64;
+    let mut inode_success: HashMap<u64, usize> = HashMap::new();
+    let mut inode_total: HashMap<u64, usize> = HashMap::new();
+    let mut inode_size: HashMap<u64, u64> = HashMap::new();
+    for m in &pending.items {
+        if let Some(i) = m.inode {
+            *inode_total.entry(i).or_insert(0) += 1;
+            inode_size.entry(i).or_insert(m.size);
+        }
+    }
     // TOUT ce que le lot a touché, y compris ce qu'il n'a pas supprimé. Un
     // journal qui n'écrit que les succès laisse le même vide que l'incident : on
     // y voit des suppressions, mais pas les cibles refusées entre les deux —
@@ -2078,7 +2104,11 @@ fn execute(
         match win32::delete_path(&ps, to_trash) {
             Ok(()) => {
                 done += 1;
-                freed += size;
+                if let Some(i) = m.inode {
+                    *inode_success.entry(i).or_insert(0) += 1;
+                } else {
+                    freed += size;
+                }
                 // La réversibilité se CONSTATE, et elle se lit dans la corbeille
                 // — mais les fiches des fichiers qu'on vient de lui envoyer n'y
                 // sont qu'APRÈS l'opération. On note donc l'élément tel quel, et
@@ -2188,6 +2218,15 @@ fn execute(
     } else {
         None
     };
+    // Les liens durs ne libèrent le fichier physique que si tous leurs noms
+    // dans le lot ont été supprimés avec succès.
+    for (i, n) in &inode_total {
+        if inode_success.get(i).copied().unwrap_or(0) == *n {
+            if let Some(sz) = inode_size.get(i) {
+                freed += *sz;
+            }
+        }
+    }
     let rescan = scan_ticket.is_some();
 
     // `to_trash` répond à la question utile : « l'opération était-elle
@@ -2218,6 +2257,24 @@ fn execute(
 /// n'y parviendrait pas : c'est la seule façon que la règle tienne.
 fn taille_du_lot(items: &[Montre]) -> u64 {
     items.iter().map(|m| m.size).sum()
+}
+
+/// Taille « libérable » d'un lot : déduplique par inode canonique. Un fichier
+/// sans identité connue (`inode == None`) compte toujours pour sa taille.
+fn total_par_inode(items: &[Montre]) -> u64 {
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut total = 0u64;
+    for m in items {
+        match m.inode {
+            None => total += m.size,
+            Some(i) => {
+                if seen.insert(i) {
+                    total += m.size;
+                }
+            }
+        }
+    }
+    total
 }
 
 fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
@@ -2391,6 +2448,40 @@ mod tests_content_length {
     #[test]
     fn une_valeur_qui_deborde_est_refusee() {
         assert!(parse_content_length("99999999999999999999999999999").is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_total_par_inode {
+    use super::{total_par_inode, Montre};
+    use std::path::PathBuf;
+
+    #[test]
+    fn deux_noms_un_inode_compte_une_fois() {
+        let m = |inode: Option<u64>, size: u64| Montre {
+            path: PathBuf::from("x"),
+            sel: 0,
+            is_dir: false,
+            size,
+            count: 1,
+            inode,
+        };
+        let items = vec![m(Some(42), 10), m(Some(42), 10)];
+        assert_eq!(total_par_inode(&items), 10);
+    }
+
+    #[test]
+    fn sans_inode_compte_chaque_fois() {
+        let m = |inode: Option<u64>, size: u64| Montre {
+            path: PathBuf::from("x"),
+            sel: 0,
+            is_dir: false,
+            size,
+            count: 1,
+            inode,
+        };
+        let items = vec![m(None, 10), m(None, 10)];
+        assert_eq!(total_par_inode(&items), 20);
     }
 }
 
@@ -3096,6 +3187,10 @@ struct DupRow {
     /// lignes de même `inode` ne libèrent leur octet qu'une fois, et seulement
     /// si TOUTES les deux sont sélectionnées.
     inode: u32,
+    /// Nombre de noms du groupe partageant cet `inode` (1 si pas de lien dur).
+    /// Sert à la barre de sélection pour ne compter un inode que si tous ses
+    /// noms sont cochés, y compris ceux filtrés hors de la vue.
+    inode_count: usize,
 }
 
 /// Demande l'arrêt de la détection de doublons en cours.
@@ -3318,6 +3413,13 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             .unwrap_or(0);
         let original = doublons::choisir_original(&candidats).map(|pos| candidats[pos].idx);
 
+        let mut inode_counts: std::collections::HashMap<u32, usize> =
+            std::collections::HashMap::new();
+        for c in &candidats {
+            let canon = g.canoniques.get(&c.idx).copied().unwrap_or(c.idx);
+            *inode_counts.entry(canon).or_insert(0) += 1;
+        }
+
         let mut rows: Vec<DupRow> = candidats
             .iter()
             .map(|c| {
@@ -3342,6 +3444,9 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
                     categorie: doublons::categorie(&f.name),
                     hardlink: g.hardlinks.binary_search(&c.idx).is_ok(),
                     inode: g.canoniques.get(&c.idx).copied().unwrap_or(c.idx),
+                    inode_count: *inode_counts
+                        .get(&g.canoniques.get(&c.idx).copied().unwrap_or(c.idx))
+                        .unwrap_or(&1),
                 }
             })
             .collect();
