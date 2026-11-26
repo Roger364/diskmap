@@ -63,13 +63,13 @@ const ATTENDU = {
     'tests/sondes/lancer.mjs:1222': "'--port', String(port), '--no-browser'",
     'src/main.rs:1581': 'fn blocked_reason',
     'src/main.rs:1718': 'gen_vue != snap.gen',
-    'src/main.rs:1869': 'retiré ICI aussi',
-    'src/main.rs:1873': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
-    'src/main.rs:1867': 'app.pending.lock().unwrap(); // aperçu',
-    'src/main.rs:1918': 'app.pending.lock().unwrap(); // exécution : lecture',
-    'src/main.rs:2226': 'let rescan = scan_ticket.is_some()',
+    'src/main.rs:1873': 'retiré ICI aussi',
+    'src/main.rs:1877': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
+    'src/main.rs:1871': 'app.pending.lock().unwrap(); // aperçu',
+    'src/main.rs:1922': 'app.pending.lock().unwrap(); // exécution : lecture',
+    'src/main.rs:2230': 'let rescan = scan_ticket.is_some()',
     'src/main.rs:131': 'scanning: Mutex<Option<char>>',
-    'src/main.rs:3076': 'fn journal',
+    'src/main.rs:3080': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',
     'src/scan.rs:503': 'pub fn dir_path',
@@ -150,13 +150,13 @@ const ATTENDU = {
     'src/win32.rs:570': 'pub fn corbeille_nuke',
     'src/win32.rs:595': 'pub fn corbeille_reversible',
     'src/main.rs:1482': 'corbeille_inerte: Option<bool>,',
-    'src/main.rs:2322': 'fn mots_exiges',
+    'src/main.rs:2326': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
     // motif de refus que la sonde lisait mal : elle designe le `format!` qui
     // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
     // qui compte, et une reference qui designerait la ligne voisine garderait un
     // texte, pas la cause.
-    'src/main.rs:1947': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
+    'src/main.rs:1951': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
     // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
     // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
     'tests/sondes/config.mjs:377': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",

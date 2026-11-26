@@ -1788,6 +1788,10 @@ fn dry(
             // Un lien dur ne libère rien de plus qu'un seul de ses noms :
             // on ne compte `total` qu'une fois par inode. Un fichier sans
             // identité connue (volume non NTFS, refus) est traité comme unique.
+            // Un lot = un instantané = un volume (`dry(letter, snap)`). L'identité
+            // physique est donc l'index seul ; le numéro de série du volume n'est pas
+            // stocké, mais l'invariant tient tant qu'un lot ne franchit pas deux
+            // volumes.
             let inode = if e.is_dir {
                 None
             } else {
