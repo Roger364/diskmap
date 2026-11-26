@@ -248,7 +248,7 @@ Trois choix valent d'être écrits, parce qu'ils décident du geste :
   `MaxCapacity` et pour `NeedToPurge` : une valeur non mesurée n'est pas une valeur
   nulle, et un avertissement qui se déclenche sans mesure ne veut plus rien dire.
 - **Le mode « corbeille » n'obtient plus une confirmation moins chère.** `execute`
-  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2311`) : un
+  passe désormais `corbeille_reversible` à `mots_exiges` (`src/main.rs:2322`) : un
   volume à corbeille inerte exige le même mot que la suppression définitive. La
   confirmation suit le geste réel, pas le mode affiché.
 - **L'aperçu le dit.** `corbeille_inerte` (`src/main.rs:1482`) est exposé au même
@@ -296,7 +296,7 @@ portée :
   que « ne mord pas » sur une machine élevée ne se lise pas comme un défaut du code.
 - **Elle a demandé de réparer la sonde.** Le `JSON.parse` du corps de `/api/delete`
   n'avait pas de filet, alors que le refus d'une confirmation est du **texte brut**
-  (`src/main.rs:1954`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
+  (`src/main.rs:1947`) : sur un refus, la sonde mourait d'un `SyntaxError`, sortait
   sans décompte, et le harnais lisait « SANS SYNTHESE » là où il y avait une cause
   nommée — la sonde mesurait sa propre fragilité au lieu du produit. Les quatre
   corps de ce fichier passent désormais par `lireCorps`
@@ -499,7 +499,7 @@ sens que d'un seul côté.
 
 ### R6 — Le journal ne dit pas ce qui était prévu · **Faible, mais structurant** · *corrigé*
 
-`journal` (`src/main.rs:3031`) écrivait l'issue, la taille et le chemin **réellement traité**.
+`journal` (`src/main.rs:3076`) écrivait l'issue, la taille et le chemin **réellement traité**.
 Il ne conservait ni le chemin prévu par l'aperçu, ni l'origine de la requête. C'est
 précisément ce qui a rendu l'incident impossible à qualifier.
 
@@ -524,11 +524,11 @@ résolu à l'exécution réapparaîtrait, l'écart serait dans le journal, sans 
 
 ### R7 — `pending` n'est purgé que par une exécution · **Faible** · *corrigé*
 
-`src/main.rs:1874` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1880`) n'était
-appelé que dans `execute` (`src/main.rs:1925`). Des aperçus répétés sans confirmation
+`src/main.rs:1867` insère à chaque `dry` ; le `p.retain` (`src/main.rs:1873`) n'était
+appelé que dans `execute` (`src/main.rs:1918`). Des aperçus répétés sans confirmation
 faisaient croître la map sans borne — jusqu'à 4 Mio d'identifiants, soit une centaine de
 milliers de chemins. La purge est désormais dans les deux, et le code le dit au même
-endroit (`src/main.rs:1876`).
+endroit (`src/main.rs:1869`).
 
 ### R8 — `is_dir` est cru sans recoupement · **Faible** · *corrigé*
 
@@ -597,7 +597,7 @@ clic (`memeNoeud: true`), `cur.id` est bien passé de 8 à 11, et la navigation 
 que désignait le 11. La génération est passée de 28 à 29 pendant le clic.
 
 **Déclencheur, et il est dans le geste normal de l'application.** Après une suppression,
-le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2233`) et l'interface part en `poll()` ;
+le serveur pose `rescan = scan_ticket.is_some()` (`src/main.rs:2226`) et l'interface part en `poll()` ;
 `poll()` attend la fin de l'analyse puis appelle `load()`, qui redemande `id: cur.id`.
 La veille de fond voit en outre **toute** analyse lancée depuis une autre fenêtre et part
 en `poll()` aussi. Un numéro d'index est réattribué dès qu'un dossier apparaît ou

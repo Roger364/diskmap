@@ -1742,7 +1742,6 @@ fn dry(
     items: Vec<DeleteItem>,
 ) -> Result<Resp, (&'static str, String)> {
     let mut out: Vec<PreviewItem> = Vec::new();
-    let mut total = 0u64;
     let mut deletable = 0usize;
     let mut blocked = 0usize;
 
@@ -1764,7 +1763,6 @@ fn dry(
     // Ce qu'on retient pour l'exécution : le chemin résolu, figé ici. C'est la
     // seule liste que `execute` consultera.
     let mut montres: Vec<Montre> = Vec::new();
-    let mut seen_inodes: HashSet<u64> = HashSet::new();
 
     for it in &items {
         // Un identifiant irrésoluble ne doit pas DISPARAÎTRE. Le client en
@@ -1795,12 +1793,6 @@ fn dry(
             } else {
                 win32::file_id(&path).map(|(_, idx)| idx)
             };
-            if inode.is_none() || !seen_inodes.contains(&inode.unwrap()) {
-                total += size;
-                if let Some(i) = inode {
-                    seen_inodes.insert(i);
-                }
-            }
             // Le sélecteur est figé avec le chemin : c'est lui qui permet au
             // journal de nommer ce que le client AVAIT demandé, à côté de ce
             // qui a été traité. Voir `LigneJournal`.
@@ -1848,6 +1840,7 @@ fn dry(
     // L'état de la corbeille, mesuré UNE fois et figé avec l'aperçu : c'est
     // l'état AVANT qui décide, et le relever à l'exécution serait déjà faux.
     let etat = win32::etat_corbeille(letter);
+    let total = total_par_inode(&montres);
     let deborde = etat.deborde(total);
 
     // Le mot exigé est décidé ICI, dans la simulation, et figé avec elle : à
@@ -2262,6 +2255,24 @@ fn taille_du_lot(items: &[Montre]) -> u64 {
     items.iter().map(|m| m.size).sum()
 }
 
+/// Taille « libérable » d'un lot : déduplique par inode canonique. Un fichier
+/// sans identité connue (`inode == None`) compte toujours pour sa taille.
+fn total_par_inode(items: &[Montre]) -> u64 {
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut total = 0u64;
+    for m in items {
+        match m.inode {
+            None => total += m.size,
+            Some(i) => {
+                if seen.insert(i) {
+                    total += m.size;
+                }
+            }
+        }
+    }
+    total
+}
+
 fn confirmation_required(to_trash: bool, recycle_available: bool) -> bool {
     !to_trash || !recycle_available
 }
@@ -2433,6 +2444,40 @@ mod tests_content_length {
     #[test]
     fn une_valeur_qui_deborde_est_refusee() {
         assert!(parse_content_length("99999999999999999999999999999").is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_total_par_inode {
+    use super::{total_par_inode, Montre};
+    use std::path::PathBuf;
+
+    #[test]
+    fn deux_noms_un_inode_compte_une_fois() {
+        let m = |inode: Option<u64>, size: u64| Montre {
+            path: PathBuf::from("x"),
+            sel: 0,
+            is_dir: false,
+            size,
+            count: 1,
+            inode,
+        };
+        let items = vec![m(Some(42), 10), m(Some(42), 10)];
+        assert_eq!(total_par_inode(&items), 10);
+    }
+
+    #[test]
+    fn sans_inode_compte_chaque_fois() {
+        let m = |inode: Option<u64>, size: u64| Montre {
+            path: PathBuf::from("x"),
+            sel: 0,
+            is_dir: false,
+            size,
+            count: 1,
+            inode,
+        };
+        let items = vec![m(None, 10), m(None, 10)];
+        assert_eq!(total_par_inode(&items), 20);
     }
 }
 
