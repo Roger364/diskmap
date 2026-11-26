@@ -12,6 +12,7 @@
 // fichier qui ne tient pas dans ce qui reste est écarté (`exact = false`).
 
 use crate::scan::Snapshot;
+use crate::win32;
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -105,9 +106,9 @@ pub fn categorie(nom: &str) -> &'static str {
 pub struct EmpreinteCache {
     pub prehash: Option<[u8; 32]>,
     pub fullhash: Option<[u8; 32]>,
-    /// Renseigné au Lot 3 (hardlinks NTFS). Toujours `None` ici : le champ
-    /// existe déjà pour que le cache n'ait pas à changer de forme au Lot 3.
-    #[allow(dead_code)]
+    /// Identité `(serial, index)` du fichier, quand le volume la fournit.
+    /// Mise en cache avec la taille et la date : un fichier réécrit change
+    /// d'identité, et l'ancienne ne doit pas resservir.
     pub file_id: Option<(u32, u64)>,
 }
 
@@ -159,6 +160,12 @@ impl CacheEmpreintes {
         }
     }
 
+    pub fn put_file_id(&mut self, idx: u32, taille: u64, mtime: i64, id: (u32, u64)) {
+        if let Some(e) = self.entree(idx, taille, mtime) {
+            e.file_id = Some(id);
+        }
+    }
+
     fn entree(&mut self, idx: u32, taille: u64, mtime: i64) -> Option<&mut EmpreinteCache> {
         let cle = (idx, taille, mtime);
         if !self.entrees.contains_key(&cle) && self.entrees.len() >= CACHE_MAX {
@@ -186,6 +193,23 @@ pub struct Groupe {
     pub empreinte: String,
     pub taille: u64,
     pub fichiers: Vec<u32>,
+    /// Copies qui partagent déjà l'inode d'une autre entrée du groupe :
+    /// supprimer leur NOM ne libère rien. Triées, pour une recherche binaire.
+    pub hardlinks: Vec<u32>,
+    /// Copies PHYSIQUES distinctes (`fichiers.len() - hardlinks.len()`). C'est
+    /// ce nombre, et non le nombre de chemins, qui décide du gain.
+    pub physiques: usize,
+}
+
+/// Deux dossiers qui partagent des fichiers identiques.
+///
+/// `fichiers` compte les contenus partagés, pas les chemins : un lien dur dans
+/// l'autre dossier ne libérerait rien et ne doit donc pas gonfler la paire.
+pub struct PaireDossiers {
+    pub dir_a: u32,
+    pub dir_b: u32,
+    pub fichiers: u64,
+    pub octets: u64,
 }
 
 #[derive(Default)]
@@ -198,6 +222,8 @@ pub struct Resultat {
     pub octets_lus: u64,
     pub modifies: u64,
     pub illisibles: u64,
+    /// Top 100 des paires de dossiers, par octets partagés décroissants.
+    pub paires: Vec<PaireDossiers>,
 }
 
 /// Critère de tri des GROUPES (jamais des lignes).
@@ -389,6 +415,103 @@ pub fn choisir_original(candidats: &[Candidat]) -> Option<usize> {
 /// première libèrent de l'espace. Au Lot 1, toutes les copies sont distinctes.
 pub fn gain_groupe(taille: u64, copies_physiques: usize) -> u64 {
     taille.saturating_mul(copies_physiques.saturating_sub(1) as u64)
+}
+
+/// Marque les entrées qui partagent l'inode d'une PRÉCÉDENTE du même groupe.
+///
+/// Le premier chemin portant une identité donnée est la copie physique ; les
+/// suivants sont des liens durs, et leur suppression ne libère zéro octet de
+/// moins : elle n'en libère aucun. `None` (volume non NTFS, refus) est traité
+/// comme une identité DISTINCTE — on ne déduplique jamais sur une ignorance,
+/// sinon deux vraies copies perdraient leur gain.
+fn marquer_hardlinks(
+    snap: &Snapshot,
+    fichiers: &[u32],
+    cache: &Mutex<CacheEmpreintes>,
+) -> (Vec<u32>, usize) {
+    let mut vus: HashMap<(u32, u64), u32> = HashMap::new();
+    let mut liens: Vec<u32> = Vec::new();
+    for &idx in fichiers {
+        let f = &snap.files[idx as usize];
+        let connu = cache
+            .lock()
+            .unwrap()
+            .get(idx, f.size, f.mtime)
+            .and_then(|e| e.file_id);
+        let id = match connu {
+            Some(id) => Some(id),
+            None => {
+                let id = win32::file_id(&snap.file_path(idx));
+                if let Some(id) = id {
+                    cache.lock().unwrap().put_file_id(idx, f.size, f.mtime, id);
+                }
+                id
+            }
+        };
+        if let Some(id) = id {
+            if vus.insert(id, idx).is_some() {
+                liens.push(idx);
+            }
+        }
+    }
+    liens.sort_unstable();
+    let physiques = fichiers.len().saturating_sub(liens.len());
+    (liens, physiques)
+}
+
+/// Agrège les paires de dossiers qui partagent des contenus identiques.
+///
+/// Pour chaque groupe, on compte les copies par dossier parent, puis chaque
+/// paire de dossiers reçoit `min(copies_a, copies_b)` fichiers partagés : c'est
+/// le nombre de contenus qu'on peut supprimer d'un côté en gardant l'autre.
+/// Le coût par groupe est O(d²) où `d` est le nombre de dossiers DISTINCTS —
+/// presque toujours 2 ou 3. Au-delà de 512 dossiers, la paire n'est pas
+/// calculée : mieux vaut une liste incomplète assumée qu'un calcul en O(n²)
+/// sur un groupe pathologique.
+fn paires_dossiers(snap: &Snapshot, groupes: &[Groupe]) -> Vec<PaireDossiers> {
+    let mut agg: HashMap<(u32, u32), (u64, u64)> = HashMap::new();
+    for g in groupes {
+        let mut par_dir: HashMap<u32, u32> = HashMap::new();
+        for &idx in &g.fichiers {
+            if g.hardlinks.binary_search(&idx).is_ok() {
+                continue;
+            }
+            *par_dir.entry(snap.files[idx as usize].parent).or_insert(0) += 1;
+        }
+        if par_dir.len() < 2 || par_dir.len() > 512 {
+            continue;
+        }
+        let mut ds: Vec<(u32, u32)> = par_dir.into_iter().collect();
+        ds.sort_unstable();
+        for i in 0..ds.len() {
+            for j in (i + 1)..ds.len() {
+                let (a, ca) = ds[i];
+                let (b, cb) = ds[j];
+                let n = u64::from(ca.min(cb));
+                let e = agg.entry((a, b)).or_insert((0, 0));
+                e.0 += n;
+                e.1 = e.1.saturating_add(g.taille.saturating_mul(n));
+            }
+        }
+    }
+    let mut out: Vec<PaireDossiers> = agg
+        .into_iter()
+        .map(|((dir_a, dir_b), (fichiers, octets))| PaireDossiers {
+            dir_a,
+            dir_b,
+            fichiers,
+            octets,
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.octets
+            .cmp(&a.octets)
+            .then_with(|| b.fichiers.cmp(&a.fichiers))
+            .then_with(|| a.dir_a.cmp(&b.dir_a))
+            .then_with(|| a.dir_b.cmp(&b.dir_b))
+    });
+    out.truncate(100);
+    out
 }
 
 pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
@@ -593,18 +716,22 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
             continue;
         }
         fichiers.sort_unstable();
+        let (hardlinks, physiques) = marquer_hardlinks(snap, &fichiers, o.cache);
         groupes.push(Groupe {
             empreinte: hex_encode(&h),
             taille: snap.files[fichiers[0] as usize].size,
             fichiers,
+            hardlinks,
+            physiques,
         });
     }
     groupes.sort_by(|a, b| a.empreinte.cmp(&b.empreinte));
 
     let gain_total: u64 = groupes
         .iter()
-        .map(|g| gain_groupe(g.taille, g.fichiers.len()))
+        .map(|g| gain_groupe(g.taille, g.physiques))
         .sum();
+    let paires = paires_dossiers(snap, &groupes);
     let arret_final = arret.load(Ordering::Relaxed);
     let exact = exact_apres(arret_final, epuise.load(Ordering::Relaxed));
 
@@ -617,6 +744,7 @@ pub fn chercher(snap: &Snapshot, o: &Options) -> Resultat {
         octets_lus: o.budget.saturating_sub(reste.load(Ordering::Relaxed)),
         modifies: modifies.load(Ordering::Relaxed),
         illisibles: illisibles.load(Ordering::Relaxed),
+        paires,
     }
 }
 

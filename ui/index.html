@@ -274,6 +274,32 @@
     background:rgba(63,143,106,.18); color:#7fc0a0; border:1px solid #2f6b50;
   }
   .warn.hot { background:rgba(224,85,63,.12); border-color:var(--hot); color:#f0b3a8; }
+  .hard {
+    font-size:11px; padding:1px 7px; border-radius:8px; margin-left:6px;
+    background:rgba(141,149,163,.15); color:var(--muted); border:1px solid var(--line);
+  }
+  .dup-views { display:flex; gap:4px; }
+  .dup-views .btn.active { border-color:var(--accent-dim); background:#202634; }
+  .pair-dir { color:var(--text); font-size:12.5px; white-space:normal; }
+  .pair-sub { color:var(--muted); font-size:11.5px; display:block; margin-top:2px; }
+  .preview {
+    position:fixed; top:0; right:0; bottom:0; width:min(560px,92vw); z-index:90;
+    background:var(--panel); border-left:1px solid var(--line);
+    display:flex; flex-direction:column; box-shadow:-12px 0 30px rgba(0,0,0,.45);
+  }
+  .preview-h {
+    display:flex; align-items:center; gap:8px; padding:10px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .preview-h b { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .preview-h .meta { margin-left:auto; color:var(--muted); font-size:11.5px; white-space:nowrap; }
+  .preview-b { flex:1; overflow:auto; padding:12px; }
+  .preview-b img { max-width:100%; max-height:100%; display:block; margin:0 auto; border-radius:6px; }
+  .preview-b pre {
+    margin:0; white-space:pre-wrap; word-break:break-word;
+    font:12px/1.5 Consolas, "Cascadia Mono", monospace; color:var(--text);
+  }
+  .preview-b .pvpath { color:var(--muted); font-size:11.5px; margin-bottom:8px; word-break:break-all; }
 </style>
 </head>
 <body>
@@ -360,6 +386,10 @@
           <option value="2147483648">2 Go</option>
           <option value="8589934592">8 Go</option>
         </select></label>
+        <span class="dup-views">
+          <button class="btn active" id="dupvue-files">Par fichiers</button>
+          <button class="btn" id="dupvue-pairs">Dossiers jumeaux</button>
+        </span>
         <span class="spacer"></span>
         <button class="btn" id="dupsmart">✨ Smart (recommandé)</button>
         <button class="btn" id="dupold">Garder plus ancien</button>
@@ -385,6 +415,15 @@
     <div id="treemap" class="hidden"></div>
   </section>
 </main>
+
+<aside class="preview hidden" id="preview">
+  <div class="preview-h">
+    <b id="pvname"></b>
+    <span class="meta" id="pvmeta"></span>
+    <button class="btn" id="pvclose">Fermer</button>
+  </div>
+  <div class="preview-b" id="pvbody"></div>
+</aside>
 
 <div id="coltip" class="hidden"></div>
 
@@ -461,7 +500,7 @@ let cur = { drive: null, chemin: null, path: [], sort: 'size', order: 'desc', vi
   // Lot 2 : les filtres de la vue doublons survivent aux allers-retours. L'état
   // replié est indexé par EMPREINTE (stable d'un instantané à l'autre), jamais
   // par le numéro de groupe, qui n'est qu'une position d'affichage.
-  dup: { scope: 'drive', min: 1048576, category: 'all', budget: 2147483648, collapsed: new Set() } };
+  dup: { scope: 'drive', min: 1048576, category: 'all', budget: 2147483648, collapsed: new Set(), vue: 'files' } };
 
 // Le chemin du dossier demande qui n'existe plus, le temps que l'ecran le dise.
 // Vide tant que rien n'a disparu. Le 27/09, l'interface epinglait le dossier
@@ -1192,6 +1231,8 @@ function majDupBar() {
   $('#dupsel').innerHTML = sel.length
     ? `Sélectionné : <b>${nf.format(sel.length)}</b> fichier(s) (<b>${hsize(libere)}</b> à libérer)`
     : 'Sélectionné : aucun fichier';
+  $('#dupvue-files').classList.toggle('active', d.vue !== 'pairs');
+  $('#dupvue-pairs').classList.toggle('active', d.vue === 'pairs');
 }
 
 function enteteGroupe(r) {
@@ -1236,13 +1277,15 @@ function ligneDup(r) {
     <td class="name"><span class="ic">📄</span>
       <span class="nm">${escapeHtml(r.name)}</span>
       ${r.garder_recommande ? '<span class="keep">Original conseillé</span>' : ''}
+      ${r.hardlink ? '<span class="hard">Lien dur (0 o libérés)</span>' : ''}
       <span style="color:var(--muted);font-size:11.5px;margin-left:8px">${escapeHtml(r.path)}</span>${r.categorie ? '<span class="grp">' + r.categorie + '</span>' : ''}</td>
     <td class="num">${hsize(r.size)}</td>
     <td class="num"></td>
     <td class="num"></td>
     <td><span class="age ${ageClass(r.mtime)}">${hdate(r.mtime)}</span></td>
-    <td class="act"><button title="Ouvrir dans l'explorateur">📄</button></td>`;
-  tr.querySelector('.act button').onclick = () =>
+    <td class="act"><button title="Aperçu">👁</button><button title="Ouvrir dans l'explorateur">📄</button></td>`;
+  tr.querySelectorAll('.act button')[0].onclick = () => ouvrirApercu(r);
+  tr.querySelectorAll('.act button')[1].onclick = () =>
     fetch(`/api/open?drive=${cur.drive}&chemin=${encodeURIComponent(r.path)}&kind=file`, { method: 'POST', headers: ENTETE_ACTION });
   const chk = tr.querySelector('.sel .chk');
   chk.onchange = () => { toggleSel(r, chk.checked); majAlertesGroupes(); };
@@ -1264,6 +1307,7 @@ function majAlertesGroupes() {
 function renderDup() {
   // Invalide `rowsSig` : la table n'est plus celle de `renderRows`.
   const tb = $('#rows'); tb.innerHTML = ''; rowsSig = '';
+  if (cur.dup.vue === 'pairs') { renderPaires(); return; }
   const frag = document.createDocumentFragment();
   let dernier = null;
   for (const r of cur.rows) {
@@ -1278,6 +1322,107 @@ function renderDup() {
   updateSelBar();
   majDupBar();
   setView('table');
+}
+
+// La vue « Dossiers jumeaux » ne remplace pas la liste : elle la résume. Un
+// clic sur « Sélectionner A » coche les lignes de A qui sont dans `cur.rows` —
+// donc exactement celles que l'utilisateur voit, jamais une ligne cachée.
+function renderPaires() {
+  const tb = $('#rows');
+  const frag = document.createDocumentFragment();
+  const paires = cur.paires || [];
+  if (!paires.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="7" style="color:var(--muted);padding:18px 10px">Aucune paire de dossiers : les doublons sont dans un même dossier, ou aucun groupe n’a de jumeau.</td>';
+    frag.appendChild(tr);
+  }
+  for (const p of paires) {
+    const tr = document.createElement('tr');
+    const ra = Math.round((p.ratio_a || 0) * 100);
+    const rb = Math.round((p.ratio_b || 0) * 100);
+    tr.innerHTML = `
+      <td colspan="3" class="pair-dir">${escapeHtml(p.dir_a)}
+        <span class="pair-sub">↔ ${escapeHtml(p.dir_b)}</span></td>
+      <td class="num" style="color:var(--muted)">${nf.format(p.shared_files || 0)} fichier(s)</td>
+      <td class="num">${hsize(p.shared_bytes || 0)}</td>
+      <td class="num" style="color:var(--muted)">${ra} % · ${rb} %</td>
+      <td class="act">
+        <button data-p="openA" title="Ouvrir le premier dossier">📂A</button>
+        <button data-p="openB" title="Ouvrir le second dossier">📂B</button>
+        <button data-p="selA" title="Sélectionner les doublons du premier dossier">☑A</button>
+        <button data-p="selB" title="Sélectionner les doublons du second dossier">☑B</button>
+      </td>`;
+    tr.querySelector('[data-p=openA]').onclick = () => aller(p.dir_a);
+    tr.querySelector('[data-p=openB]').onclick = () => aller(p.dir_b);
+    tr.querySelector('[data-p=selA]').onclick = () => selectionnerDossier(p.dir_a);
+    tr.querySelector('[data-p=selB]').onclick = () => selectionnerDossier(p.dir_b);
+    frag.appendChild(tr);
+  }
+  tb.appendChild(frag);
+  updateSelBar();
+  majDupBar();
+  setView('table');
+}
+
+function selectionnerDossier(dir) {
+  const d = String(dir || '').toLowerCase();
+  let n = 0;
+  for (const r of cur.rows) {
+    if (String(parentDe(r.path)).toLowerCase() === d) { cur.sel.add(selKey(r)); n++; }
+  }
+  majDupBar();
+  if (!n) $('#count').textContent = `Aucun doublon affiché dans ${dir}`;
+}
+
+// ---------- aperçu ----------
+let pvUrl = null;
+
+async function ouvrirApercu(r) {
+  const pan = $('#preview');
+  pan.classList.remove('hidden');
+  $('#pvname').textContent = r.name;
+  $('#pvmeta').textContent = `${hsize(r.size)} · ${hdate(r.mtime)}`;
+  const body = $('#pvbody');
+  body.innerHTML = '<p style="color:var(--muted);margin:0">Chargement…</p>';
+  if (pvUrl) { URL.revokeObjectURL(pvUrl); pvUrl = null; }
+  const u = `/api/preview?drive=${cur.drive}&id=${r.id}&gen=${cur.gen}`;
+  let rep;
+  try { rep = await fetch(u); }
+  catch (e) { body.innerHTML = `<div class="warn">${escapeHtml(String(e.message || e))}</div>`; return; }
+  if (!rep.ok) {
+    const t = await rep.text();
+    body.innerHTML = `<div class="warn">${escapeHtml(t)}</div>`;
+    return;
+  }
+  const ct = rep.headers.get('content-type') || '';
+  body.innerHTML = '';
+  const chemin = document.createElement('div');
+  chemin.className = 'pvpath';
+  chemin.textContent = r.path;
+  body.appendChild(chemin);
+  if (ct.startsWith('image/')) {
+    pvUrl = URL.createObjectURL(await rep.blob());
+    const img = document.createElement('img');
+    img.src = pvUrl;
+    img.alt = r.name;
+    body.appendChild(img);
+    return;
+  }
+  const pre = document.createElement('pre');
+  pre.textContent = await rep.text();
+  body.appendChild(pre);
+  if (r.size > 32768) {
+    const n = document.createElement('p');
+    n.style.cssText = 'color:var(--muted);font-size:11.5px;margin:10px 0 0';
+    n.textContent = 'Aperçu limité aux 32 premiers Kio.';
+    body.appendChild(n);
+  }
+}
+
+function fermerApercu() {
+  $('#preview').classList.add('hidden');
+  if (pvUrl) { URL.revokeObjectURL(pvUrl); pvUrl = null; }
+  $('#pvbody').innerHTML = '';
 }
 
 // Smart Select : une règle par bouton, et une règle commune — le gardien du
@@ -1346,6 +1491,7 @@ async function duplicates() {
   cur.gainTotal = res.gain_total;
   cur.dupExact = res.exact !== false;
   cur.dupArret = res.arret === true;
+  cur.paires = Array.isArray(res.folder_pairs) ? res.folder_pairs : [];
   cur.path = [{ name: `${cur.drive}:\\`, chemin: `${cur.drive}:\\` },
     { name: 'Doublons', chemin: null }];
   renderCrumbs();
@@ -2188,6 +2334,9 @@ $('#dupprot').onclick = () => {
   const d = prompt('Dossier à protéger (ses copies restent en place) :', cur.chemin || '');
   if (d) appliquerSmart('prot', d);
 };
+$('#dupvue-files').onclick = () => { cur.dup.vue = 'files'; renderDup(); };
+$('#dupvue-pairs').onclick = () => { cur.dup.vue = 'pairs'; renderDup(); };
+$('#pvclose').onclick = fermerApercu;
 $('#dupnone').onclick = () => { cur.sel.clear(); renderDup(); };
 $('#dupcancel').onclick = async () => {
   $('#dupcancel').disabled = true;

@@ -766,6 +766,10 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
             body = s.into_bytes();
             ("200 OK", "application/json; charset=utf-8")
         }
+        Ok(Resp::Octets { ctype, bytes }) => {
+            body = bytes;
+            ("200 OK", ctype)
+        }
         Err((code, msg)) => {
             body = msg.into_bytes();
             (code, "text/plain; charset=utf-8")
@@ -773,7 +777,7 @@ fn handle(app: &Arc<App>, mut stream: TcpStream) -> std::io::Result<()> {
     };
     stream.write_all(
         format!(
-            "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
+            "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n",
             body.len()
         )
         .as_bytes(),
@@ -844,6 +848,12 @@ fn read_header_line<R: BufRead>(
 enum Resp {
     Html(String),
     Json(String),
+    /// Corps binaire déjà typé. Sert à l'aperçu : une image ne passe pas par
+    /// une `String`, et son type vient de l'EXTENSION validée, jamais du client.
+    Octets {
+        ctype: &'static str,
+        bytes: Vec<u8>,
+    },
 }
 
 type Q = HashMap<String, String>;
@@ -1036,6 +1046,7 @@ fn route(
         ("GET", "/api/search") => search(app, q),
         ("GET", "/api/duplicates") => duplicates(app, q),
         ("POST", "/api/duplicates/cancel") => duplicates_cancel(app),
+        ("GET", "/api/preview") => preview(app, q),
         ("GET", "/api/unreadable") => unreadable(app, q),
 
         ("POST", "/api/reveal") => reveal(app, body),
@@ -3098,6 +3109,113 @@ fn duplicates_cancel(app: &Arc<App>) -> Result<Resp, (&'static str, String)> {
     }
 }
 
+/// Taille maximale d'une image d'aperçu. Au-delà, on refuse : tronquer une
+/// image ne montre rien d'utile, et la lire quand même coûterait la mémoire du
+/// serveur pour un simple coup d'œil.
+const APERCU_IMAGE_MAX: u64 = 10 * 1024 * 1024;
+/// Un texte est TRONQUÉ à cette taille, pas refusé : les premières lignes sont
+/// exactement ce qu'on veut voir, et l'interface sait déjà dire la taille
+/// totale du fichier.
+const APERCU_TEXTE_MAX: u64 = 32 * 1024;
+
+/// Aperçu d'un fichier de l'instantané courant.
+///
+/// Le client ne donne jamais un chemin : il donne un IDENTIFIANT et la
+/// GÉNÉRATION de l'instantané qui le lui a montré. Sans ce second contrôle,
+/// l'identifiant est une position qui a pu désigner un autre fichier depuis la
+/// dernière analyse — et l'aperçu montrerait un contenu que personne n'a
+/// demandé. Le chemin est ensuite reconstruit depuis l'index (`file_path`),
+/// jamais depuis la requête.
+fn preview(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
+    let letter = q
+        .get("drive")
+        .and_then(|s| s.chars().next())
+        .ok_or(("400 Bad Request", "drive manquant".into()))?
+        .to_ascii_uppercase();
+    let id: u32 = q
+        .get("id")
+        .and_then(|s| s.parse().ok())
+        .ok_or(("400 Bad Request", "id invalide".into()))?;
+    let gen: u64 = q
+        .get("gen")
+        .and_then(|s| s.parse().ok())
+        .ok_or(("400 Bad Request", "gen invalide".into()))?;
+
+    let snap = snap_de(app, letter)?;
+    if gen != snap.gen {
+        return Err((
+            "409 Conflict",
+            "instantané périmé : relance la détection".into(),
+        ));
+    }
+    let f = snap
+        .files
+        .get(id as usize)
+        .ok_or(("404 Not Found", "fichier inconnu de cet instantané".into()))?;
+    let path = snap.file_path(id);
+    if blocked_reason(&path).is_some() {
+        return Err(("403 Forbidden", "aperçu refusé : chemin protégé".into()));
+    }
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let (ctype, image) = match ext.as_str() {
+        "png" => ("image/png", true),
+        "jpg" | "jpeg" => ("image/jpeg", true),
+        "webp" => ("image/webp", true),
+        "gif" => ("image/gif", true),
+        "txt" | "md" | "log" | "json" | "csv" => ("text/plain; charset=utf-8", false),
+        _ => {
+            return Err((
+                "415 Unsupported Media Type",
+                "extension non prévisualisable".into(),
+            ))
+        }
+    };
+    if image && f.size > APERCU_IMAGE_MAX {
+        return Err((
+            "413 Payload Too Large",
+            "image trop volumineuse pour un aperçu".into(),
+        ));
+    }
+
+    // On lit SOUS PLAFOND, et on revérifie la taille réellement lue : le fichier
+    // a pu grandir depuis l'analyse. Une image trop grosse est refusée, un
+    // texte est coupé.
+    let max = if image {
+        APERCU_IMAGE_MAX
+    } else {
+        APERCU_TEXTE_MAX
+    };
+    let mut file = std::fs::File::open(&path)
+        .map_err(|_| ("500 Internal Server Error", "fichier illisible".into()))?;
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(max.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|_| ("500 Internal Server Error", "lecture impossible".into()))?;
+    if image && bytes.len() as u64 > APERCU_IMAGE_MAX {
+        return Err((
+            "413 Payload Too Large",
+            "image trop volumineuse pour un aperçu".into(),
+        ));
+    }
+    bytes.truncate(max as usize);
+    if image {
+        return Ok(Resp::Octets { ctype, bytes });
+    }
+    // Un texte n'est pas forcément de l'UTF-8 : on le rend lisible plutôt que
+    // de refuser, et le plafond est déjà appliqué.
+    let texte = String::from_utf8_lossy(&bytes).into_owned();
+    Ok(Resp::Octets {
+        ctype,
+        bytes: texte.into_bytes(),
+    })
+}
+
 fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     let letter = q
         .get("drive")
@@ -3113,7 +3231,7 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(u64::MAX);
     if max < min {
-        return Err(("400 Bad Request", "max < min".into()));
+        return Err(("400 Bad Request", "max plus petit que min".into()));
     }
     let budget: u64 = q
         .get("budget")
@@ -3206,12 +3324,12 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
                     },
                     groupe: 0,
                     empreinte: g.empreinte.clone(),
-                    groupe_gain: doublons::gain_groupe(g.taille, g.fichiers.len()),
+                    groupe_gain: doublons::gain_groupe(g.taille, g.physiques),
                     groupe_count: g.fichiers.len(),
                     smart_score: doublons::score_smart(&c.path, c.mtime, oldest),
                     garder_recommande: Some(c.idx) == original,
                     categorie: doublons::categorie(&f.name),
-                    hardlink: false,
+                    hardlink: g.hardlinks.binary_search(&c.idx).is_ok(),
                 }
             })
             .collect();
@@ -3234,7 +3352,7 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
             .max()
             .unwrap_or(0);
         let cle = doublons::CleGroupe {
-            gain: doublons::gain_groupe(g.taille, g.fichiers.len()),
+            gain: doublons::gain_groupe(g.taille, g.physiques),
             taille: g.taille,
             mtime: mtime_max,
             count: g.fichiers.len(),
@@ -3267,9 +3385,32 @@ fn duplicates(app: &Arc<App>, q: &Q) -> Result<Resp, (&'static str, String)> {
     let total_fichiers: usize = r.groupes.iter().map(|g| g.fichiers.len()).sum();
     let tronque = lignes.len() < total_fichiers;
 
+    // Les ratios portent sur la taille du SOUS-ARBRE de chaque dossier : c'est
+    // la question « quelle part de ce dossier se retrouve dans l'autre ? », et
+    // non « quelle part de ses seuls fichiers dupliqués ». Un dossier de 10 Go
+    // qui partage 2 Go avec son jumeau est à 20 %, même s'il ne contient que
+    // ces 2 Go de doublons.
+    let paires: Vec<serde_json::Value> = r
+        .paires
+        .iter()
+        .map(|p| {
+            let sa = snap.size.get(p.dir_a as usize).copied().unwrap_or(0).max(1);
+            let sb = snap.size.get(p.dir_b as usize).copied().unwrap_or(0).max(1);
+            serde_json::json!({
+                "dir_a": snap.dir_path(p.dir_a).to_string_lossy(),
+                "dir_b": snap.dir_path(p.dir_b).to_string_lossy(),
+                "shared_files": p.fichiers,
+                "shared_bytes": p.octets,
+                "ratio_a": p.octets as f64 / sa as f64,
+                "ratio_b": p.octets as f64 / sb as f64,
+            })
+        })
+        .collect();
+
     Ok(Resp::Json(
         serde_json::to_string(&serde_json::json!({
             "rows": lignes,
+            "folder_pairs": paires,
             "groupes": groupes_rendus,
             "groupes_total": r.groupes_total,
             "fichiers": lignes.len(),

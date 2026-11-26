@@ -48,9 +48,9 @@ const DOCS = ['SECURITY.md', 'README.md'];
 const ATTENDU = {
   'SECURITY.md': {
     'src/main.rs:111': 'struct Montre',
-    'src/main.rs:920': 'fn hote_local',
-    'src/main.rs:998': 'X-Diskmap absent',
-    'src/main.rs:1219': 'fn dossier_de',
+    'src/main.rs:930': 'fn hote_local',
+    'src/main.rs:1008': 'X-Diskmap absent',
+    'src/main.rs:1230': 'fn dossier_de',
     'src/main.rs:223': 'fn decider_le_navigateur',
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
     'tests/sondes/sonde-ui-suppression.mjs:101': "zztaille-z.txt', 'x'.repeat(2000)",
@@ -60,49 +60,49 @@ const ATTENDU = {
     'src/main.rs:652': 'en_attente.push(letter);',
     'src/main.rs:657': 'fn start_scan',
     'src/main.rs:356': 'Navigateur  : non ouvert',
-    'tests/sondes/lancer.mjs:1213': "'--port', String(port), '--no-browser'",
-    'src/main.rs:1565': 'fn blocked_reason',
-    'src/main.rs:1702': 'gen_vue != snap.gen',
-    'src/main.rs:1845': 'retiré ICI aussi',
-    'src/main.rs:1849': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
-    'src/main.rs:1843': 'app.pending.lock().unwrap(); // aperçu',
-    'src/main.rs:1894': 'app.pending.lock().unwrap(); // exécution : lecture',
-    'src/main.rs:2180': 'let rescan = scan_ticket.is_some()',
+    'tests/sondes/lancer.mjs:1222': "'--port', String(port), '--no-browser'",
+    'src/main.rs:1576': 'fn blocked_reason',
+    'src/main.rs:1713': 'gen_vue != snap.gen',
+    'src/main.rs:1856': 'retiré ICI aussi',
+    'src/main.rs:1860': 'p.retain(|_, v| now - v.at_ms < 600_000); // aperçu',
+    'src/main.rs:1854': 'app.pending.lock().unwrap(); // aperçu',
+    'src/main.rs:1905': 'app.pending.lock().unwrap(); // exécution : lecture',
+    'src/main.rs:2191': 'let rescan = scan_ticket.is_some()',
     'src/main.rs:126': 'scanning: Mutex<Option<char>>',
-    'src/main.rs:2978': 'fn journal',
+    'src/main.rs:2989': 'fn journal',
     'src/scan.rs:386': 'GENERATION',
     'src/scan.rs:455': 'gen: GENERATION',
     'src/scan.rs:503': 'pub fn dir_path',
     'src/scan.rs:526': 'pub fn file_path',
     'src/scan.rs:1004': 'REPARSE_POINT',
-    'ui/index.html:599': 'le reste est',
-    'ui/index.html:600': 'ne pouvait pas',
-    'ui/index.html:502': 'let peintMs = null;',
-    'ui/index.html:2240': 'peintMs === null || (d.finished_ms || 0) === peintMs',
-    'ui/index.html:2245': 'rechargerTri();',
-    'ui/index.html:808': 'let requete = 0',
-    'ui/index.html:848': 'if (mien !== requete) return;',
-    'ui/index.html:871': 'if (mien !== requete) return;',
-    'ui/index.html:1065': 'if (mien !== requete) return;',
-    'ui/index.html:1422': 'relancer en administrateur',
-    'ui/index.html:1433': 'const cause = dr ?',
-    'tests/sondes/lancer.mjs:1456': 'const connus',
-    'tests/sondes/lancer.mjs:820': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:819': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1868': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:826': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1872': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1879': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1800': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1927': 'note(s) de',
+    'ui/index.html:729': 'escapeHtml(d.label',
+    'ui/index.html:730': 'escapeHtml(d.fs)',
+    'ui/index.html:541': 'let peintMs = null;',
+    'ui/index.html:2389': 'peintMs === null || (d.finished_ms || 0) === peintMs',
+    'ui/index.html:2394': 'rechargerTri();',
+    'ui/index.html:847': 'let requete = 0',
+    'ui/index.html:910': 'if (mien !== requete) return;',
+    'ui/index.html:887': 'if (mien !== requete) return;',
+    'ui/index.html:1104': 'if (mien !== requete) return;',
+    'ui/index.html:1820': 'if (d.total_size > 20e9) {',
+    'ui/index.html:1579': 'const cause = dr ?',
+    'tests/sondes/lancer.mjs:1465': 'const connus',
+    'tests/sondes/lancer.mjs:829': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:828': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1877': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:835': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1881': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1888': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1809': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1936': 'note(s) de',
     'tests/sondes/sonde-generation.mjs:37': 'function verifier(nom, cond, mesure)',
     'tests/sondes/sonde-generation.mjs:167': 'verifs.filter(Boolean).length',
     'tests/sondes/config.mjs:456': 'export async function attendreTicket',
     'tests/sondes/sonde-generation.mjs:71': 'async function analyserEtAttendre',
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
-    'ui/index.html:756': 'cur.ticket = rep && typeof rep.ticket',
-    'ui/index.html:774': 'd.scan_completed >= cur.ticket',
-    'ui/index.html:1905': 'cur.ticket = typeof res.scan_ticket',
+    'ui/index.html:795': 'cur.ticket = rep && typeof rep.ticket',
+    'ui/index.html:813': 'd.scan_completed >= cur.ticket',
+    'ui/index.html:2051': 'cur.ticket = typeof res.scan_ticket',
     'tests/sondes/sonde-ui-suppression.mjs:537': 'const armerPeints',
     'tests/sondes/sonde-ui-suppression.mjs:560': 'const attendreEcranStable',
     'tests/sondes/sonde-ui-suppression.mjs:819': 'jamais été contredit',
@@ -110,10 +110,10 @@ const ATTENDU = {
     // l embuscade du controle qui les cherche. Les quatre lignes de `src/main.rs`
     // sont les GARDES elles-memes — le libelle doit s y trouver, pas un
     // commentaire voisin : c est ce que la reference doit designer.
-    'src/main.rs:1014': 'lettre manquante',
-    'src/main.rs:1099': 'id invalide',
-    'src/main.rs:1075': 'chemin invalide',
-    'src/main.rs:1123': 'route inconnue',
+    'src/main.rs:1024': 'lettre manquante',
+    'src/main.rs:1110': 'id invalide',
+    'src/main.rs:1086': 'chemin invalide',
+    'src/main.rs:1134': 'route inconnue',
     'tests/sondes/verifier-libelles.mjs:220': "const leurre = 'zzcontrolejamaisvu'",
     // Section 7/29 : l ecoute du reseau que les quatre sondes a navigateur
     // n avaient pas. Le symbole designe l export qu elles importent — sans
@@ -123,13 +123,13 @@ const ATTENDU = {
     // Le plancher des comptes, et le registre des aveux. Les symboles pointent
     // sur les DECLARATIONS : une reference qui designerait un commentaire
     // garderait un texte, pas une regle.
-    'tests/sondes/lancer.mjs:415': 'const COMPTES_PLANCHER = {',
-    'tests/sondes/lancer.mjs:503': 'const AVEURS_STRUCTURELS = [',
+    'tests/sondes/lancer.mjs:424': 'const COMPTES_PLANCHER = {',
+    'tests/sondes/lancer.mjs:512': 'const AVEURS_STRUCTURELS = [',
     // Section 7/31 : le mode decouverte de l outil d epreuves. Le symbole est
     // la fonction qui porte la discipline de restauration — ecrite une fois,
     // donc impossible a ecrire deux fois differemment.
     'tests/sondes/epreuve.mjs:344': 'async function sousGardeNeutralisee',
-    'tests/sondes/lancer.mjs:540': 'corbeille_plafond` vaut null',
+    'tests/sondes/lancer.mjs:549': 'corbeille_plafond` vaut null',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
     // Les references vers `src/win32.rs`, longtemps INVISIBLES au controle : le
     // nom de fichier portait un chiffre et la classe de caracteres ne les
@@ -137,26 +137,26 @@ const ATTENDU = {
     // trois premieres sont les DECLARATIONS des fonctions citees — une
     // reference qui designerait un commentaire voisin garderait un texte, pas
     // une regle.
-    'src/win32.rs:222': 'pub fn alea_u64',
-    'src/win32.rs:250': 'pub fn delete_path',
-    'src/win32.rs:300': 'pub fn is_reparse_point',
+    'src/win32.rs:307': 'pub fn alea_u64',
+    'src/win32.rs:335': 'pub fn delete_path',
+    'src/win32.rs:385': 'pub fn is_reparse_point',
     // `:471` designait encore `GetVolumeInformationW` dans la prose, et depuis
     // longtemps plus rien de tel dans le fichier. Recalee sur la FONCTION qui
     // rend `label` et `fs` : c est elle que la phrase annonce.
-    'src/win32.rs:777': 'fn volume_info',
+    'src/win32.rs:862': 'fn volume_info',
     // Section 3.8 : le contrat `corbeille_inerte` expose par l apercu, et la
     // fonction qui recoit la reversibilite MESUREE — c est elle qui fait exiger
     // le mot de la suppression definitive malgre le mode « corbeille ».
-    'src/win32.rs:478': 'pub fn corbeille_nuke',
-    'src/win32.rs:503': 'pub fn corbeille_reversible',
-    'src/main.rs:1466': 'corbeille_inerte: Option<bool>,',
-    'src/main.rs:2258': 'fn mots_exiges',
+    'src/win32.rs:563': 'pub fn corbeille_nuke',
+    'src/win32.rs:588': 'pub fn corbeille_reversible',
+    'src/main.rs:1477': 'corbeille_inerte: Option<bool>,',
+    'src/main.rs:2269': 'fn mots_exiges',
     // Ajoutees avec la preuve de morsure de 3.8 (11/10/2026). La premiere est le
     // motif de refus que la sonde lisait mal : elle designe le `format!` qui
     // PRODUIT le texte brut, pas le `return Err` qui le porte — c est le message
     // qui compte, et une reference qui designerait la ligne voisine garderait un
     // texte, pas la cause.
-    'src/main.rs:1923': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
+    'src/main.rs:1934': 'format!("confirmation attendue : « {} »", attendus.join(" "))',
     // La regle qui rend la morsure impossible sur une instance ELEVEE : c est
     // elle qui ajoute « EFFACER » sans que la reversibilite y soit pour rien.
     'tests/sondes/config.mjs:377': "if (permanent || !corbeille || eleve) mots.push('EFFACER');",
@@ -167,10 +167,10 @@ const ATTENDU = {
     // toujours. `:1017` pointait un COMMENTAIRE : la garde qui produit ce 409 est
     // en 1088 — c'est la ligne que la phrase annonce, et le controle des
     // references existe precisement pour refuser un commentaire voisin.
-    'src/main.rs:1019': 'return Err(("404 Not Found", "volume inconnu"',
-    'src/main.rs:1142': '("409 Conflict", "volume pas encore analysé"',
-    'ui/index.html:1506': 'if (!force && e.status === 409) {',
-    'ui/index.html:854': 'if (e.status === 404) {',
+    'src/main.rs:1029': 'return Err(("404 Not Found", "volume inconnu"',
+    'src/main.rs:1153': '("409 Conflict", "volume pas encore analysé"',
+    'ui/index.html:1652': 'if (!force && e.status === 409) {',
+    'ui/index.html:893': 'if (e.status === 404) {',
   },
   'README.md': {
     'src/scan.rs:977': 'let rd = match fs::read_dir(path)',
@@ -181,20 +181,20 @@ const ATTENDU = {
     'tests/sondes/config.mjs:456': 'export async function attendreTicket',
     'tests/sondes/sonde-generation.mjs:71': 'async function analyserEtAttendre',
     'tests/sondes/sonde-tickets.mjs:62': 'async function demander',
-    'ui/index.html:756': 'cur.ticket = rep && typeof rep.ticket',
-    'ui/index.html:774': 'd.scan_completed >= cur.ticket',
-    'ui/index.html:1905': 'cur.ticket = typeof res.scan_ticket',
-    'tests/sondes/lancer.mjs:820': 'const muette = !compte',
-    'tests/sondes/lancer.mjs:819': 'const vide = !!compte',
-    'tests/sondes/lancer.mjs:1868': 'resume vide : la sonde annonce',
-    'tests/sondes/lancer.mjs:826': 'const descompteFaux = !!compte',
-    'tests/sondes/lancer.mjs:1872': 'aucun decompte ecrit',
-    'tests/sondes/lancer.mjs:1879': 'decompte incoherent : la sonde annonce',
-    'tests/sondes/lancer.mjs:1800': 'const mention = notes.length',
-    'tests/sondes/lancer.mjs:1927': 'note(s) de',
-    'ui/index.html:502': 'let peintMs = null;',
-    'ui/index.html:2240': 'peintMs === null || (d.finished_ms || 0) === peintMs',
-    'ui/index.html:2245': 'rechargerTri();',
+    'ui/index.html:795': 'cur.ticket = rep && typeof rep.ticket',
+    'ui/index.html:813': 'd.scan_completed >= cur.ticket',
+    'ui/index.html:2051': 'cur.ticket = typeof res.scan_ticket',
+    'tests/sondes/lancer.mjs:829': 'const muette = !compte',
+    'tests/sondes/lancer.mjs:828': 'const vide = !!compte',
+    'tests/sondes/lancer.mjs:1877': 'resume vide : la sonde annonce',
+    'tests/sondes/lancer.mjs:835': 'const descompteFaux = !!compte',
+    'tests/sondes/lancer.mjs:1881': 'aucun decompte ecrit',
+    'tests/sondes/lancer.mjs:1888': 'decompte incoherent : la sonde annonce',
+    'tests/sondes/lancer.mjs:1809': 'const mention = notes.length',
+    'tests/sondes/lancer.mjs:1936': 'note(s) de',
+    'ui/index.html:541': 'let peintMs = null;',
+    'ui/index.html:2389': 'peintMs === null || (d.finished_ms || 0) === peintMs',
+    'ui/index.html:2394': 'rechargerTri();',
     'src/main.rs:641': 'fn demande_couverte',
     'src/main.rs:652': 'en_attente.push(letter);',
     'src/main.rs:657': 'fn start_scan',
@@ -203,9 +203,9 @@ const ATTENDU = {
     // aveux en 451 — pas en 381 et 432, ou il n'y a que la prose qui les
     // annonce. Une troisieme ne designait RIEN (`:9999`), et la quatrieme non
     // plus : `noter()` est en 53.
-    'tests/sondes/lancer.mjs:415': 'const COMPTES_PLANCHER = {',
-    'tests/sondes/lancer.mjs:503': 'const AVEURS_STRUCTURELS = [',
-    'tests/sondes/lancer.mjs:782': 'const dispense = trous.reduce',
+    'tests/sondes/lancer.mjs:424': 'const COMPTES_PLANCHER = {',
+    'tests/sondes/lancer.mjs:512': 'const AVEURS_STRUCTURELS = [',
+    'tests/sondes/lancer.mjs:791': 'const dispense = trous.reduce',
     'tests/sondes/sonde-corbeille-plafond.mjs:53': 'function noter(texte)',
   },
 };
