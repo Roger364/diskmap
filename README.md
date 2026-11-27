@@ -40,6 +40,8 @@ next section describes, on Windows, and it has been measured on one machine.
 - **Map** view (treemap) alongside the table.
 - Open any entry in Windows Explorer.
 - **Delete** selected entries — see below.
+- **Contextual help**: the **? Aide** button annotates the interface with complete
+  explanations of each control and metric; the choice is remembered locally.
 
 ## Deleting
 
@@ -1025,8 +1027,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:541`). The watch compares (`ui/index.html:2424`) and reloads
-(`ui/index.html:2429`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:575`). The watch compares (`ui/index.html:2885`) and reloads
+(`ui/index.html:2890`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1100,8 +1102,8 @@ the rule on that hypothesis would have produced a fix for a defect that does not
 > gesture was lost on the way.
 
 The fix is one landmark: the screen notes, at every paint, the `finished_ms` of the volume it
-shows (`ui/index.html:541`). The watch compares (`ui/index.html:2424`) and reloads
-(`ui/index.html:2429`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
+shows (`ui/index.html:575`). The watch compares (`ui/index.html:2885`) and reloads
+(`ui/index.html:2890`) as soon as it differs — through `rechargerTri()`, not `load()`, so the
 **selection** is kept. It is a deletion target, and a background reload has no right to move
 it; a search in progress stays a search.
 
@@ -1232,9 +1234,9 @@ between two scans. Now:
 - `POST /api/scan` answers `{ok, ticket}`, and every client waits for **its** ticket:
   `attendreTicket` (`tests/sondes/config.mjs:456`) loops on `scan_completed >= ticket` and never
   consults `!scanning` to conclude;
-- the UI records the returned ticket (`ui/index.html:795`) and `poll()` stops on its publication
-  (`ui/index.html:813`); the rescan after a deletion waits on the `scan_ticket` returned by the
-  execution (`ui/index.html:2086`);
+- the UI records the returned ticket (`ui/index.html:828`) and `poll()` stops on its publication
+  (`ui/index.html:846`); the rescan after a deletion waits on the `scan_ticket` returned by the
+  execution (`ui/index.html:2119`);
 - `generation` requests its scan and waits on its ticket (`tests/sondes/sonde-generation.mjs:71`)
   — the fact-based wait below remains its proof of existence;
 - the `tickets` probe (`tests/sondes/sonde-tickets.mjs:62`) exercises the contract from the

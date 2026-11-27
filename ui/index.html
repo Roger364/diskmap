@@ -300,6 +300,38 @@
     font:12px/1.5 Consolas, "Cascadia Mono", monospace; color:var(--text);
   }
   .preview-b .pvpath { color:var(--muted); font-size:11.5px; margin-bottom:8px; word-break:break-all; }
+
+  /* ---------- aide contextuelle ----------
+     Un mode, pas une collection de title= : une explication complète ne tient
+     pas dans une bulle native, et elle doit pouvoir être coupée d'un geste.
+     La carte est fixe et au-dessus des modales (z-index 120) : elle doit rester
+     lisible quand l'aide porte sur un champ de confirmation. */
+  #aide[aria-pressed="true"] {
+    border-color:var(--accent-dim); background:#202634; color:var(--text);
+  }
+  #aide .pt { color:var(--accent); font-weight:600; margin-right:4px; }
+  body.aide [data-aide] { cursor:help; }
+  /* Le soulignement est la seule marque ajoutée : rien ne bouge, aucune boîte
+     ne change de taille. Les champs (input, select) ne portent pas de
+     text-decoration ; leur curseur suffit à les annoncer. */
+  body.aide [data-aide]:not(input):not(select):not(textarea) {
+    text-decoration:underline dotted rgba(141,149,163,.65);
+    text-underline-offset:3px;
+  }
+  body.aide th[data-aide] { text-decoration:none; }
+  body.aide th[data-aide] .ttl {
+    text-decoration:underline dotted rgba(141,149,163,.65);
+    text-underline-offset:3px;
+  }
+  #aidebulle {
+    position:fixed; z-index:120; max-width:360px; pointer-events:none;
+    background:var(--panel2); border:1px solid var(--accent-dim); border-radius:7px;
+    padding:10px 12px; box-shadow:0 10px 30px rgba(0,0,0,.5);
+    font-size:12.5px; line-height:1.5; color:var(--text);
+  }
+  #aidebulle .t { font-weight:600; font-size:13px; margin-bottom:5px; }
+  #aidebulle p { margin:0 0 6px; color:#c9cfda; }
+  #aidebulle p:last-child { margin-bottom:0; }
 </style>
 </head>
 <body>
@@ -307,10 +339,11 @@
 <header>
   <h1>Espace disque <span>— taille et dernière activité des dossiers et fichiers</span></h1>
   <div class="spacer"></div>
-  <input class="search" id="q" placeholder="Rechercher partout (ex. node_modules)…" />
+  <input class="search" id="q" placeholder="Rechercher partout (ex. node_modules)…" data-aide="recherche" />
   <button class="btn" id="go">Chercher</button>
-  <button class="btn" id="dup" title="Fichiers de contenu identique — à partir de 1 Mio, lecture plafonnée à 2 Gio">Doublons</button>
-  <button class="btn" id="stop" title="Arrêter le serveur proprement — l'analyse en cours est annulée et son cache reste intact">Arrêter</button>
+  <button class="btn" id="dup" data-aide="doublons">Doublons</button>
+  <button class="btn" id="aide" aria-pressed="false" aria-label="Activer l’aide contextuelle" data-aide="aide"><span class="pt">?</span> Aide</button>
+  <button class="btn" id="stop" data-aide="arreter">Arrêter</button>
 </header>
 
 <main>
@@ -331,13 +364,13 @@
 
   <section>
     <div class="crumbs" id="crumbs"></div>
-    <div class="prog hidden" id="prog"></div>
+    <div class="prog hidden" id="prog" data-aide="progression"></div>
     <div class="toolbar">
-      <span id="count"></span>
-      <span id="selbar" class="hidden"></span>
-      <button class="btn danger hidden" id="delbtn">Supprimer…</button>
+      <span id="count" data-aide="compte"></span>
+      <span id="selbar" class="hidden" data-aide="selection"></span>
+      <button class="btn danger hidden" id="delbtn" data-aide="supprimer">Supprimer…</button>
       <span class="spacer"></span>
-      <label>Tri
+      <label data-aide="tri">Tri
         <select id="sort">
           <option value="size">Taille</option>
           <option value="mtime">Dernière activité</option>
@@ -345,35 +378,35 @@
           <option value="count">Nb de fichiers</option>
         </select>
       </label>
-      <select id="order">
+      <select id="order" data-aide="ordre">
         <option value="desc">Décroissant</option>
         <option value="asc">Croissant</option>
       </select>
       <div class="view">
-        <button class="btn active" data-view="table">Tableau</button>
-        <button class="btn" data-view="map">Carte</button>
+        <button class="btn active" data-view="table" data-aide="vue-tableau">Tableau</button>
+        <button class="btn" data-view="map" data-aide="vue-carte">Carte</button>
       </div>
-      <button class="btn" id="autocols" title="Ajuster toutes les colonnes à leur contenu — comme un double-clic sur chaque frontière">Largeurs auto</button>
+      <button class="btn" id="autocols" data-aide="largeurs-auto">Largeurs auto</button>
     </div>
     <div class="dup-bar hidden" id="dupbar">
       <div class="dup-line">
-        <span id="dupsynth"></span>
+        <span id="dupsynth" data-aide="dup-gain"></span>
         <span class="spacer"></span>
-        <span id="dupsel"></span>
-        <button class="btn hidden" id="dupcancel">Annuler</button>
+        <span id="dupsel" data-aide="selection"></span>
+        <button class="btn hidden" id="dupcancel" data-aide="dup-annuler">Annuler</button>
       </div>
       <div class="dup-filters">
-        <label>Portée <select id="dupscope">
+        <label data-aide="dup-portee">Portée <select id="dupscope">
           <option value="drive">Tout le disque</option>
           <option value="base">Dossier courant</option>
         </select></label>
-        <label>Taille min <select id="dupmin">
+        <label data-aide="dup-min">Taille min <select id="dupmin">
           <option value="102400">100 Ko</option>
           <option value="1048576">1 Mo</option>
           <option value="10485760">10 Mo</option>
           <option value="104857600">100 Mo</option>
         </select></label>
-        <label>Catégorie <select id="dupcat">
+        <label data-aide="dup-categorie">Catégorie <select id="dupcat">
           <option value="all">Tout</option>
           <option value="video">Vidéos</option>
           <option value="image">Images</option>
@@ -381,21 +414,21 @@
           <option value="audio">Audio</option>
           <option value="doc">Documents</option>
         </select></label>
-        <label>Budget <select id="dupbudget">
+        <label data-aide="dup-budget">Budget <select id="dupbudget">
           <option value="524288000">500 Mo</option>
           <option value="2147483648">2 Go</option>
           <option value="8589934592">8 Go</option>
         </select></label>
         <span class="dup-views">
-          <button class="btn active" id="dupvue-files">Par fichiers</button>
-          <button class="btn" id="dupvue-pairs">Dossiers jumeaux</button>
+          <button class="btn active" id="dupvue-files" data-aide="dup-vues">Par fichiers</button>
+          <button class="btn" id="dupvue-pairs" data-aide="dup-vues">Dossiers jumeaux</button>
         </span>
         <span class="spacer"></span>
-        <button class="btn" id="dupsmart">✨ Smart (recommandé)</button>
-        <button class="btn" id="dupold">Garder plus ancien</button>
-        <button class="btn" id="dupnew">Garder plus récent</button>
-        <button class="btn" id="dupshort">Garder chemin le plus court</button>
-        <button class="btn" id="dupprot">Protéger un dossier…</button>
+        <button class="btn" id="dupsmart" data-aide="dup-smart">✨ Smart (recommandé)</button>
+        <button class="btn" id="dupold" data-aide="dup-garder">Garder plus ancien</button>
+        <button class="btn" id="dupnew" data-aide="dup-garder">Garder plus récent</button>
+        <button class="btn" id="dupshort" data-aide="dup-garder">Garder chemin le plus court</button>
+        <button class="btn" id="dupprot" data-aide="dup-proteger">Protéger un dossier…</button>
         <button class="btn" id="dupnone">Tout décocher</button>
       </div>
     </div>
@@ -404,13 +437,13 @@
         <col id="c0"><col id="c1"><col id="c2"><col id="c3"><col id="c4"><col id="c5"><col id="c6">
       </colgroup>
       <thead><tr>
-      <th class="sel"><input type="checkbox" class="chk" id="allchk" title="Tout sélectionner"><span class="rh"></span></th>
-      <th data-k="name"><span class="ttl">Nom</span><span class="arw"></span><span class="rh"></span></th>
-      <th data-k="size" class="num"><span class="ttl">Taille</span><span class="arw"></span><span class="rh"></span></th>
-      <th class="num"><span class="ttl">Part</span><span class="arw"></span><span class="rh"></span></th>
-      <th data-k="count" class="num"><span class="ttl">Fichiers</span><span class="arw"></span><span class="rh"></span></th>
-      <th data-k="mtime"><span class="ttl">Dernière activité</span><span class="arw"></span><span class="rh"></span></th>
-      <th><span class="rh"></span></th>
+      <th class="sel"><input type="checkbox" class="chk" id="allchk" aria-label="Tout sélectionner" data-aide="tout-selectionner"><span class="rh"></span></th>
+      <th data-k="name" tabindex="0" data-aide="col-nom"><span class="ttl">Nom</span><span class="arw"></span><span class="rh"></span></th>
+      <th data-k="size" class="num" tabindex="0" data-aide="col-taille"><span class="ttl">Taille</span><span class="arw"></span><span class="rh"></span></th>
+      <th class="num" tabindex="0" data-aide="col-part"><span class="ttl">Part</span><span class="arw"></span><span class="rh"></span></th>
+      <th data-k="count" class="num" tabindex="0" data-aide="col-fichiers"><span class="ttl">Fichiers</span><span class="arw"></span><span class="rh"></span></th>
+      <th data-k="mtime" tabindex="0" data-aide="col-activite"><span class="ttl">Dernière activité</span><span class="arw"></span><span class="rh"></span></th>
+      <th tabindex="0" data-aide="col-actions"><span class="rh"></span></th>
     </tr></thead><tbody id="rows"></tbody></table></div>
     <div id="treemap" class="hidden"></div>
   </section>
@@ -418,7 +451,7 @@
 
 <aside class="preview hidden" id="preview">
   <div class="preview-h">
-    <b id="pvname"></b>
+    <b id="pvname" data-aide="apercu"></b>
     <span class="meta" id="pvmeta"></span>
     <button class="btn" id="pvclose">Fermer</button>
   </div>
@@ -426,17 +459,18 @@
 </aside>
 
 <div id="coltip" class="hidden"></div>
+<div id="aidebulle" class="hidden" role="tooltip"></div>
 
 <div id="modal" class="modal-bg hidden">
   <div class="modal">
     <h3>Supprimer <span id="dtitle"></span></h3>
     <div class="body" id="dbody"></div>
     <div class="foot">
-      <label><input type="radio" name="dmode" value="recycle" checked> Corbeille (réversible)</label>
-      <label><input type="radio" name="dmode" value="permanent"> Définitif</label>
+      <label data-aide="mode-corbeille"><input type="radio" name="dmode" value="recycle" checked> Corbeille</label>
+      <label data-aide="mode-definitif"><input type="radio" name="dmode" value="permanent"> Définitif</label>
       <span class="spacer" style="flex:1"></span>
       <button class="btn" id="dcancel">Annuler</button>
-      <button class="btn danger" id="ddo">Supprimer</button>
+      <button class="btn danger" id="ddo" data-aide="do-delete">Supprimer</button>
     </div>
   </div>
 </div>
@@ -644,8 +678,8 @@ function renderEleve() {
   const el = $('#eleve');
   if (!el) return;
   const chip = state.eleve
-    ? '<span class="chip on">droits d\'administrateur</span>'
-    : '<span class="chip">droits de l\'utilisateur</span>';
+    ? '<span class="chip on" data-aide="droits">droits d\'administrateur</span>'
+    : '<span class="chip" data-aide="droits">droits de l\'utilisateur</span>';
   const bandeau = state.eleve
     ? '<div class="warn" style="margin-top:8px">Instance <b>élevée</b> : les ' +
       'protections de Windows ne s\'appliquent plus. Sept noms restent refusés ' +
@@ -698,8 +732,7 @@ function renderDrives() {
     // « total incomplet » reste affiché, jamais relégué à l'infobulle : c'est
     // toute l'information — sans lui, le chiffre se présente comme une mesure.
     const inc = (d.status === 'ready' && d.unreadable)
-      ? `<div class="inc" title="Des dossiers n'ont pas pu être ouverts : leur contenu ` +
-        `entier manque au total, qui est un plancher et non une mesure. Cliquer pour la liste.">` +
+      ? `<div class="inc" data-aide="volume-illisible">` +
         `<span>! <b>${nf.format(d.unreadable)}</b> illisible(s) · total incomplet</span>` +
         `<span class="go">voir</span></div>`
       : '';
@@ -719,7 +752,7 @@ function renderDrives() {
         : `L'analyse attribue ${hsize(-ecart)} de PLUS que le disque n'en occupe. ` +
           `Des fichiers comptés deux fois (liens durs), ou comptés en taille logique alors que le disque ` +
           `en stocke moins (compression, fichiers creux). C'est un défaut de l'analyse, pas du disque.`;
-      gap = `<div class="gap ${pos ? 'pos' : 'neg'}" title="${escapeHtml(expl)}">` +
+      gap = `<div class="gap ${pos ? 'pos' : 'neg'}" data-aide="volume-ecart" data-aide-texte="${escapeHtml(expl)}">` +
             `<span>${hsize(d.root_size)} attribués</span>` +
             `<span class="v">${pos ? '+' : '\u2212'}${hsize(Math.abs(ecart))}</span></div>`;
     }
@@ -730,14 +763,14 @@ function renderDrives() {
         ${d.fs ? `<span class="fs">${escapeHtml(d.fs)}</span>` : ''}
       </div>
       <div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>
-      <div class="meta">
+      <div class="meta" data-aide="volume-occupation">
         <span><b>${hsize(used)}</b> / ${hsize(d.total)}</span>
         <span style="margin-left:auto">libre ${hsize(d.free)}</span>
       </div>${gap}
       <div class="meta" style="margin-top:3px">
-        <span>${st}</span>
+        <span data-aide="volume-contenu">${st}</span>
         <span style="margin-left:auto">
-          <button class="btn" style="padding:2px 7px;font-size:11px">
+          <button class="btn" style="padding:2px 7px;font-size:11px" data-aide="volume-rescanner">
             ${d.status === 'ready' ? 'Rescanner' : 'Analyser'}
           </button>
         </span>
@@ -1263,11 +1296,11 @@ function enteteGroupe(r) {
   tr.classList.toggle('alert', complet);
   tr.innerHTML = `<td colspan="7">
       <span class="gid">#${r.groupe}</span>
-      <span class="gmeta">${hsize(r.size)} × ${nf.format(r.groupe_count || 1)} copie(s) · +${hsize(r.groupe_gain || 0)} récupérables</span>
-      <span class="galert${complet ? '' : ' hidden'}">⚠ Aucun exemplaire conservé dans ce groupe !</span>
+      <span class="gmeta" data-aide="dup-gain">${hsize(r.size)} × ${nf.format(r.groupe_count || 1)} copie(s) · +${hsize(r.groupe_gain || 0)} récupérables</span>
+      <span class="galert${complet ? '' : ' hidden'}" data-aide="dup-alerte">⚠ Aucun exemplaire conservé dans ce groupe !</span>
       <span class="gact">
         <button class="btn" data-act="plier">${plie ? 'Déplier' : 'Replier'}</button>
-        <button class="btn" data-act="smart">Smart sur ce groupe</button>
+        <button class="btn" data-act="smart" data-aide="dup-smart">Smart sur ce groupe</button>
         <button class="btn" data-act="none">Tout décocher</button>
       </span></td>`;
   tr.querySelector('[data-act=plier]').onclick = () => {
@@ -1294,8 +1327,8 @@ function ligneDup(r) {
     <td class="sel"><input type="checkbox" class="chk" ${cur.sel.has(selKey(r)) ? 'checked' : ''}></td>
     <td class="name"><span class="ic">📄</span>
       <span class="nm">${escapeHtml(r.name)}</span>
-      ${r.garder_recommande ? '<span class="keep">Original conseillé</span>' : ''}
-      ${r.hardlink ? '<span class="hard">Lien dur (0 o libérés)</span>' : ''}
+      ${r.garder_recommande ? '<span class="keep" data-aide="dup-original">Original conseillé</span>' : ''}
+      ${r.hardlink ? '<span class="hard" data-aide="dup-hardlink">Lien dur (0 o libérés)</span>' : ''}
       <span style="color:var(--muted);font-size:11.5px;margin-left:8px">${escapeHtml(r.path)}</span>${r.categorie ? '<span class="grp">' + r.categorie + '</span>' : ''}</td>
     <td class="num">${hsize(r.size)}</td>
     <td class="num"></td>
@@ -1869,7 +1902,7 @@ function renderDeleteBody() {
          `ne s'appliquent pas. Tout ce qui est listé ici est effaçable, y compris ` +
          `ce que les droits du compte auraient refusés.</div>`;
   }
-  h += `<p style="margin:0 0 10px">Va disparaître : <b>${nf.format(d.deletable)}</b> élément(s), ` +
+  h += `<p style="margin:0 0 10px" data-aide="liste-preview">Va disparaître : <b>${nf.format(d.deletable)}</b> élément(s), ` +
        `<b>${hsize(d.total_size)}</b>.</p>`;
   h += '<div class="plist">';
   // La liste est COMPLÈTE. Elle était tronquée à 25 entrées alors que le
@@ -1897,7 +1930,7 @@ function renderDeleteBody() {
          `pas un blocage : c'est une occasion de regarder où l'on est avant de valider.</div>`;
     h += '<div class="pfields">';
     for (const nom of d.aNommer) {
-      h += `<label class="pfield">Pour supprimer ce qui est dans <b>${escapeHtml(nom)}</b>, tape son nom :` +
+      h += `<label class="pfield" data-aide="a-nommer">Pour supprimer ce qui est dans <b>${escapeHtml(nom)}</b>, tape son nom :` +
            `<input class="search nom-in" data-dossier="${escapeHtml(nom)}" ` +
            `placeholder="${escapeHtml(nom)}" autocomplete="off" spellcheck="false" />` +
            `<span class="p-aide"></span></label>`;
@@ -1917,7 +1950,7 @@ function renderDeleteBody() {
   if (mots.length) {
     h += '<div class="pfields" style="margin-top:12px">';
     for (const m of mots) {
-      h += `<label class="pfield">Pour supprimer ce lot — ${escapeHtml(m.raison)} — `
+      h += `<label class="pfield" data-aide="mot-a-taper">Pour supprimer ce lot — ${escapeHtml(m.raison)} — `
            + `tape <b>${escapeHtml(m.mot)}</b> :`
            + `<input class="search dconfirm" placeholder="${escapeHtml(m.mot)}" `
            + `autocomplete="off" spellcheck="false" />`
@@ -1959,7 +1992,7 @@ function renderDeleteBody() {
         // cet instant serait donc faux, et un avertissement faux
         // apprend moins qu'un avertissement absent. Ce qu'on peut dire, et qui suffit :
         // ce qui est dedans n'y est pas garanti.
-        h += `<div class="warn" style="margin-top:10px">Ce lot <b>dépassera</b> le plafond de la ` +
+        h += `<div class="warn" style="margin-top:10px" data-aide="corbeille-plafond">Ce lot <b>dépassera</b> le plafond de la ` +
              `corbeille${etat.suffixeVol} : ${etat.occupe} dedans, ` +
              `${hsize(pendingDry.total_size)} de plus pour ${etat.plafond} au total. ` +
              `Rien ne sera détruit tout de suite — mesuré le 27/09/2026, la corbeille ` +
@@ -2390,6 +2423,434 @@ function setView(v) {
   if (v === 'map') renderMap();
 }
 window.addEventListener('resize', () => { if (cur.view === 'map') renderMap(); });
+
+// ---------- aide contextuelle ----------
+// Le dictionnaire est la SEULE source des textes. Une clé absente n'affiche
+// rien : mieux vaut une zone sans bulle qu'une bulle qui invente. Les attributs
+// data-aide sont posés dans le HTML statique ET dans les templates générés ;
+// la délégation d'événements fait le reste, sans réattacher quoi que ce soit
+// après chaque rendu (cartes de volume, groupes, badges, champs de suppression).
+const AIDE = {
+  'aide': { t: "Aide contextuelle", p: [
+    "Ce mode affiche une explication complète au survol d'un élément, ou au clavier quand il reçoit le focus. Une carte décrit ce que fait l'élément, comment le chiffre est calculé et ce qu'il ne dit pas.",
+    "Il ne modifie rien, ne lance aucune analyse et n'envoie aucune requête. Le bouton reste actif et mémorise votre choix dans ce navigateur ; le désactiver retire aussi les soulignements pointillés.",
+    "Échap ferme la carte. Les icônes sans libellé (ouvrir, aperçu) gardent leur infobulle native, disponible même quand ce mode est coupé.",
+  ] },
+
+  'recherche': { t: "Recherche globale", p: [
+    "Cherche une sous-chaîne dans le NOM des dossiers et des fichiers de tout le volume analysé, sans tenir compte de la casse ASCII. Ce n'est ni une recherche dans le contenu des fichiers, ni dans le chemin complet.",
+    "L'affichage est plafonné à 800 résultats. Le nombre réel de correspondances reste affiché ; lorsque le serveur n'a pas pu le compter exactement, l'écran écrit « au moins » plutôt que de faire passer un plancher pour un total.",
+    "Entrée lance la recherche. Vider le champ revient au dossier affiché sans perdre la sélection.",
+  ] },
+
+  'doublons': { t: "Doublons", p: [
+    "Cherche les fichiers de contenu identique dans l'instantané analysé du volume : regroupement par taille, puis empreinte de tête et de queue, puis SHA-256 complet quand il faut trancher.",
+    "Par défaut, seuls les fichiers d'au moins 1 Mo sont candidats ; le seuil est réglable de 100 Ko à 100 Mo. La lecture d'empreintes est plafonnée à 2 Gio par défaut : si le budget ou une annulation l'interrompt, les résultats restent partiels et l'écran le dit (« budget atteint » ou « annulé »), au lieu de présenter la liste comme complète.",
+    "Le mode ne supprime rien : il remplit la table de groupes, et la sélection se fait ensuite comme ailleurs, avec l'aperçu de suppression.",
+  ] },
+
+  'arreter': { t: "Arrêter le serveur", p: [
+    "Demande un arrêt propre du serveur local. Une analyse en cours est annulée, et son cache n'est pas écrasé : la prochaine analyse repartira de données complètes.",
+    "L'arrêt n'est pas une fermeture d'onglet : le serveur cesse de répondre, donc cette page ne peut plus rien afficher. Il faudra relancer diskmap depuis le terminal.",
+    "Si une analyse tourne, une boîte intermédiaire chiffre d'abord ce qui sera perdu et demande confirmation. L'arrêt n'efface aucun fichier.",
+  ] },
+
+  'volume-occupation': { t: "Occupation du volume", p: [
+    "Chiffres du volume lui-même : l'espace utilisé vaut total moins libre, comme Windows le rapporte. La barre montre cette proportion ; elle ne dépend pas de l'analyse DiskMap.",
+    "L'occupation inclut tout ce que le disque contient, y compris les métadonnées, les clichés instantanés et les dossiers que l'analyse n'a pas pu ouvrir. C'est pourquoi elle peut dépasser la somme des tailles attribuées.",
+    "« libre » est la place encore disponible pour des fichiers. Un volume non analysé affiche ces chiffres sans pouvoir détailler les dossiers.",
+  ] },
+
+  'volume-contenu': { t: "Contenu analysé", p: [
+    "Nombre de fichiers et de dossiers trouvés par la dernière analyse. Les dossiers sont comptés comme des entrées, pas seulement les fichiers.",
+    "Un dossier illisible n'est pas parcouru : tout son sous-arbre manque à ces comptes, comme à la taille. Les jonctions et liens symboliques ne sont pas suivis, pour éviter de compter deux fois la même cible.",
+    "Pendant une analyse, ces nombres avancent : ils décrivent le parcours en cours, pas un résultat garanti.",
+  ] },
+
+  'volume-ecart': { t: "Écart entre le disque et l'analyse", p: [
+    "Différence entre l'espace que le disque occupe et la taille que l'analyse a su attribuer au volume. La ligne apparaît dès que l'écart dépasse le plus petit de deux seuils : 0,5 % de la taille analysée, ou 20 Mo.",
+    "Positif, il manque des octets que l'analyse ne peut rattacher à aucun dossier : métadonnées NTFS, clichés instantanés, sous-arbres refusés. Négatif, l'analyse compte PLUS que le disque ne contient : liens durs comptés deux fois, compression ou fichiers creux — c'est un défaut de l'analyse, pas du disque.",
+  ] },
+
+  'volume-illisible': { t: "Dossiers illisibles", p: [
+    "Dossiers dont le contenu n'a pas pu être lu. Leur sous-arbre entier manque à l'analyse : la taille du volume est alors un plancher, pas une mesure exacte.",
+    "Le clic ouvre la liste des chemins et la cause. La distinction compte : un refus de droits peut changer avec une instance élevée, une autre erreur non.",
+    "Le libellé « total incomplet » reste affiché dans la carte : il ne doit jamais être relégué à une infobulle, car sans lui le chiffre se présente comme exact.",
+  ] },
+
+  'volume-rescanner': { t: "Analyser / Rescanner", p: [
+    "Lance une nouvelle analyse complète du volume : parcours des dossiers, tailles cumulées et dates. « Analyser » apparaît quand aucun instantané n'existe ; « Rescanner » remplace l'instantané courant par un nouveau.",
+    "Le scan est parallèle et peut être arrêté par « Arrêter ». Le nouvel instantané remplace l'ancien quand l'analyse aboutit ; pendant le parcours, la page suit l'avancement.",
+    "Analyser ne supprime rien et ne modifie aucun fichier. Les volumes réseau et amovibles peuvent être plus lents ou incomplets.",
+  ] },
+
+  'droits': { t: "Droits de l'instance", p: [
+    "« droits de l'utilisateur » : Windows applique les ACL du compte. « droits d'administrateur » : l'instance est élevée, et Windows cesse de les appliquer aux opérations de suppression.",
+    "C'est pourquoi une instance élevée rend effaçable ce que le compte ne pouvait pas toucher. Les garde-fous DiskMap restent (volumes racines, dossiers système, noms à taper), mais le coût d'une erreur change.",
+    "Le mode d'exécution est décidé par le serveur, pas par cette page.",
+  ] },
+
+  'compte': { t: "Éléments affichés", p: [
+    "Nombre de lignes que la table montre pour le dossier courant, la recherche ou les doublons. Un dossier est plafonné à 3 000 lignes ; au-delà, l'écran écrit « tronqué — affinez avec la recherche ».",
+    "Ce n'est donc pas le nombre d'éléments du disque : c'est ce qui est visible et sélectionnable ici. Les totaux réels d'une recherche ou d'un groupe de doublons sont annoncés séparément.",
+    "Une mention « ce dossier n'existe plus — voici son parent » peut précéder le compte : elle signale un dossier supprimé pendant qu'il était affiché, jamais un changement silencieux.",
+  ] },
+
+  'selection': { t: "Sélection", p: [
+    "La sélection est portée par le chemin, pas par un numéro de ligne : elle survit à un tri, à une recherche et à un rechargement de fond. Changer de dossier la vide ; vider la recherche ne la vide pas.",
+    "Le nombre et les octets affichés disent ce que la sélection libérerait réellement : les liens durs sont comptés une seule fois, et seulement si tous leurs noms sont cochés. Ce n'est pas la somme brute des tailles affichées.",
+    "« Tout sélectionner » ne coche que les lignes affichées. Dans la vue doublons, cocher toutes les copies d'un même contenu ne libère rien : l'aperçu de suppression le signale avant de valider.",
+  ] },
+
+  'supprimer': { t: "Supprimer…", p: [
+    "Ce bouton n'efface rien : il demande au serveur un aperçu (dry run) de ce qui disparaîtrait, avec la liste complète des chemins, leur taille et un jeton à usage unique.",
+    "La confirmation exige ce jeton, qui expire après dix minutes. Un lot de plus de 5 000 entrées est refusé au lieu d'être tronqué : on ne peut pas supprimer ce qui n'a pas été montré.",
+    "Par défaut, la destination est la corbeille — quand le volume en a une qui fonctionne. L'aperçu dit quel cas s'applique avant de valider.",
+  ] },
+
+  'tri': { t: "Tri", p: [
+    "Trie les lignes affichées. Taille : taille cumulée du sous-arbre pour un dossier, taille du fichier sinon. Dernière activité : écriture la plus récente du sous-arbre. Nom : ordre alphabétique. Nb de fichiers : fichiers du sous-arbre.",
+    "Dans la vue doublons, les choix changent : gain récupérable, taille unitaire, date, nombre de copies ou nom. Le tri est demandé au serveur, pas appliqué à l'écran seulement.",
+    "Cliquer un en-tête de colonne fait la même chose et bascule le sens. Un tri ne modifie pas la sélection.",
+  ] },
+
+  'ordre': { t: "Ordre", p: [
+    "Décroissant ou croissant. Le sens s'applique au critère choisi ; cliquer un en-tête de colonne le bascule. Un tri par nom peut donc être croissant ou décroissant, comme les autres.",
+    "L'ordre s'applique immédiatement au dossier, à la recherche ou aux doublons affichés. Il ne change ni la sélection ni le contenu.",
+    "Le sens est aussi visible par la flèche de l'en-tête de colonne, qui reste synchronisée avec ce menu.",
+  ] },
+
+  'vue-tableau': { t: "Vue tableau", p: [
+    "Une ligne par dossier ou fichier, avec la taille, la part du dossier, le nombre de fichiers et la dernière activité. Les colonnes se redimensionnent en tirant leur bord droit.",
+    "C'est la vue qui permet de cocher et de supprimer ; la carte ne sert qu'à naviguer.",
+    "Les lignes sont plafonnées à 3 000 par dossier. Un dossier illisible reste absent de la liste, mais son avertissement est dans la carte du volume.",
+  ] },
+
+  'vue-carte': { t: "Vue carte", p: [
+    "Carte proportionnelle (treemap) : la surface de chaque rectangle représente la taille de l'élément. Les dossiers et les fichiers n'ont pas la même teinte.",
+    "Seuls les 220 premiers éléments non vides de la liste courante sont dessinés, et les rectangles trop petits pour être lisibles sont omis. La carte ne montre donc pas tout le dossier, seulement ce qui pèse.",
+    "Cliquer un dossier y entre ; cliquer un fichier ne fait rien. Le survol d'un rectangle rappelle son nom et sa taille.",
+  ] },
+
+  'largeurs-auto': { t: "Largeurs auto", p: [
+    "Ajuste chaque colonne à la largeur de son contenu le plus large, comme un double-clic sur chaque frontière.",
+    "Les largeurs sont exprimées en pourcentage de la fenêtre et mémorisées dans ce navigateur : elles suivent le redimensionnement. Tirer une frontière élargit la colonne et fait glisser les suivantes.",
+    "Ce réglage ne change ni le tri ni la sélection ; il ne touche qu'à l'affichage.",
+  ] },
+
+  'tout-selectionner': { t: "Tout sélectionner", p: [
+    "Coche toutes les lignes du résultat courant, pas tout le disque. Un dossier tronqué à 3 000 lignes ou une recherche plafonnée à 800 ne cochent que ces lignes-là ; dans la vue doublons, les lignes repliées d'un groupe en font aussi partie.",
+    "La case est indéterminée quand une partie seulement des lignes est cochée. Le nombre et les octets libérables suivent immédiatement.",
+    "Dans la vue doublons, tout cocher peut sélectionner toutes les copies d'un contenu : l'aperçu de suppression affiche alors un avertissement explicite.",
+  ] },
+
+  'col-nom': { t: "Colonne Nom", p: [
+    "Nom du dossier ou du fichier. La petite barre donne une échelle visuelle dans la liste affichée ; ce n'est pas une mesure indépendante.",
+    "Cliquer le nom d'un dossier y entre ; un fichier ne s'ouvre pas par son nom. La case à cocher sélectionne la ligne, et l'icône à droite ouvre l'élément dans l'Explorateur Windows.",
+    "Les jonctions et liens symboliques ne sont pas suivis : leur cible n'est pas comptée dans les tailles, et ils ne créent pas de double compte.",
+  ] },
+
+  'col-taille': { t: "Colonne Taille", p: [
+    "Taille logique déclarée par le système, en octets. Pour un dossier, c'est la somme de tout son sous-arbre, pas seulement de ses fichiers directs.",
+    "Ce n'est pas la place réellement occupée sur le disque : un fichier compressé ou creux peut tenir moins. Un dossier illisible rend le total incomplet — c'est un plancher, jamais une mesure exacte.",
+    "Les jonctions et liens symboliques ne sont pas suivis. Un même fichier porté par deux noms (lien dur) est compté sous chacun : l'écart négatif du volume le signale.",
+  ] },
+
+  'col-part': { t: "Colonne Part", p: [
+    "Part de l'élément dans le total de la liste affichée. Dans un dossier, c'est le total du dossier où vous êtes, pas le volume entier ; dans une recherche ou la vue doublons, c'est la somme des lignes affichées. Elle est calculée sur la taille cumulée de chaque ligne.",
+    "Le pourcentage peut donc changer de base selon la vue ; il ne se rapporte jamais au volume entier.",
+    "Les pourcentages peuvent ne pas se recouper exactement avec le total en présence de liens durs, de compression ou d'un dossier illisible.",
+  ] },
+
+  'col-fichiers': { t: "Colonne Fichiers", p: [
+    "Nombre de fichiers contenus dans le sous-arbre d'un dossier. Les sous-dossiers ne sont pas comptés comme des fichiers ; un fichier affiche une case vide.",
+    "Ce compte vient de l'instantané : il ne dépend pas de la limite d'affichage de la table. Il exclut ce qui n'a pas pu être lu.",
+    "Il ne dit rien de la place occupée : un dossier peut avoir beaucoup de fichiers et rester petit.",
+  ] },
+
+  'col-activite': { t: "Colonne Dernière activité", p: [
+    "Date d'écriture la plus récente trouvée dans le sous-arbre. Pour un dossier, c'est la plus récente de ses fichiers et sous-dossiers, y compris sa propre date.",
+    "Ce n'est pas la date de dernière lecture : un fichier ouvert tous les jours mais jamais modifié reste ancien. L'âge affiché est calculé par rapport à aujourd'hui.",
+    "Orange au-delà d'un an, rouge au-delà de deux ans. Ces seuils sont visuels et n'entraînent aucune action.",
+  ] },
+
+  'col-actions': { t: "Colonne Actions", p: [
+    "📂 ouvre le dossier dans l'Explorateur Windows ; 📄 sélectionne le fichier dans son dossier. L'action ne supprime rien et ne modifie pas le fichier.",
+    "Dans la vue doublons, 👁 ouvre un aperçu en lecture seule : images PNG, JPEG, WebP ou GIF, ou texte (txt, md, log, json, csv) limité aux 32 premiers Kio. Les autres extensions sont refusées.",
+    "Fermer l'aperçu ne change pas la sélection. L'ouverture dans l'Explorateur peut prendre un instant si le dossier est lourd.",
+  ] },
+
+  'dup-portee': { t: "Portée des doublons", p: [
+    "« Tout le disque » compare les fichiers de l'instantané complet du volume. « Dossier courant » limite la comparaison au sous-arbre du dossier affiché, si un dossier est ouvert.",
+    "La portée change le résultat, pas la méthode : les tailles d'abord, puis les empreintes. Un doublon présent hors de la portée n'apparaîtra pas.",
+    "Changer la portée relance immédiatement la recherche ; la sélection visible est recalculée sur le nouveau résultat, sans supprimer les chemins qu'il ne contient pas.",
+  ] },
+
+  'dup-min': { t: "Taille minimale", p: [
+    "Aucun fichier plus petit que ce seuil n'est comparé. Le seuil porte sur la taille du fichier, pas sur l'espace récupérable.",
+    "Le défaut est 1 Mo. Descendre à 100 Ko trouve plus de doublons mais lit et compare davantage de fichiers ; monter à 100 Mo concentre la recherche sur les gros gains.",
+    "Un fichier juste en dessous du seuil n'est pas « absent » : il est simplement hors du champ de cette recherche.",
+  ] },
+
+  'dup-categorie': { t: "Catégorie", p: [
+    "Filtre les candidats d'après l'extension du fichier : vidéos, images, archives et ISO, audio, documents. « Tout » ne filtre rien.",
+    "C'est un filtre de nom, pas une analyse du contenu : un fichier mal nommé peut se trouver dans la mauvaise catégorie ou être exclu.",
+    "Le filtre s'applique avant la comparaison ; il ne change rien sur le disque.",
+  ] },
+
+  'dup-budget': { t: "Budget de lecture", p: [
+    "Plafond d'octets lus pour calculer les empreintes, pas une taille de fichiers. Les candidats sont d'abord groupés par taille, puis comparés par tête et queue, et le SHA-256 complet n'est calculé que si nécessaire.",
+    "Si le budget est atteint, ou si vous annulez, la liste est partielle. L'écran l'écrit (« budget atteint » ou « annulé ») et ne présente jamais un résultat incomplet comme complet.",
+    "Monter le budget peut trouver plus de doublons, au prix d'une lecture plus longue. Aucun fichier n'est modifié pendant la lecture.",
+  ] },
+
+  'dup-vues': { t: "Vues des doublons", p: [
+    "« Par fichiers » liste chaque contenu dupliqué et toutes ses copies. « Dossiers jumeaux » résume les paires de dossiers qui partagent des fichiers identiques.",
+    "Dans la vue jumeaux, le nombre de fichiers et les octets sont ceux partagés par les deux dossiers ; les pourcentages rapportent ces octets à la taille totale du sous-arbre de chaque dossier, plafonnés à 100 %.",
+    "La vue ne change pas la sélection : les cases cochées restent celles de la liste par fichiers.",
+  ] },
+
+  'dup-smart': { t: "Smart (recommandé)", p: [
+    "Pour chaque groupe, garde une copie décochée et coche toutes les autres. La copie conservée est celle que le score « original conseillé » désigne.",
+    "Le score évite les dossiers de téléchargement, temporaires, de bureau et de cache, les noms marqués « copie » ou « (1) », et favorise le fichier le plus ancien et le moins profond.",
+    "La règle ne coche jamais toutes les copies d'un contenu. Elle reste une proposition : vous pouvez décocher ou cocher à la main avant de supprimer.",
+  ] },
+
+  'dup-garder': { t: "Garder selon une règle", p: [
+    "Ces trois boutons appliquent une règle à chaque groupe : « plus ancien » garde la date d'écriture la plus ancienne, « plus récent » la plus récente, « chemin le plus court » le chemin le plus court.",
+    "Dans tous les cas, une copie reste décochée par groupe : la règle ne peut pas sélectionner toutes les copies d'un même contenu.",
+    "La règle s'applique aux groupes affichés et remplace la sélection précédente. Elle ne supprime rien ; l'aperçu reste obligatoire.",
+  ] },
+
+  'dup-proteger': { t: "Protéger un dossier", p: [
+    "Ouvre une saisie de chemin, préremplie avec le dossier courant. Tous les fichiers de ce dossier restent décochés ; seules les copies situées ailleurs sont cochées.",
+    "C'est un garde-fou manuel, pas un réglage permanent : il s'applique au moment du clic et n'est pas réappliqué après un changement de dossier ou une nouvelle recherche.",
+    "La comparaison porte sur le chemin du dossier et de ses sous-dossiers. Un chemin mal saisi ne protège rien.",
+  ] },
+
+  'dup-annuler': { t: "Annuler la recherche de doublons", p: [
+    "Demande au serveur d'arrêter le calcul d'empreintes en cours. Le bouton se désactive jusqu'à la prochaine recherche.",
+    "Les groupes déjà affichés restent à l'écran ; un résultat interrompu est signalé comme partiel, jamais comme complet.",
+    "Annuler ne supprime aucun fichier et ne vide pas la sélection.",
+  ] },
+
+  'dup-gain': { t: "Groupes et gain récupérable", p: [
+    "Un groupe rassemble des fichiers de contenu identique. La taille affichée est celle d'une copie ; « × N copies » compte tous les noms du groupe.",
+    "Le gain ne compte que les copies physiques : taille × (copies physiques − 1). Un lien dur n'est pas une copie physique, donc il ne libère rien tant qu'un autre nom subsiste.",
+    "Le gain est une estimation de l'espace libérable si l'on ne garde qu'une copie ; il ignore les tailles de blocs et la corbeille.",
+  ] },
+
+  'dup-alerte': { t: "Aucun exemplaire conservé", p: [
+    "Toutes les copies de ce contenu sont cochées. Aucune copie ne sera conservée : le contenu disparaît complètement. L'espace libéré est celui du contenu, pas un gain de doublon.",
+    "Les règles automatiques (Smart, garder plus ancien, etc.) ne produisent jamais cet état ; seul un cochage manuel le peut.",
+    "L'aperçu de suppression répète cet avertissement au moment de valider.",
+  ] },
+
+  'dup-original': { t: "Original conseillé", p: [
+    "Copie que le score Smart désigne comme la meilleure à conserver : elle évite les dossiers de téléchargement, temporaires, de bureau et de cache, les noms marqués « copie » ou « (1) », et favorise le fichier le plus ancien et le moins profond.",
+    "Ce n'est pas un original au sens du système : aucun fichier ne porte cette qualité. C'est une proposition calculée à partir du chemin et de la date.",
+    "Vous pouvez la décocher et garder une autre copie ; le choix final reste le vôtre.",
+  ] },
+
+  'dup-hardlink': { t: "Lien dur", p: [
+    "Ce fichier partage son contenu avec un autre nom du même volume (lien dur NTFS). Les deux noms désignent les mêmes octets.",
+    "Supprimer ce nom ne libère rien tant qu'un autre nom subsiste. C'est pour cela que le gain récupérable ne compte pas cette copie.",
+    "Le badge signale le lien, pas une erreur : le fichier n'est pas un doublon de contenu indépendant.",
+  ] },
+
+  'mode-corbeille': { t: "Corbeille", p: [
+    "Destination par défaut : les fichiers vont dans la corbeille du volume, donc récupérables — seulement si ce volume a une corbeille qui fonctionne.",
+    "Un volume exFAT n'a pas de corbeille, et Windows peut être configuré avec NukeOnDelete=1 : dans ces cas, le mode « corbeille » détruit définitivement. L'aperçu le dit avant de valider.",
+    "La capacité de la corbeille est mesurée, pas supposée. Si le lot la dépasse, rien n'est détruit à cet instant, mais Windows purge ensuite ses entrées les plus anciennes quand il le décide : la présence dans la corbeille n'est pas garantie.",
+  ] },
+
+  'mode-definitif': { t: "Définitif", p: [
+    "Suppression sans corbeille : aucun retour en arrière par Windows. Le mot EFFACER est exigé.",
+    "Les seuils ajoutent des mots : au-delà de 20 Go, SUPPRIMER ; au-delà de 500 Go, SUPPRIMER TOUT. Sur une instance élevée, EFFACER s'ajoute même en mode corbeille, car les protections Windows ne s'appliquent plus.",
+    "Les mots s'additionnent, ils ne se remplacent pas. Chaque champ affiche la règle qu'il représente.",
+  ] },
+
+  'liste-preview': { t: "Liste de l'aperçu", p: [
+    "La liste est complète : chaque chemin qui disparaîtrait est affiché, avec sa taille et, le cas échéant, la raison pour laquelle il sera ignoré.",
+    "Un lot de plus de 5 000 entrées est refusé, pas tronqué : on ne peut pas valider une suppression dont une partie des chemins n'a pas été montrée.",
+    "Les chemins sont figés au moment de l'aperçu, puis revérifiés à l'exécution. Un fichier devenu lien ou disparu entre-temps n'est pas supprimé à l'aveugle.",
+  ] },
+
+  'a-nommer': { t: "Dossier à nommer", p: [
+    "Certains dossiers dont la perte n'est pas anodine doivent être nommés avant la suppression : Bureau, Documents, Images, Téléchargements, AppData, .git, .ssh, entre autres.",
+    "Un champ par dossier touché. La saisie doit correspondre exactement au nom (casse ignorée), pas au chemin complet.",
+    "Ce n'est pas un blocage : c'est un ralentissement volontaire pour regarder où l'on est. La règle n'est pas un réglage et ne peut pas être désactivée ; le serveur recalcule les dossiers à partir des chemins figés.",
+  ] },
+
+  'mot-a-taper': { t: "Mot à taper", p: [
+    "Le serveur annonce les mots exigés et leur raison : EFFACER pour une destruction, SUPPRIMER au-delà de 20 Go, SUPPRIMER TOUT au-delà de 500 Go.",
+    "Chaque champ correspond à une règle distincte, et les mots s'additionnent. La comparaison est exacte, casse et espaces compris : un mot recopié n'est pas un mot lu.",
+    "Le bouton de suppression reste désactivé tant que tous les champs ne sont pas satisfaits. L'interface ne devine jamais les mots : elle affiche ceux que le serveur exigera.",
+  ] },
+
+  'corbeille-plafond': { t: "Plafond de la corbeille", p: [
+    "La capacité et l'occupation de la corbeille sont lues sur le volume, pas supposées. Le message dit si le lot tient ou s'il dépasse le plafond.",
+    "Dépasser le plafond ne détruit rien à l'instant de la suppression : mesuré le 27/09/2026, un lot est entré dans une corbeille à 1,66 fois son plafond, tous fichiers présents.",
+    "Mais Windows purge ses entrées les plus anciennes quand il le décide, sans prévenir. Ce qui est dans la corbeille n'y est donc pas garanti ; vider la corbeille avant, ou choisir le définitif, est le seul moyen de décider soi-même.",
+  ] },
+
+  'do-delete': { t: "Exécuter la suppression", p: [
+    "Le bouton ne s'active que lorsque toutes les conditions sont remplies : liste complète, dossiers sensibles nommés, mots exigés tapés.",
+    "L'exécution présente le jeton à usage unique de l'aperçu. Un jeton expiré (dix minutes) ou un instantané devenu périmé est refusé, plutôt que de résoudre les chemins à nouveau.",
+    "Chaque suppression est écrite dans le journal local (horodatage, résultat réel, taille, chemins). Le résultat consigné est ce qui s'est passé, pas ce qui était demandé ; une réanalyse du volume suit.",
+  ] },
+
+  'apercu': { t: "Aperçu", p: [
+    "Ouvre un tiroir en lecture seule sur le fichier. Les images PNG, JPEG, WebP ou GIF sont affichées (jusqu'à 10 Mio) ; les fichiers texte txt, md, log, json et csv sont limités aux 32 premiers Kio. Les autres extensions sont refusées.",
+    "L'aperçu est demandé au serveur pour l'instantané courant. Il ne modifie pas le fichier.",
+    "Fermer le tiroir ne change ni la sélection ni la liste. Un texte plus long est coupé à 32 Kio et la limite est annoncée ; une image au-delà de 10 Mio est refusée.",
+  ] },
+
+  'progression': { t: "Analyse en cours", p: [
+    "Pendant un scan, la ligne montre les dossiers et fichiers déjà parcourus. Ces compteurs avancent : ils ne sont pas un total garanti.",
+    "La page interroge l'état du serveur régulièrement et remplace l'écran quand le nouvel instantané est prêt. « Arrêter » reste disponible et demande confirmation si le travail est engagé.",
+    "Un volume non analysé n'affiche pas cette ligne : il faut d'abord cliquer sur « Analyser ».",
+  ] },
+};
+
+// Clé distincte des préférences de colonnes : le mode d'aide se relit seul.
+const AIDE_KEY = 'diskmap.aide.v1';
+let aideTimer = null, aideCible = null, aideDesc = null, aideOrigine = null;
+
+function chargerAide() {
+  try { return localStorage.getItem(AIDE_KEY) !== '0'; } catch (e) { return true; }
+}
+function aideActive() { return document.body.classList.contains('aide'); }
+
+function cibleAide(el) {
+  if (!el || typeof el.closest !== 'function') return null;
+  return el.closest('[data-aide]');
+}
+
+function texteAide(el) {
+  const e = AIDE[el.dataset.aide];
+  if (!e) return null;
+  return { t: e.t, p: el.dataset.aideTexte ? [el.dataset.aideTexte] : e.p };
+}
+
+function cacherAide() {
+  clearTimeout(aideTimer);
+  aideTimer = null;
+  const b = document.getElementById('aidebulle');
+  if (b) b.classList.add('hidden');
+  if (aideDesc) { aideDesc.removeAttribute('aria-describedby'); aideDesc = null; }
+  aideCible = null;
+  aideOrigine = null;
+}
+
+// La carte est fixe : on la place après l'avoir rendue visible, sinon sa
+// hauteur vaut zéro et le choix au-dessus/en-dessous serait faux. Elle est
+// toujours bornée au viewport, y compris pour un déclencheur près d'un bord.
+function placerAide(el) {
+  const b = document.getElementById('aidebulle');
+  if (!b) return;
+  const r = el.getBoundingClientRect();
+  const marge = 8;
+  const bw = b.offsetWidth;
+  const bh = b.offsetHeight;
+  let haut = r.bottom + marge;
+  if (haut + bh > innerHeight - marge && r.top - bh - marge >= marge) haut = r.top - bh - marge;
+  haut = Math.max(marge, Math.min(haut, innerHeight - bh - marge));
+  let gauche = r.left;
+  gauche = Math.max(marge, Math.min(gauche, innerWidth - bw - marge));
+  b.style.top = haut + 'px';
+  b.style.left = gauche + 'px';
+}
+
+function montrerAide(el, origine, desc) {
+  if (!aideActive()) return;
+  const c = texteAide(el);
+  const b = document.getElementById('aidebulle');
+  if (!c || !b) return;
+  clearTimeout(aideTimer);
+  aideTimer = null;
+  if (aideCible && aideCible !== el) cacherAide();
+  aideCible = el;
+  aideOrigine = origine;
+  b.textContent = '';
+  const titre = document.createElement('div');
+  titre.className = 't';
+  titre.textContent = c.t;
+  b.appendChild(titre);
+  for (const ligne of c.p) {
+    const p = document.createElement('p');
+    p.textContent = ligne;
+    b.appendChild(p);
+  }
+  b.classList.remove('hidden');
+  placerAide(el);
+  // Le texte est lu par le lecteur d'écran au focus, pas au survol : poser
+  // aria-describedby sur chaque passage de souris ferait annoncer la carte
+  // sans que personne l'ait demandé.
+  if (origine === 'focus') {
+    (desc || el).setAttribute('aria-describedby', 'aidebulle');
+    aideDesc = desc || el;
+  }
+}
+
+function appliquerAide(on, memo) {
+  document.body.classList.toggle('aide', on);
+  const b = document.getElementById('aide');
+  if (b) {
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.setAttribute('aria-label', on ? "Désactiver l’aide contextuelle" : "Activer l’aide contextuelle");
+  }
+  if (!on) cacherAide();
+  if (memo !== false) {
+    try { localStorage.setItem(AIDE_KEY, on ? '1' : '0'); } catch (e) { /* stockage refusé */ }
+  }
+}
+
+document.getElementById('aide').onclick = () => appliquerAide(!aideActive());
+
+// Délégation : les cartes de volume, les groupes de doublons et les champs de
+// suppression sont reconstruits souvent ; aucun écouteur ne leur est attaché.
+document.addEventListener('pointerover', e => {
+  if (!aideActive()) return;
+  const el = cibleAide(e.target);
+  if (!el || el === aideCible) return;
+  clearTimeout(aideTimer);
+  aideTimer = setTimeout(() => montrerAide(el, 'survol'), 140);
+});
+document.addEventListener('pointerout', e => {
+  if (!aideActive() || aideOrigine !== 'survol') return;
+  const el = cibleAide(e.target);
+  if (!el) return;
+  const vers = cibleAide(e.relatedTarget);
+  if (vers === el) return;
+  clearTimeout(aideTimer);
+  aideTimer = setTimeout(() => { if (aideOrigine === 'survol') cacherAide(); }, 80);
+});
+document.addEventListener('focusin', e => {
+  if (!aideActive()) return;
+  const el = cibleAide(e.target);
+  if (el && e.target.matches(':focus-visible')) montrerAide(el, 'focus', e.target);
+});
+document.addEventListener('focusout', e => {
+  if (!aideActive()) return;
+  const el = cibleAide(e.target);
+  if (el && el === aideCible) cacherAide();
+});
+// Une action ferme la carte : elle ne doit pas rester au-dessus d'une boîte de
+// dialogue, ni masquer le champ qu'on vient d'ouvrir. Un pointerdown précède
+// le focus, donc cliquer dans un champ texte la referme puis le focus la
+// rouvre — l'ordre est voulu.
+document.addEventListener('pointerdown', () => cacherAide(), true);
+document.addEventListener('input', e => {
+  if (aideCible && cibleAide(e.target) === aideCible) cacherAide();
+}, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cacherAide(); });
+window.addEventListener('scroll', () => cacherAide(), true);
+window.addEventListener('resize', () => cacherAide());
+
+// Le choix est appliqué avant le premier rendu, et n'est pas réécrit au
+// démarrage : une préférence absente reste « activée par défaut ».
+appliquerAide(chargerAide(), false);
 
 // ---------- démarrage ----------
 (async function init() {

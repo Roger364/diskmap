@@ -12,6 +12,8 @@ on ne cite plus un verdict périmé comme s'il couvrait le code courant.
 | 2026-11-26 | CHO (opencode/deepseek-v4.1-flash-free) | 06dcbbd..eb0091d @ 211ff50a | réserves | 0 | 1 | 6 | 0132 (hermes) / 0133 (freebuff) |
 | 2026-11-26 | Freebuff (static) | 06dcbbd..eb0091d @ 211ff50a | réserves | 1* | 2 | 6 | 0133-freebuff-hermes.md |
 | 2026-11-26 | Hermes (self) | eb0091d..4fdcd76 @ HEAD | accepté (correctifs S1/S2 + S3 partiel) | 0 | 0 | 4 | STATE.md |
+| 2026-11-27 | Hermes (libry) | 6c309ed..worktree @ 009bcf77 | réserves | 0 | 0 | 2 | AUDIT-2026-11-27-hermes.md |
+| 2026-11-27 | Hermes (libry) | 6c309ed..worktree @ 1c45c1d2 | accepté | 0 | 0 | 0 | 0137-hermes-freebuff.md |
 
 `*` conditionnel (index 0 sur SMB, non mesuré sur ce poste).
 
